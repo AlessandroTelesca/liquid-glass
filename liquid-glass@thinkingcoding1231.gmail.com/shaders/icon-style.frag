@@ -22,11 +22,15 @@ uniform float inner_r;
 uniform float inner_g;
 uniform float inner_b;
 uniform float inner_a;
-uniform float rim_a;
 uniform float symbol_r;
 uniform float symbol_g;
 uniform float symbol_b;
 uniform float symbol_a;
+uniform float symbol_inner_r;
+uniform float symbol_inner_g;
+uniform float symbol_inner_b;
+uniform float symbol_inner_a;
+uniform float rim_a;
 uniform float tint_r;
 uniform float tint_g;
 uniform float tint_b;
@@ -36,10 +40,8 @@ const float MAP_SIZE = 256.0;
 const float MAP_RANGE = 16.0;
 // The lit rim's width, map px.
 const float RIM = 7.0;
-// The outer plate's shadow and outline, which set it off from a backdrop of
-// about its own colour.
-const float SHADOW_A = 0.3;
-const float OUTLINE_A = 0.2;
+// How much lighter the outer plate is at its top than at its bottom.
+const float SHEEN = 0.1;
 
 float field(float v) {
     return (0.5 - v) * 2.0 * MAP_RANGE;
@@ -50,26 +52,20 @@ vec4 over(vec4 dst, vec4 src) {
 }
 
 // A plate whose outline is at distance d (map px) with outward normal n: a
-// sheet of colour with a rim lit from the top left and shaded at the bottom right.
+// sheet of colour whose rim catches light on the sides facing the top left
+// and the bottom right, as glass does.
 vec4 plate(float d, vec2 n, vec3 rgb, float alpha) {
     float cover = clamp(0.5 - d / max(map_px, 0.5), 0.0, 1.0);
     float rim = 1.0 - clamp(-d / RIM, 0.0, 1.0);
     rim *= rim;
-    float facing = dot(n, normalize(vec2(-0.55, -0.83)));
-    float light = rim_a * rim * (0.3 + 0.7 * max(facing, 0.0));
-    float shade = rim_a * rim * 0.45 * max(-facing, 0.0);
+    float facing = abs(dot(n, normalize(vec2(-0.55, -0.83))));
+    float light = rim_a * rim * (0.2 + 0.8 * facing);
     vec4 c = vec4(rgb * alpha, alpha);
     c = over(c, vec4(vec3(light), light));
-    c.rgb *= 1.0 - shade;
     return c * cover;
 }
 
-vec2 normalAt(vec2 uv, int channel) {
-    float t = 1.0 / MAP_SIZE;
-    vec4 l = texture2D(cogl_sampler1, uv - vec2(t, 0.0));
-    vec4 r = texture2D(cogl_sampler1, uv + vec2(t, 0.0));
-    vec4 u = texture2D(cogl_sampler1, uv - vec2(0.0, t));
-    vec4 b = texture2D(cogl_sampler1, uv + vec2(0.0, t));
+vec2 gradient(vec4 l, vec4 r, vec4 u, vec4 b, int channel) {
     vec2 g;
     if (channel == 0) g = vec2(l.r - r.r, u.r - b.r);
     else if (channel == 1) g = vec2(l.g - r.g, u.g - b.g);
@@ -78,33 +74,41 @@ vec2 normalAt(vec2 uv, int channel) {
     return len > 1e-5 ? g / len : vec2(0.0);
 }
 
-// No early return: Cogl may add its own steps after this code.
+// No early return, and no texture read inside a branch: a mipmapped read in a
+// branch that some neighbouring pixels skip picks a wrong level on real GPUs,
+// which shows as dark lines along the square's edges. Cogl may add its own
+// steps after this code.
 void main() {
     vec2 st = cogl_tex_coord_in[0].st;
-    vec4 c = vec4(0.0);
     vec2 uv = (st - vec2(box_x0, box_y0)) / vec2(box_x1 - box_x0, box_y1 - box_y0);
-    if (clone > 0.5) {
-        // Lightness over the tint, from its dark to its light side.
-        vec4 icon = texture2D(cogl_sampler0, st);
-        vec3 rgb = icon.a > 0.0 ? icon.rgb / icon.a : vec3(0.0);
-        float l = smoothstep(0.08, 0.92, dot(rgb, vec3(0.2126, 0.7152, 0.0722)));
-        vec3 tint = vec3(tint_r, tint_g, tint_b);
-        c = vec4(mix(tint * 0.3, mix(tint, vec3(1.0), 0.7), l) * icon.a, icon.a);
-    } else if (uv.x >= 0.0 && uv.y >= 0.0 && uv.x <= 1.0 && uv.y <= 1.0) {
-        vec4 m = texture2D(cogl_sampler1, uv);
-        float d = field(m.r);
-        float cover = clamp(0.5 - d / max(map_px, 0.5), 0.0, 1.0);
-        // Cast down by about a screen px, softened over a few; the map holds distances up to MAP_RANGE.
-        float drop = field(texture2D(cogl_sampler1, uv - vec2(0.0, 1.2 * map_px / MAP_SIZE)).r);
-        float shadow = SHADOW_A * (1.0 - smoothstep(-map_px, min(4.0 * map_px, MAP_RANGE - 2.0), drop));
-        c = vec4(0.0, 0.0, 0.0, shadow * (1.0 - cover));
-        c = over(c, plate(d, normalAt(uv, 0), vec3(plate_r, plate_g, plate_b), plate_a));
-        float outline = OUTLINE_A * cover * (1.0 - clamp(-d / max(map_px, 0.5) - 0.5, 0.0, 1.0));
-        c = over(c, vec4(0.0, 0.0, 0.0, outline));
-        vec3 inner = vec3(inner_r, inner_g, inner_b);
-        if (m.g > 0.0) c = over(c, plate(field(m.g), normalAt(uv, 1), inner, inner_a));
-        if (m.b > 0.0) c = over(c, plate(field(m.b), normalAt(uv, 2), inner, inner_a));
-        c = over(c, vec4(symbol_r, symbol_g, symbol_b, 1.0) * (symbol_a * m.a));
-    }
-    cogl_color_out = c * opacity;
+    vec2 at = clamp(uv, 0.0, 1.0);
+    float t = 1.0 / MAP_SIZE;
+    vec4 m = texture2D(cogl_sampler1, at);
+    vec4 l = texture2D(cogl_sampler1, at - vec2(t, 0.0));
+    vec4 r = texture2D(cogl_sampler1, at + vec2(t, 0.0));
+    vec4 u = texture2D(cogl_sampler1, at - vec2(0.0, t));
+    vec4 b = texture2D(cogl_sampler1, at + vec2(0.0, t));
+    vec4 icon = texture2D(cogl_sampler0, st);
+
+    vec3 base = vec3(plate_r, plate_g, plate_b) * (1.0 + SHEEN * (0.5 - at.y));
+    vec4 c = plate(field(m.r), gradient(l, r, u, b, 0), base, plate_a);
+    vec3 inner = vec3(inner_r, inner_g, inner_b);
+    vec4 first = plate(field(m.g), gradient(l, r, u, b, 1), inner, inner_a);
+    vec4 deeper = plate(field(m.b), gradient(l, r, u, b, 2), inner, inner_a);
+    c = over(over(c, first), deeper);
+    // Over a plate on the outer one the symbol takes its other colour, to stand apart from that plate.
+    float onInner = max(first.a, deeper.a) / max(inner_a, 0.01);
+    vec4 symbol = mix(vec4(symbol_r, symbol_g, symbol_b, symbol_a),
+                      vec4(symbol_inner_r, symbol_inner_g, symbol_inner_b, symbol_inner_a), clamp(onInner, 0.0, 1.0));
+    c = over(c, vec4(symbol.rgb, 1.0) * (symbol.a * m.a));
+    float inside = step(0.0, uv.x) * step(0.0, uv.y) * step(uv.x, 1.0) * step(uv.y, 1.0);
+    c *= inside;
+
+    // The launch animation: lightness over the tint, from its dark to its light side.
+    vec3 rgb = icon.a > 0.0 ? icon.rgb / icon.a : vec3(0.0);
+    float lightness = smoothstep(0.08, 0.92, dot(rgb, vec3(0.2126, 0.7152, 0.0722)));
+    vec3 tint = vec3(tint_r, tint_g, tint_b);
+    vec4 launch = vec4(mix(tint * 0.3, mix(tint, vec3(1.0), 0.7), lightness) * icon.a, icon.a);
+
+    cogl_color_out = mix(c, launch, step(0.5, clone)) * opacity;
 }

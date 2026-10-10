@@ -9,6 +9,7 @@ import { rectInOffscreen } from '../rendering/contentLens.js';
 import { configureSamplerLayer } from '../rendering/pipelines.js';
 import { splitShader } from '../rendering/shaderSource.js';
 import { coglContext } from '../shellVersion.js';
+import { iconStyleUniforms } from './styleColors.js';
 import { MAP_SIZE } from './styleMap.js';
 
 /** The pipeline every icon's is copied from, so that they share one program. */
@@ -59,15 +60,8 @@ export const IconStyleEffect = GObject.registerClass(class IconStyleEffect exten
     }
 
     setColors(colors) {
-        const channels = ['r', 'g', 'b', 'a'];
-        channels.forEach((c, i) => {
-            this._set(`plate_${c}`, colors.plate[i]);
-            this._set(`inner_${c}`, colors.inner[i]);
-            this._set(`symbol_${c}`, colors.symbol[i]);
-            if (i < 3)
-                this._set(`tint_${c}`, colors.tint[i]);
-        });
-        this._set('rim_a', colors.rim);
+        for (const [name, value] of iconStyleUniforms(colors))
+            this._set(name, value);
         this.queue_repaint();
     }
 

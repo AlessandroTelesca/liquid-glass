@@ -1779,10 +1779,6 @@ export default class LgDriver extends Extension {
     await shot('icon-style-weak-large', dockRect);
     settings.reset('icon-style-tint-strength');
     settings.reset('icon-style-size');
-    settings.set_boolean('icon-style-light-symbol', true);
-    await sleep(800);
-    await shot('icon-style-light-symbol', dockRect);
-    settings.reset('icon-style-light-symbol');
 
     const first = icons().map(appOf).find(id => id !== 'show-apps');
     settings.set_strv('icon-style-blacklist', [first, 'show-apps']);

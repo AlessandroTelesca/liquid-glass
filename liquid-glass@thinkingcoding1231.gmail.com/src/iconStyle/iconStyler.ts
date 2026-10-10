@@ -34,8 +34,8 @@ interface Styled {
 }
 
 const KEYS = ['icon-style-dock', 'icon-style-launcher', 'icon-style-mode', 'icon-style-use-accent', 'icon-style-color',
-  'icon-style-tint-strength', 'icon-style-size', 'icon-style-symbol-opacity', 'icon-style-light-symbol',
-  'icon-style-all-apps', 'icon-style-whitelist', 'icon-style-blacklist'];
+  'icon-style-tint-strength', 'icon-style-size', 'icon-style-symbol-opacity', 'icon-style-all-apps',
+  'icon-style-whitelist', 'icon-style-blacklist'];
 
 function appIdOf(icon: St.Icon): string | null {
   // The shell's and Dash to Dock's Show Apps buttons, whatever icon they show.
@@ -195,8 +195,7 @@ export class IconStyler {
       : hexToColorArray(s.get_string('icon-style-color'));
     const mode = s.get_string('icon-style-mode');
     return iconStyleColors((['mono', 'clear'].includes(mode) ? mode : 'tinted') as IconStyleMode, tint,
-      s.get_double('icon-style-tint-strength'), s.get_double('icon-style-symbol-opacity'),
-      s.get_boolean('icon-style-light-symbol'));
+      s.get_double('icon-style-tint-strength'), s.get_double('icon-style-symbol-opacity'));
   }
 
   private _apply(icon: St.Icon): void {

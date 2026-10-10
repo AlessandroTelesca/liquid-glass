@@ -70,9 +70,8 @@ td.name small { color: var(--muted); word-break: break-all; }
   <h1>Icon Sheet</h1>
   <label>Mode <select id="mode"><option value="tinted">Tinted</option><option value="mono">Mono</option><option value="clear">Clear</option></select></label>
   <label>Accent <input id="accent" type="color" value="#3584e4"></label>
-  <label>Tint <input id="strength" type="range" min="0" max="1" step="0.05" value="0.7"></label>
-  <label>Symbol <input id="opacity" type="range" min="0" max="1" step="0.05" value="0.5"></label>
-  <label><input id="light" type="checkbox"> Light symbol</label>
+  <label>Tint <input id="strength" type="range" min="0" max="1" step="0.05" value="0"></label>
+  <label>Symbol <input id="opacity" type="range" min="0" max="1" step="0.05" value="1"></label>
   <label>Size <select id="size"><option>48</option><option selected>64</option><option>96</option><option>128</option></select></label>
   <label><input id="launch" type="checkbox"> Launch animation column</label>
   <label><input id="debug" type="checkbox" checked> Analysis column</label>
@@ -200,15 +199,9 @@ async function drawStyled(canvas, rec, opts, wallX, wallY, launch) {
   g.bindTexture(g.TEXTURE_2D, texture(original, false));
   g.activeTexture(g.TEXTURE1);
   g.bindTexture(g.TEXTURE_2D, rec.map ? texture(await image(rec.map), true) : texture(original, false));
-  const c = iconStyleColors(opts.mode, opts.accent.map(v => v / 255), opts.strength, opts.opacity, opts.light);
+  const c = iconStyleColors(opts.mode, opts.accent.map(v => v / 255), opts.strength, opts.opacity);
   for (const [name, v] of [['box_x0', 0], ['box_y0', 0], ['box_x1', 1], ['box_y1', 1], ['map_px', 256 / px],
-    ['clone', launch ? 1 : 0], ['rim_a', c.rim], ['opacity', 1]]) set(name, v);
-  ['r', 'g', 'b', 'a'].forEach((k, i) => {
-    set('plate_' + k, c.plate[i]);
-    set('inner_' + k, c.inner[i]);
-    set('symbol_' + k, c.symbol[i]);
-    if (i < 3) set('tint_' + k, c.tint[i]);
-  });
+    ['clone', launch ? 1 : 0], ['opacity', 1], ...iconStyleUniforms(c)]) set(name, v);
   g.drawArrays(g.TRIANGLE_STRIP, 0, 4);
   g2.drawImage(glc, 0, 0);
 }
@@ -269,7 +262,6 @@ function options() {
     accent: hexRgb(document.getElementById('accent').value),
     strength: +document.getElementById('strength').value,
     opacity: +document.getElementById('opacity').value,
-    light: document.getElementById('light').checked,
     launch: document.getElementById('launch').checked,
     debug: document.getElementById('debug').checked,
     info: document.getElementById('info').checked,
@@ -355,7 +347,7 @@ for (const [key, value] of hash) {
   if (control.type === 'checkbox') control.checked = value !== '0';
   else control.value = value;
 }
-for (const id of ['mode', 'accent', 'strength', 'opacity', 'light', 'launch', 'size', 'debug', 'info', 'filter'])
+for (const id of ['mode', 'accent', 'strength', 'opacity', 'launch', 'size', 'debug', 'info', 'filter'])
   document.getElementById(id).addEventListener('input', render);
 summary();
 render();

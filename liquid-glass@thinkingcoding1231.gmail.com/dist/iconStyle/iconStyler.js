@@ -14,8 +14,8 @@ export const SHOW_APPS_ID = 'show-apps';
 const LOOKUP_SIZE = 128;
 const EFFECT_NAME = 'liquid-glass-icon-style';
 const KEYS = ['icon-style-dock', 'icon-style-launcher', 'icon-style-mode', 'icon-style-use-accent', 'icon-style-color',
-    'icon-style-tint-strength', 'icon-style-size', 'icon-style-symbol-opacity', 'icon-style-light-symbol',
-    'icon-style-all-apps', 'icon-style-whitelist', 'icon-style-blacklist'];
+    'icon-style-tint-strength', 'icon-style-size', 'icon-style-symbol-opacity', 'icon-style-all-apps',
+    'icon-style-whitelist', 'icon-style-blacklist'];
 
 function appIdOf(icon) {
     // The shell's and Dash to Dock's Show Apps buttons, whatever icon they show.
@@ -198,7 +198,7 @@ export class IconStyler {
         const tint = accent ? [accent[0].red / 255, accent[0].green / 255, accent[0].blue / 255]
             : hexToColorArray(s.get_string('icon-style-color'));
         const mode = s.get_string('icon-style-mode');
-        return iconStyleColors((['mono', 'clear'].includes(mode) ? mode : 'tinted'), tint, s.get_double('icon-style-tint-strength'), s.get_double('icon-style-symbol-opacity'), s.get_boolean('icon-style-light-symbol'));
+        return iconStyleColors((['mono', 'clear'].includes(mode) ? mode : 'tinted'), tint, s.get_double('icon-style-tint-strength'), s.get_double('icon-style-symbol-opacity'));
     }
 
     _apply(icon) {

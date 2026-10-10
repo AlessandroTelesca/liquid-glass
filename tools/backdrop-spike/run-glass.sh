@@ -7,6 +7,8 @@
 #   LG_DRV_SCENARIO   the driver's scenario (default: dock)
 #   LG_SPIKE_MONITOR  virtual monitor mode (default: 1920x1080)
 #   LG_MONITORS_XML   a monitors.xml to use (e.g. for a fractional scale)
+#   LG_DTD_SETTINGS   more Dash to Dock settings, "key value" pairs separated by ";"
+#                     (e.g. "dash-max-icon-size 56;apply-custom-theme true")
 #   LG_EXTRA_EXTENSIONS  more UUIDs from ~/.local/share/gnome-shell/extensions or
 #                        /usr/share/gnome-shell/extensions to enable (e.g.
 #                        blur-my-shell@aunetx, ding@rastersoft.com), space separated
@@ -81,6 +83,12 @@ fi
 
 socket="lg-glass-$$"
 dtd_schemas="$ext/$dtd_uuid/schemas"
+dtd_extra=""
+IFS=';' read -ra dtd_pairs <<< "${LG_DTD_SETTINGS:-}"
+for pair in "${dtd_pairs[@]}"; do
+  [ -n "$pair" ] && dtd_extra="$dtd_extra
+  gsettings --schemadir '$dtd_schemas' set org.gnome.shell.extensions.dash-to-dock $pair"
+done
 
 dbus-run-session -- bash -c "
   gsettings set org.gnome.shell enabled-extensions \"['$drv_uuid', '$dtd_uuid', '$lg_uuid'$extra]\"
@@ -88,7 +96,7 @@ dbus-run-session -- bash -c "
   gsettings set org.gnome.shell welcome-dialog-last-shown-version '9999'
   gsettings --schemadir '$dtd_schemas' set org.gnome.shell.extensions.dash-to-dock dock-fixed true
   gsettings --schemadir '$dtd_schemas' set org.gnome.shell.extensions.dash-to-dock intellihide false
-  gsettings --schemadir '$dtd_schemas' set org.gnome.shell.extensions.dash-to-dock dock-position 'BOTTOM'
+  gsettings --schemadir '$dtd_schemas' set org.gnome.shell.extensions.dash-to-dock dock-position 'BOTTOM'$dtd_extra
   if [ \"$shell_args\" = --x11 ]; then
     exec timeout ${LG_SHELL_TIMEOUT:-180} gnome-shell --x11
   fi
