@@ -21,7 +21,7 @@
 //              widgets, the glass clock and the launcher, on a photo wallpaper
 //              ($LG_DRV_WALLPAPER); LG_DRV_FEATURES picks parts (comma
 //              separated: morph, topbar, widgets, clock, launcher; default all;
-//              also morphtrace, qssub, clockshot, media, guides)
+//              also morphtrace, qssub, clockshot, media, guides, launcherpointer)
 //   bench      global._lgBench.run() (run-glass.sh with LG_BENCH=1); LG_DRV_BENCH
 //              picks scenarios (comma separated, default all), LG_DRV_BENCH_SECONDS
 //              the seconds per scenario (default 3), LG_DRV_BENCH_AB=1 adds a run without UI glass
@@ -1466,6 +1466,123 @@ export default class LgDriver extends Extension {
     await shot('widget-position', [m.x, m.y, m.width, m.height]);
   }
 
+  // The launcher's results with a virtual pointer: rows that appear under a
+  // pointer that does not move get hover, a click activates a row, and hover
+  // still follows the pointer after a click; from the desktop and the overview,
+  // and with a slow glass on an otherwise idle stage.
+  async _launcherPointer(settings, m) {
+    new Gio.Settings({schema_id: 'org.gnome.desktop.interface'}).set_boolean('enable-hot-corners', false);
+    settings.set_boolean('enable-launcher', true);
+    await sleep(500);
+    const backend = SHELL_MAJOR >= 48 ? global.stage.context.get_backend() : Clutter.get_default_backend();
+    const pointer = backend.get_default_seat().create_virtual_device(Clutter.InputDeviceType.POINTER_DEVICE);
+    await sleep(300);
+    if (Main.overview.visible) {
+      Main.overview.hide();
+      await sleep(1500);
+    }
+    const t = () => GLib.get_monotonic_time();
+    const {Launcher} = await this._lgModule('launcher/launcher.js');
+    const launcher = Launcher.instance;
+    const activated = [];
+    launcher._activate = i => {
+      activated.push(i);
+      launcher.close();
+    };
+    const rows = () => launcher._rows ?? [];
+    const hovered = () => rows().map(r => (r.hover ? 1 : 0)).join('');
+    const press = async button => {
+      pointer.notify_button(t(), button, Clutter.ButtonState.PRESSED);
+      await sleep(60);
+      pointer.notify_button(t(), button, Clutter.ButtonState.RELEASED);
+      await sleep(400);
+    };
+    for (const where of ['desktop', 'overview', 'slow']) {
+      if (where === 'slow') {
+        settings.set_boolean('launcher-enable-adaptive-text-color', false);
+        launcher._shape._durationMs = 1500;
+      }
+      if (where === 'overview') {
+        Main.overview.show();
+        await sleep(1500);
+      }
+      launcher.open();
+      launcher.setText('set');
+      await sleep(1500);
+      const centre = row => {
+        const [x, y] = row.get_transformed_position();
+        const [w, h] = row.get_transformed_size();
+        return [x + w / 2, y + h / 2];
+      };
+      const last = centre(rows()[rows().length - 1]);
+      const first = centre(rows()[0]);
+      launcher.setText('');
+      await sleep(600);
+      // Where the last row will be, before there are any rows.
+      pointer.notify_absolute_motion(t(), ...last);
+      await sleep(300);
+      launcher.setText('set');
+      await sleep(400);
+      log(`launcher pointer ${where}: early hover=${hovered()}`);
+      await sleep(where === 'slow' ? 2000 : 1200);
+      // The glass has landed; nothing should ask for frames now.
+      let updates = 0;
+      const updateId = global.stage.connect('before-update', () => updates++);
+      await sleep(1000);
+      global.stage.disconnect(updateId);
+      const picked = global.stage.get_actor_at_pos(Clutter.PickMode.REACTIVE, ...last);
+      log(`launcher pointer ${where}: rows=${rows().length} hover=${hovered()} under the pointer: row ${rows().indexOf(picked)} ` +
+        `clip=${launcher._panel.get_clip().map(Math.round)} panel=${launcher._panel.get_allocation_box().get_size().map(Math.round)} ` +
+        `idle updates=${updates}`);
+      await shot(`launcher-pointer-${where}`, [m.x, m.y, m.width, m.height]);
+      // A secondary click does nothing; then hover has to follow the pointer.
+      await press(Clutter.BUTTON_SECONDARY);
+      pointer.notify_absolute_motion(t(), ...first);
+      await sleep(300);
+      log(`launcher pointer ${where}: after a click, moved up: hover=${hovered()} selected=${launcher._selected} open=${!!launcher._root}`);
+      await press(Clutter.BUTTON_PRIMARY);
+      log(`launcher pointer ${where}: activated=${JSON.stringify(activated)} open=${!!launcher._root}`);
+      if (launcher._root) {
+        pointer.notify_absolute_motion(t(), ...last);
+        await sleep(300);
+        log(`launcher pointer ${where}: still open, moved down: hover=${hovered()} selected=${launcher._selected}`);
+      }
+      launcher.close();
+      activated.length = 0;
+      await sleep(500);
+      if (where === 'overview') {
+        Main.overview.hide();
+        await sleep(1500);
+      }
+    }
+    delete launcher._activate;
+    launcher._shape._durationMs = 220;
+    settings.reset('launcher-enable-adaptive-text-color');
+    // The field keeps it open, a click outside closes it, and a row really activates.
+    launcher.open();
+    launcher.setText('set');
+    await sleep(1500);
+    const [ex, ey] = launcher._entry.get_transformed_position();
+    const [, eh] = launcher._entry.get_transformed_size();
+    const click = async (x, y) => {
+      pointer.notify_absolute_motion(t(), x, y);
+      await sleep(200);
+      await press(Clutter.BUTTON_PRIMARY);
+    };
+    await click(ex + 300, ey + eh / 2);
+    log(`launcher pointer: field clicked: open=${!!launcher._root}`);
+    await click(m.x + 40, m.y + m.height - 200);
+    log(`launcher pointer: outside clicked: open=${!!launcher._root}`);
+    launcher.open();
+    launcher.setText('keyboard');
+    await sleep(1500);
+    const name = launcher._results[0]?.meta.name;
+    const [rx, ry] = launcher._rows[0]?.get_transformed_position() ?? [0, 0];
+    await click(rx + 100, ry + 10);
+    await sleep(1500);
+    log(`launcher pointer: '${name}' clicked: open=${!!launcher._root} modal=${Main.modalCount}`);
+  }
+
   async _featuresScenario() {
     const parts = (GLib.getenv('LG_DRV_FEATURES') ?? 'morph,topbar,widgets,clock,launcher').split(',');
     const settings = this._lgSettings();
@@ -1820,6 +1937,8 @@ export default class LgDriver extends Extension {
       launcher?.close();
       await sleep(1000);
     }
+    if (parts.includes('launcherpointer'))
+      await this._launcherPointer(settings, m);
     // Everything switched on, the launcher open: disabling has to leave nothing.
     (await this._lgModule('launcher/launcher.js')).Launcher.instance?.open();
     await sleep(500);

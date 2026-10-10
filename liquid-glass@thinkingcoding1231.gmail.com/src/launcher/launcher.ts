@@ -65,6 +65,7 @@ export class Launcher {
   private _grab: any = null;
   private _shape = new RectTween(SHAPE_MS);
   private _shapeStarted = false;
+  private _ticker: Clutter.Timeline | null = null;
   private _frameSyncId = 0;
   private _frameSignalId = 0;
   private _searchId = 0;
@@ -112,11 +113,6 @@ export class Launcher {
 
     const root = new St.Widget({ name: 'liquid-glass-launcher', reactive: true,
       x: monitor.x, y: monitor.y, width: monitor.width, height: monitor.height, opacity: 0 });
-    // A click outside the field closes it.
-    root.connect('button-press-event', () => {
-      this.close();
-      return Clutter.EVENT_STOP;
-    });
 
     const glass = new BackdropGlass({
       extensionPath: this._path, settings: this._settings, logger: this._logger, owner: 'launcher',
@@ -128,8 +124,18 @@ export class Launcher {
 
     const panel = new St.BoxLayout({ style_class: 'liquid-glass-launcher', reactive: true, width: WIDTH,
       x: Math.round((monitor.width - WIDTH) / 2), y: Math.round(monitor.height * TOP), ...verticalBoxParams() } as any);
-    // Clicks on the field stay there.
-    panel.connect('button-press-event', () => Clutter.EVENT_STOP);
+    // A click outside the field closes it. Presses inside must not be stopped: from GNOME 49 a button clicks
+    // through a gesture, and an actor that stops the press cancels it.
+    root.connect('button-press-event', (_actor: Clutter.Actor, event: Clutter.Event) => {
+      if (panel.contains(global.stage.get_event_actor(event)!)) return Clutter.EVENT_PROPAGATE;
+      this.close();
+      return Clutter.EVENT_STOP;
+    });
+    // The glass follows the panel from before-update, which does not ask for frames and runs ahead of the layout
+    // that resizes the panel. Without the ticker, an idle stage leaves the glass, and the clip that also limits
+    // where rows can be hovered and clicked, at the old size.
+    const ticker = new Clutter.Timeline({ actor: root, duration: 1000, repeat_count: -1 });
+    panel.connect('notify::allocation', () => ticker.start());
     const entry = new St.Entry({ style_class: 'lg-launcher-entry', hint_text: 'Search', can_focus: true, x_expand: true,
       primary_icon: new St.Icon({ icon_name: 'edit-find-symbolic', style_class: 'lg-launcher-entry-icon' }) });
     // Hidden while empty, so the panel's spacing does not add room below the field.
@@ -144,6 +150,7 @@ export class Launcher {
     this._entry = entry;
     this._list = list;
     this._glass = glass;
+    this._ticker = ticker;
     this._results = [];
     this._rows = [];
     this._selected = 0;
@@ -175,6 +182,8 @@ export class Launcher {
     if (!root) return;
     this._root = null;
     stopStageLoop(this._frameSignalSlot, this._frameSlot);
+    this._ticker?.stop();
+    this._ticker = null;
     this._cancelSearch();
     this._text.clear();
     if (this._grab) Main.popModal(this._grab);
@@ -234,6 +243,9 @@ export class Launcher {
     glass.setResolution(root.width, root.height);
     glass.setGlassGeometry(x - p, y - p, gw + p * 2, gh + p * 2);
     panel.set_clip(x - panel.x, y - panel.y, gw, gh);
+    const ticker = this._ticker!;
+    if (this._shape.done(now)) ticker.stop();
+    else if (!ticker.is_playing()) ticker.start();
     ensureGlassAllocated(glass);
     glass.syncSources();
   }

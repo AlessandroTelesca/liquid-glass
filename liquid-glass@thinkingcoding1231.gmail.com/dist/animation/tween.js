@@ -28,6 +28,10 @@ export class RectTween {
         this.start(this.rect(nowUs), target, nowUs);
     }
 
+    done(nowUs) {
+        return nowUs - this._startUs >= this._durationMs * 1000;
+    }
+
     rect(nowUs) {
         const t = Math.min(Math.max((nowUs - this._startUs) / (this._durationMs * 1000), 0), 1);
         const k = easeOutCubic(t);
