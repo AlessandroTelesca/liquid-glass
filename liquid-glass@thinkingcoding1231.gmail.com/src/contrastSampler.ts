@@ -319,6 +319,34 @@ function _captureViaBackdrop(copy: { texture: Cogl.Texture, rect: number[] },
     Math.max(1, Math.round(area.width * k)), Math.max(1, Math.round(area.height * k)));
 }
 
+// The parts of `rect` outside the stage rect [x0, y0, x1, y1]: above, below, and left and right between them.
+function _outside(rect: SampleRect, [x0, y0, x1, y1]: number[]): SampleRect[] {
+  const right = rect.x + rect.width, bottom = rect.y + rect.height;
+  const top = Math.max(rect.y, Math.min(y0, bottom)), base = Math.min(bottom, Math.max(y1, top));
+  const strips = [
+    { x: rect.x, y: rect.y, width: rect.width, height: top - rect.y },
+    { x: rect.x, y: base, width: rect.width, height: bottom - base },
+    { x: rect.x, y: top, width: Math.min(x0, right) - rect.x, height: base - top },
+    { x: Math.max(x1, rect.x), y: top, width: right - Math.max(x1, rect.x), height: base - top },
+  ];
+  return strips.filter(r => r.width >= 1 && r.height >= 1);
+}
+
+// The drawn glass whose backdrop copy holds most of `rect`.
+function _bestCopy(rect: SampleRect, drawn: BackdropSource[]) {
+  let best: { source: BackdropSource, copy: { texture: Cogl.Texture, rect: number[] } } | null = null;
+  let bestArea = 0;
+  for (const source of drawn) {
+    const copy = source.backdropCopy();
+    const area = copy ? _overlap(copy.rect, rect) : null;
+    if (copy && area && area.width * area.height > bestArea) {
+      best = { source, copy };
+      bestArea = area.width * area.height;
+    }
+  }
+  return best;
+}
+
 export function backdropLuminance(actor: Clutter.Actor, root: Clutter.Actor | null = null): { luminance: number, alpha: number } | null {
   let node: any = actor;
 
@@ -339,7 +367,7 @@ export function backdropLuminance(actor: Clutter.Actor, root: Clutter.Actor | nu
   return null;
 }
 
-type SampleRect = { x: number, y: number, width: number, height: number };
+export type SampleRect = { x: number, y: number, width: number, height: number };
 
 function _visibleTargets(actors: Clutter.Actor[]): { targets: Clutter.Actor[], rects: SampleRect[] } {
   const targets: Clutter.Actor[] = [];
@@ -414,6 +442,8 @@ export class StageContrastSampler {
   // configuration it measured; see chooseColorsForActors().
   private _unchangedSignature: number | null = null;
   private _unchangedKey: string = '';
+  // Advanced by chooseColorFor(), so that a merged decision measured meanwhile is dropped.
+  private _epoch = 0;
 
   // The next call always samples.
   invalidate(): void {
@@ -479,18 +509,29 @@ export class StageContrastSampler {
     if (sources.length === 0) return this.sampleLuminance(rect);
 
     const drawn = sources.filter(source => source.mapped && source.get_paint_opacity() > 0);
-    let best: { source: BackdropSource, copy: { texture: Cogl.Texture, rect: number[] } } | null = null;
-    let bestArea = 0;
-    for (const source of drawn) {
-      const copy = source.backdropCopy();
-      const area = copy ? _overlap(copy.rect, rect) : null;
-      if (copy && area && area.width * area.height > bestArea) {
-        best = { source, copy };
-        bestArea = area.width * area.height;
-      }
-    }
+    const best = _bestCopy(rect, drawn);
     if (best) return this.sampleBackdropLuminance(best.copy, rect, glassToneOf(best.source.uniformValues));
     return this.sampleLuminance(rect, drawn.length === 0 ? glassToneOf(sources[0].uniformValues) : undefined);
+  }
+
+  // Like _measure(), for a rect the glass is about to grow over: the part its backdrop copy does not hold yet is
+  // measured on the screen, which shows no glass there, as the glass will show it.
+  private async _measureGrowing(rect: SampleRect, sources: BackdropSource[]): Promise<number | null> {
+    const drawn = sources.filter(source => source.mapped && source.get_paint_opacity() > 0);
+    const best = _bestCopy(rect, drawn);
+    if (!best) return this._measure(rect, sources);
+    const tone = glassToneOf(best.source.uniformValues);
+    const covered = _overlap(best.copy.rect, rect)!;
+    const parts = [{ rect: covered, luma: this.sampleBackdropLuminance(best.copy, covered, tone) },
+      ..._outside(rect, best.copy.rect).map(strip => ({ rect: strip, luma: this.sampleLuminance(strip, tone) }))];
+    let sum = 0, weight = 0;
+    for (const part of parts) {
+      const luma = await part.luma;
+      if (luma === null) return null;
+      sum += luma * part.rect.width * part.rect.height;
+      weight += part.rect.width * part.rect.height;
+    }
+    return sum / weight;
   }
 
   decideTextColor(luminance: number, config: typeof AdaptiveContrastConfig = AdaptiveContrastConfig): string | null {
@@ -648,6 +689,25 @@ export class StageContrastSampler {
     return this._chooseMerged(actors, merged, config, settle, sources);
   }
 
+  /**
+   * The colour for text that is about to cover `rect`, decided at once from this measurement alone: the current
+   * colour stays unless the other one reads clearly better. A merged decision measured meanwhile is dropped, and
+   * the next one goes on from this one while it is over the same rect. Null when it could not be measured, or when
+   * a later call took over.
+   */
+  async chooseColorFor(rect: SampleRect, config: typeof AdaptiveContrastConfig,
+    sources: BackdropSource[]): Promise<string | null> {
+    const epoch = ++this._epoch;
+    const luma = await this._measureGrowing(rect, sources);
+    if (epoch !== this._epoch || luma === null) return null;
+    this.invalidate();
+    this._lastRect = rect;
+    this._lastLuma = null;
+    const color = this.decideTextColor(luma, config);
+    this._lastDecided = color;
+    return color;
+  }
+
   private _resetIfRegionMoved(merged: SampleRect): void {
     const last = this._lastRect;
     const moved = !last || (['x', 'y', 'width', 'height'] as const).some(k => Math.abs(merged[k] - last[k]) > 2);
@@ -665,8 +725,9 @@ export class StageContrastSampler {
     settle: (stable: boolean) => void, sources: BackdropSource[]): Promise<Map<Clutter.Actor, string>> {
     const result = new Map<Clutter.Actor, string>();
     this._resetIfRegionMoved(merged);
+    const epoch = this._epoch;
     const luma = await this._measure(merged, sources);
-    if (luma === null) {
+    if (luma === null || epoch !== this._epoch) {
       this.invalidate();
       return result;
     }

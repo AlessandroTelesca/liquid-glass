@@ -21,7 +21,8 @@
 //              widgets, the glass clock and the launcher, on a photo wallpaper
 //              ($LG_DRV_WALLPAPER); LG_DRV_FEATURES picks parts (comma
 //              separated: morph, topbar, widgets, clock, launcher; default all;
-//              also morphtrace, qssub, clockshot, media, guides, launcherpointer)
+//              also morphtrace, qssub, clockshot, media, guides, launcherpointer,
+//              launchercolor)
 //   bench      global._lgBench.run() (run-glass.sh with LG_BENCH=1); LG_DRV_BENCH
 //              picks scenarios (comma separated, default all), LG_DRV_BENCH_SECONDS
 //              the seconds per scenario (default 3), LG_DRV_BENCH_AB=1 adds a run without UI glass
@@ -1610,6 +1611,103 @@ export default class LgDriver extends Extension {
     log(`launcher pointer: '${name}' clicked: open=${!!launcher._root} modal=${Main.modalCount}`);
   }
 
+  // The launcher's text colour over a dark top and a white bottom: the field
+  // alone is over dark, the results reach the white. Every painted frame is
+  // traced: the field and the rows have to share one colour, and the colour
+  // for a new size has to be there without a tween.
+  async _launcherColor(settings, m) {
+    settings.set_boolean('enable-launcher', true);
+    await sleep(500);
+    const {Launcher} = await this._lgModule('launcher/launcher.js');
+    const launcher = Launcher.instance;
+    const dark = new St.Widget({style: 'background-color: #202020;', x: m.x, y: m.y, width: m.width, height: m.height});
+    const splitY = Math.round(m.height * 0.2) + 110;
+    const white = new St.Widget({style: 'background-color: #f4f4f4;', x: m.x, y: m.y + splitY, width: m.width, height: m.height - splitY});
+    Main.layoutManager.uiGroup.insert_child_above(dark, global.window_group);
+    Main.layoutManager.uiGroup.insert_child_above(white, dark);
+    await sleep(800);
+    const hex = c => [c.red, c.green, c.blue].map(v => v.toString(16).padStart(2, '0')).join('');
+    const firstLabel = a => {
+      if (a instanceof St.Label) return a;
+      for (const c of a.get_children()) {
+        const found = firstLabel(c);
+        if (found) return found;
+      }
+      return null;
+    };
+    const frames = [];
+    const traceId = global.stage.connect('after-paint', () => {
+      const panel = launcher._panel;
+      if (!panel) return;
+      const row = launcher._rows[0];
+      const label = row && firstLabel(row);
+      frames.push({
+        rows: launcher._rows.length,
+        panel: hex(panel.get_theme_node().get_foreground_color()),
+        entry: hex(launcher._entry.get_theme_node().get_foreground_color()),
+        row: label ? hex(label.get_theme_node().get_foreground_color()) : '-',
+        clipH: Math.round(panel.get_clip()[3]),
+      });
+    });
+    const report = (what, from) => {
+      const seen = frames.slice(from);
+      // Runs of the same colours, as "frames x panel/entry/row rows".
+      const runs = [];
+      for (const f of seen) {
+        const key = `${f.panel}/${f.entry}/${f.row} rows=${f.rows}`;
+        if (runs.length && runs[runs.length - 1].key === key) runs[runs.length - 1].n++;
+        else runs.push({key, n: 1, clipH: f.clipH});
+      }
+      const mismatched = seen.filter(f => f.panel !== f.entry || (f.row !== '-' && f.row !== f.panel)).length;
+      log(`launcher color ${what}: ${runs.map(r => `${r.n}x ${r.key} clip=${r.clipH}`).join(' | ')} mismatched=${mismatched}`);
+    };
+    const t0 = GLib.get_monotonic_time();
+    const ms = () => Math.round((GLib.get_monotonic_time() - t0) / 1000);
+    const applied = [];
+    const apply = launcher._text._apply;
+    launcher._text._apply = function (actor, color, skip, batch) {
+      applied.push(`${ms()}:${color}${skip ? '!' : ''}`);
+      return apply.call(this, actor, color, skip, batch);
+    };
+    launcher.open();
+    await sleep(2000);
+    report('open', 0);
+    // The hint over the white, in the panel's colour.
+    white.y = m.y + Math.round(m.height * 0.2);
+    await sleep(1500);
+    await shot('launcher-color-hint', [m.x, m.y, m.width, m.height]);
+    applied.push(`${ms()}:white-down`);
+    white.y = m.y + splitY;
+    await sleep(1500);
+    applied.push(`${ms()}:typing`);
+    const query = GLib.getenv('LG_DRV_LAUNCHER_QUERY') ?? 'set';
+    let from = frames.length;
+    launcher.setText(query);
+    await sleep(3000);
+    report(`'${query}'`, from);
+    await shot('launcher-color-results', [m.x, m.y, m.width, m.height]);
+    const box = launcher._panel.get_allocation_box();
+    log(`launcher color: chosen for ${launcher._coloredFor} panel at ${Math.round(launcher._root.y + box.y1)},${Math.round(box.get_height())}`);
+    from = frames.length;
+    launcher.setText('');
+    await sleep(3000);
+    report('cleared', from);
+    from = frames.length;
+    launcher.setText(query);
+    await sleep(1500);
+    launcher.setText(`${query}t`);
+    await sleep(3000);
+    report(`'${query}' then '${query}t'`, from);
+    global.stage.disconnect(traceId);
+    delete launcher._text._apply;
+    log(`launcher color applied: ${applied.join(' ')}`);
+    await shot('launcher-color', [m.x, m.y, m.width, m.height]);
+    launcher.close();
+    dark.destroy();
+    white.destroy();
+    await sleep(500);
+  }
+
   async _featuresScenario() {
     const parts = (GLib.getenv('LG_DRV_FEATURES') ?? 'morph,topbar,widgets,clock,launcher').split(',');
     const settings = this._lgSettings();
@@ -1966,6 +2064,8 @@ export default class LgDriver extends Extension {
     }
     if (parts.includes('launcherpointer'))
       await this._launcherPointer(settings, m);
+    if (parts.includes('launchercolor'))
+      await this._launcherColor(settings, m);
     // Everything switched on, the launcher open: disabling has to leave nothing.
     (await this._lgModule('launcher/launcher.js')).Launcher.instance?.open();
     await sleep(500);

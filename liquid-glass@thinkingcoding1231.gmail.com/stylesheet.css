@@ -219,6 +219,10 @@
     selected-color: #ffffff;
 }
 
+.liquid-glass-launcher .lg-launcher-entry .hint-text {
+    color: inherit;
+}
+
 .liquid-glass-launcher .lg-launcher-entry-icon {
     icon-size: 22px;
     padding-right: 10px;

@@ -3,12 +3,19 @@ import GLib from 'gi://GLib';
 import St from 'gi://St';
 
 import { StageContrastSampler, AdaptiveContrastConfig, type AdaptiveColorPreference,
-  type BackdropSource } from './contrastSampler.js';
+  type BackdropSource, type SampleRect } from './contrastSampler.js';
 import { adaptiveColorTweener, hexToRgb, resolveCrossFade } from './animation/colors.js';
 import { isActorValid } from './actors/lifecycle.js';
 import type { Logger } from './logger.js';
 
 const COLOR_TWEEN_MS = 380;
+
+export interface AdaptiveTextOptions {
+  // The roots take the colour themselves and their text inherits it, so that text added later shows in it at once.
+  ownColor?: boolean;
+  // Measurements wait while this holds, for a surface whose glass is still changing size.
+  held?: () => boolean;
+}
 
 /**
  * Keeps the labels and icons under `roots` readable on their glass: every
@@ -23,11 +30,13 @@ export class AdaptiveTextColor {
   private _timerId = 0;
   private _inFlight = false;
   private _first = true;
+  // colorFor() calls still measuring; the periodic measurement waits for them.
+  private _pending = 0;
   // Each coloured actor's own inline style, put back by clear().
   private _styled = new Map<St.Widget, { style: string, destroyId: number, color: string }>();
 
   constructor(private _roots: () => Clutter.Actor[], private _glasses: () => BackdropSource[],
-    private _logger: Logger, private _label: string) {}
+    private _logger: Logger, private _label: string, private _options: AdaptiveTextOptions = {}) {}
 
   /**
    * @param preferredMinContrast When above 0, `preference` is kept while it
@@ -60,9 +69,12 @@ export class AdaptiveTextColor {
   }
 
   update(): void {
-    if (this._inFlight) return;
+    if (this._inFlight || this._pending > 0 || this._options.held?.()) return;
     const targets: Clutter.Actor[] = [];
-    for (const root of this._roots()) collectText(root, targets);
+    for (const root of this._roots()) {
+      if (!this._options.ownColor) collectText(root, targets);
+      else if (root.visible) targets.push(root);
+    }
     if (targets.length === 0) return;
 
     this._inFlight = true;
@@ -79,6 +91,23 @@ export class AdaptiveTextColor {
       .finally(() => { this._inFlight = false; });
   }
 
+  /**
+   * Colours the roots at once, without a tween, for what is behind `rect` (stage coordinates): for a surface with
+   * ownColor about to take that size, whose new part has no glass under it yet. Does nothing unless started.
+   */
+  colorFor(rect: SampleRect): void {
+    if (!this._timerId) return;
+    this._pending++;
+    this._sampler.chooseColorFor(rect, this._config, this._glasses())
+      .then(color => {
+        if (!color) return;
+        const batch = GLib.get_monotonic_time();
+        for (const root of this._roots()) this._apply(root, color, true, batch);
+      })
+      .catch(e => this._logger.error(`[Liquid Glass] ${this._label} text colour update failed: ${e}`))
+      .finally(() => { this._pending--; });
+  }
+
   private _apply(actor: Clutter.Actor, color: string, skip: boolean, batch: number): void {
     if (!(actor instanceof St.Widget) || !isActorValid(actor)) return;
     let entry = this._styled.get(actor);
@@ -90,7 +119,7 @@ export class AdaptiveTextColor {
       });
       this._styled.set(actor, entry);
     }
-    if (entry.color === color) return;
+    if (entry.color === color && !skip) return;
     entry.color = color;
 
     const own = entry.style.trim();

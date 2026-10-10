@@ -33,6 +33,7 @@ const OPEN_SCALE = 1.06;
 const SHAPE_MS = 220;
 // Frames asked for past the glass's tween, and after the panel changes size.
 const TICK_MS = 50;
+const HINT_OPACITY = 178;
 
 function isCancelled(e) {
     return e instanceof GLib.Error && e.matches(Gio.IOErrorEnum, Gio.IOErrorEnum.CANCELLED);
@@ -76,12 +77,16 @@ export class Launcher {
     _selected = 0;
     _terms = [];
     _text;
+    // The panel's top and height its text colour was last chosen for.
+    _coloredFor = '';
 
     constructor(_path, _settings, _logger) {
         this._path = _path;
         this._settings = _settings;
         this._logger = _logger;
-        this._text = new AdaptiveTextColor(() => (this._panel ? [this._panel] : []), () => (this._glass ? [this._glass] : []), _logger, 'launcher');
+        // One colour for the field and the results, set on the panel. Rows that come in take it at once, and the
+        // colour for the panel's new size is chosen as they come, while the glass is still growing to it.
+        this._text = new AdaptiveTextColor(() => (this._panel ? [this._panel] : []), () => (this._glass ? [this._glass] : []), _logger, 'launcher', { ownColor: true, held: () => this._shape.remaining(GLib.get_monotonic_time()) > 0 });
     }
 
     setup() {
@@ -150,6 +155,8 @@ export class Launcher {
         });
         const entry = new St.Entry({ style_class: 'lg-launcher-entry', hint_text: 'Search', can_focus: true, x_expand: true,
             primary_icon: new St.Icon({ icon_name: 'edit-find-symbolic', style_class: 'lg-launcher-entry-icon' }) });
+        // The hint takes the panel's colour too, dimmed the way the theme dims it.
+        entry.hint_actor.opacity = HINT_OPACITY;
         // Hidden while empty, so the panel's spacing does not add room below the field.
         const list = new St.BoxLayout({ style_class: 'lg-launcher-list', visible: false, ...verticalBoxParams() });
         panel.add_child(entry);
@@ -180,9 +187,11 @@ export class Launcher {
             step: () => this._sync(),
         });
         root.ease({ opacity: 255, duration: FADE_MS, mode: Clutter.AnimationMode.EASE_OUT_QUAD });
+        this._coloredFor = '';
         if (this._settings.get_boolean('launcher-enable-adaptive-text-color')) {
             this._text.start(this._settings.get_int('launcher-sample-interval-ms'), sanitizeColorPreference(this._settings.get_string('launcher-adaptive-text-preference')));
         }
+        this._colorText();
     }
 
     close() {
@@ -425,6 +434,21 @@ export class Launcher {
         list.visible = this._rows.length > 0;
         this._select(Math.min(this._selected, Math.max(this._rows.length - 1, 0)));
         this._text.invalidate();
+        this._colorText();
+    }
+
+    // Chooses the text colour for where the panel is about to be, from its size with the rows it has now, before
+    // the next layout gives it that size.
+    _colorText() {
+        const root = this._root;
+        const panel = this._panel;
+        const [, height] = panel.get_preferred_height(WIDTH);
+        const rect = { x: root.x + panel.x, y: root.y + panel.y, width: WIDTH, height: Math.ceil(height) };
+        const key = `${rect.y},${rect.height}`;
+        if (key === this._coloredFor)
+            return;
+        this._coloredFor = key;
+        this._text.colorFor(rect);
     }
 
     cleanup() {
