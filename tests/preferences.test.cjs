@@ -37,6 +37,7 @@ function fixture(overrides = {}, dbusResponses = [], blurMyShell = null) {
     get_value(key) { assert.ok(types.has(key), `unknown schema key ${key}`); return new Variant(types.get(key), values.get(key)); }
     get_boolean(key) { return this.get_value(key).deep_unpack(); }
     get_strv(key) { return this.get_value(key).deep_unpack(); }
+    get_string(key) { return this.get_value(key).deep_unpack(); }
     connect(signal, fn) { const id = nextId++; listeners.set(id, {signal, fn}); return id; }
     disconnect(id) { listeners.delete(id); }
     is_writable() { return true; }
@@ -201,6 +202,13 @@ test('icon rules show their controls only while icons are redrawn somewhere, and
   assert.equal(f.row('Color').visible, true);
   assert.equal(f.row('Icons to redraw').visible, true);
   assert.equal(f.row('Icons to leave as they are').visible, false);
+  // Other pages have rows of these titles too.
+  const iconRow = title => f.row('Application icons').children.find(row => row.title === title);
+  assert.equal(iconRow('Tint strength').visible, true);
+  f.controls.write({'icon-style-mode': 'mono'});
+  for (const title of ['Accent color', 'Color', 'Tint strength'])
+    assert.equal(iconRow(title).visible, false, title);
+  assert.equal(iconRow('Size').visible, true);
 });
 
 test('closing disconnects manually owned settings subscriptions', () => {

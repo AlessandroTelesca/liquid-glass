@@ -14,10 +14,11 @@ import { type IconAnalysis, type IconPixels, type Plate, type PlateShape, shapeD
 export const MAP_SIZE = 256;
 export const MAP_RANGE = 16;
 
-// The rounded square put around icons that have none: a squircle a little
-// smaller than the icon, as a theme's own rounded squares are.
-const OUTER_HALF = 0.44;
-const OUTER_EXPONENT = 5;
+// Every outer plate is brought to this half size (a share of the icon's), so
+// that all icons in a row are the same size. The one put around icons that
+// have none is a squircle.
+const OUTER_HALF = 0.46;
+const OUTER_EXPONENT = 4;
 // What goes on that plate is scaled to reach this far from its centre, as a
 // share of the plate's half size.
 const CONTENT_REACH = 0.74;
@@ -96,11 +97,15 @@ export function buildStyleMap(analysis: IconAnalysis, detail: IconPixels, size =
   const tops = plates.map((_, k) => k).filter(k => plates[k].parent < 0);
   const own = tops.length === 1 && isSquare(plates[tops[0]].shape, A) &&
     outsideShare(detail, scale, plates[tops[0]].shape) < OUTSIDE_SHARE;
-  let outer: PlateShape, k = 1, fromX = centre, fromY = centre;
+  const half = OUTER_HALF * A;
+  let outer: PlateShape, k: number, fromX: number, fromY: number;
   if (own) {
-    outer = plates[tops[0]].shape;
+    const shape = plates[tops[0]].shape;
+    k = half / Math.max(shape.rx, shape.ry);
+    outer = { ...shape, cx: centre, cy: centre, rx: shape.rx * k, ry: shape.ry * k, radius: shape.radius * k };
+    fromX = shape.cx;
+    fromY = shape.cy;
   } else {
-    const half = OUTER_HALF * A;
     outer = { kind: 'superellipse', cx: centre, cy: centre, rx: half, ry: half, radius: 0, exponent: OUTER_EXPONENT,
       ripple: null, fit: 1 };
     const e = extent(detail, scale);

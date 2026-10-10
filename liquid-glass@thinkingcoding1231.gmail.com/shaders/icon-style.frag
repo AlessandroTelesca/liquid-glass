@@ -36,6 +36,10 @@ const float MAP_SIZE = 256.0;
 const float MAP_RANGE = 16.0;
 // The lit rim's width, map px.
 const float RIM = 7.0;
+// The outer plate's shadow and outline, which set it off from a backdrop of
+// about its own colour.
+const float SHADOW_A = 0.3;
+const float OUTLINE_A = 0.2;
 
 float field(float v) {
     return (0.5 - v) * 2.0 * MAP_RANGE;
@@ -88,7 +92,15 @@ void main() {
         c = vec4(mix(tint * 0.3, mix(tint, vec3(1.0), 0.7), l) * icon.a, icon.a);
     } else if (uv.x >= 0.0 && uv.y >= 0.0 && uv.x <= 1.0 && uv.y <= 1.0) {
         vec4 m = texture2D(cogl_sampler1, uv);
-        c = plate(field(m.r), normalAt(uv, 0), vec3(plate_r, plate_g, plate_b), plate_a);
+        float d = field(m.r);
+        float cover = clamp(0.5 - d / max(map_px, 0.5), 0.0, 1.0);
+        // Cast down by about a screen px, softened over a few; the map holds distances up to MAP_RANGE.
+        float drop = field(texture2D(cogl_sampler1, uv - vec2(0.0, 1.2 * map_px / MAP_SIZE)).r);
+        float shadow = SHADOW_A * (1.0 - smoothstep(-map_px, min(4.0 * map_px, MAP_RANGE - 2.0), drop));
+        c = vec4(0.0, 0.0, 0.0, shadow * (1.0 - cover));
+        c = over(c, plate(d, normalAt(uv, 0), vec3(plate_r, plate_g, plate_b), plate_a));
+        float outline = OUTLINE_A * cover * (1.0 - clamp(-d / max(map_px, 0.5) - 0.5, 0.0, 1.0));
+        c = over(c, vec4(0.0, 0.0, 0.0, outline));
         vec3 inner = vec3(inner_r, inner_g, inner_b);
         if (m.g > 0.0) c = over(c, plate(field(m.g), normalAt(uv, 1), inner, inner_a));
         if (m.b > 0.0) c = over(c, plate(field(m.b), normalAt(uv, 2), inner, inner_a));

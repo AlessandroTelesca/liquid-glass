@@ -34,8 +34,8 @@ interface Styled {
 }
 
 const KEYS = ['icon-style-dock', 'icon-style-launcher', 'icon-style-mode', 'icon-style-use-accent', 'icon-style-color',
-  'icon-style-symbol-opacity', 'icon-style-light-symbol', 'icon-style-all-apps', 'icon-style-whitelist',
-  'icon-style-blacklist'];
+  'icon-style-tint-strength', 'icon-style-size', 'icon-style-symbol-opacity', 'icon-style-light-symbol',
+  'icon-style-all-apps', 'icon-style-whitelist', 'icon-style-blacklist'];
 
 function appIdOf(icon: St.Icon): string | null {
   // The shell's and Dash to Dock's Show Apps buttons, whatever icon they show.
@@ -167,7 +167,7 @@ export class IconStyler {
     if (!styled) return;
     this._styled.delete(icon);
     styled.ids.forEach(id => icon.disconnect(id));
-    if (styled.effect) icon.remove_effect(styled.effect);
+    this._unstyle(icon, styled);
   }
 
   private _wanted(styled: Styled): boolean {
@@ -195,7 +195,8 @@ export class IconStyler {
       : hexToColorArray(s.get_string('icon-style-color'));
     const mode = s.get_string('icon-style-mode');
     return iconStyleColors((['mono', 'clear'].includes(mode) ? mode : 'tinted') as IconStyleMode, tint,
-      s.get_double('icon-style-symbol-opacity'), s.get_boolean('icon-style-light-symbol'));
+      s.get_double('icon-style-tint-strength'), s.get_double('icon-style-symbol-opacity'),
+      s.get_boolean('icon-style-light-symbol'));
   }
 
   private _apply(icon: St.Icon): void {
@@ -220,6 +221,10 @@ export class IconStyler {
         styled.effect = effect;
         icon.add_effect_with_name(EFFECT_NAME, effect);
       }
+      // Scaled as an actor rather than drawn past its box, so that Clutter keeps what it redraws and culls right.
+      const size = this._settings.get_double('icon-style-size');
+      icon.set_pivot_point(0.5, 0.5);
+      icon.set_scale(size, size);
     }).catch(e => {
       if (!(e instanceof GLib.Error && e.matches(Gio.IOErrorEnum, Gio.IOErrorEnum.CANCELLED)))
         this._logger.log(`[Liquid Glass] Could not style the icon of ${styled.appId}: ${e}`);
@@ -229,6 +234,7 @@ export class IconStyler {
   private _unstyle(icon: St.Icon, styled: Styled): void {
     if (!styled.effect) return;
     icon.remove_effect(styled.effect);
+    icon.set_scale(1, 1);
     styled.effect = null;
   }
 

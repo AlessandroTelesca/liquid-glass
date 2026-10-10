@@ -14,8 +14,8 @@ export const SHOW_APPS_ID = 'show-apps';
 const LOOKUP_SIZE = 128;
 const EFFECT_NAME = 'liquid-glass-icon-style';
 const KEYS = ['icon-style-dock', 'icon-style-launcher', 'icon-style-mode', 'icon-style-use-accent', 'icon-style-color',
-    'icon-style-symbol-opacity', 'icon-style-light-symbol', 'icon-style-all-apps', 'icon-style-whitelist',
-    'icon-style-blacklist'];
+    'icon-style-tint-strength', 'icon-style-size', 'icon-style-symbol-opacity', 'icon-style-light-symbol',
+    'icon-style-all-apps', 'icon-style-whitelist', 'icon-style-blacklist'];
 
 function appIdOf(icon) {
     // The shell's and Dash to Dock's Show Apps buttons, whatever icon they show.
@@ -168,8 +168,7 @@ export class IconStyler {
             return;
         this._styled.delete(icon);
         styled.ids.forEach(id => icon.disconnect(id));
-        if (styled.effect)
-            icon.remove_effect(styled.effect);
+        this._unstyle(icon, styled);
     }
 
     _wanted(styled) {
@@ -199,7 +198,7 @@ export class IconStyler {
         const tint = accent ? [accent[0].red / 255, accent[0].green / 255, accent[0].blue / 255]
             : hexToColorArray(s.get_string('icon-style-color'));
         const mode = s.get_string('icon-style-mode');
-        return iconStyleColors((['mono', 'clear'].includes(mode) ? mode : 'tinted'), tint, s.get_double('icon-style-symbol-opacity'), s.get_boolean('icon-style-light-symbol'));
+        return iconStyleColors((['mono', 'clear'].includes(mode) ? mode : 'tinted'), tint, s.get_double('icon-style-tint-strength'), s.get_double('icon-style-symbol-opacity'), s.get_boolean('icon-style-light-symbol'));
     }
 
     _apply(icon) {
@@ -226,6 +225,10 @@ export class IconStyler {
                 styled.effect = effect;
                 icon.add_effect_with_name(EFFECT_NAME, effect);
             }
+            // Scaled as an actor rather than drawn past its box, so that Clutter keeps what it redraws and culls right.
+            const size = this._settings.get_double('icon-style-size');
+            icon.set_pivot_point(0.5, 0.5);
+            icon.set_scale(size, size);
         }).catch(e => {
             if (!(e instanceof GLib.Error && e.matches(Gio.IOErrorEnum, Gio.IOErrorEnum.CANCELLED)))
                 this._logger.log(`[Liquid Glass] Could not style the icon of ${styled.appId}: ${e}`);
@@ -236,6 +239,7 @@ export class IconStyler {
         if (!styled.effect)
             return;
         icon.remove_effect(styled.effect);
+        icon.set_scale(1, 1);
         styled.effect = null;
     }
 

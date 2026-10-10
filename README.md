@@ -124,10 +124,11 @@ The effect can be enabled or disabled per UI element on the **Effects** page. In
 
 ### Glass Icons
 
-No icon is redrawn by hand: each one is taken apart once, in a process of its own, into the plates it is drawn on (rounded squares, circles, squircles and other smooth shapes, a gear's regular teeth included, outermost first) and the symbol on them. The plates become glass in the icon color, and the symbol is drawn over them in one translucent color, its finer details a little weaker. An icon that is not drawn on a rounded square is set on one, so that every icon has the same outline; one whose plate carries a picture, such as a photo or pixel art, is shown as it is. The results are kept in the user's cache, so an icon is only taken apart again when it changes. While an application starts, the icon that zooms out of the dock keeps its picture, in the icon color.
+No icon is redrawn by hand: each one is taken apart once, in a process of its own, into the plates it is drawn on (rounded squares, circles, squircles and other smooth shapes, a gear's regular teeth included, outermost first) and the symbol on them. The plates become glass in the icon color, and the symbol is drawn over them in one translucent color, its finer details a little weaker. An icon that is not drawn on a rounded square is set on a squircle, and every outer plate is brought to one size, so that all icons share the same outline; one whose plate carries a picture, such as a photo or pixel art, is shown as it is. The results are kept in the user's cache, so an icon is only taken apart again when it changes. While an application starts, the icon that zooms out of the dock keeps its picture, in the icon color.
 
-- **Look** — **Tinted** (plates in the icon color), **Mono** (grey glass) or **Clear** (nearly transparent glass).
-- **Color** — the system accent color (GNOME 47 and later) or a color of your own.
+- **Look** — **Tinted** (plates in the icon color), **Mono** (grey glass) or **Clear** (lightly frosted glass).
+- **Color** and **Tint strength** (Tinted only) — the system accent color (GNOME 47 and later) or a color of your own, and how much of it the plates take, from frosted white to the full color.
+- **Size** — the icons' size as a share of what the dock or the launcher gives them, for icons that look small on the dock without changing Dash to Dock's own icon size.
 - **Symbol opacity**, and a **light symbol** (white) instead of the translucent black one.
 - Every application's icon, minus the ones you leave out, or only the ones you pick, each list filled from a picker of the installed applications.
 

@@ -97,7 +97,8 @@ export const IconStyleEffect = GObject.registerClass(class IconStyleEffect exten
         this._set('box_y0', y0);
         this._set('box_x1', x1);
         this._set('box_y1', y1);
-        this._set('map_px', MAP_SIZE / Math.max((x1 - x0) * texture.get_width(), 1));
+        // The offscreen is in the actor's px, which its scale enlarges on screen.
+        this._set('map_px', MAP_SIZE / Math.max((x1 - x0) * texture.get_width() * actor.scale_x, 1));
         this._set('clone', actor.is_in_clone_paint() ? 1 : 0);
         this._set('opacity', actor.get_paint_opacity() / 255);
         pipeline.set_layer_texture(0, texture);

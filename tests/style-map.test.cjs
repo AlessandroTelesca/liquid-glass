@@ -42,12 +42,13 @@ function field(map, channel, x, y) {
   return (0.5 - v) * 2 * MAP_RANGE;
 }
 
-test('a rounded square stays the outer plate, at its own size', () => {
+test('a rounded square stays the outer plate, brought to the size every outer plate has', () => {
   const plate = shape('roundrect', 56, { radius: 14 });
   const map = mapOf([{ distance: of(plate), color: [30, 120, 220] }, { distance: bar(56, 30, 72, 98), color: [255, 255, 255] }]);
   assert.equal(map.ownPlate, true);
   assert.ok(field(map, 0, 64, 64) < -MAP_RANGE + 1);
-  assert.ok(Math.abs(field(map, 0, 64, 8.5)) < 2, `edge ${field(map, 0, 64, 8.5)}`);
+  // Its edge moved out from 8 px to 0.04 of the icon off the icon's edge.
+  assert.ok(Math.abs(field(map, 0, 64, 5.1)) < 2, `edge ${field(map, 0, 64, 5.1)}`);
   // Nothing else is a plate.
   assert.ok(field(map, 1, 64, 64) > MAP_RANGE - 1);
 });

@@ -36,23 +36,28 @@ export class IconStyleRules {
       'Redraws icons as glass plates under a one-color symbol. An icon that carries a picture is left as it is.');
     this.controls.toggle(group, 'Dock', 'icon-style-dock', 'Dash to Dock');
     this.controls.toggle(group, 'Launcher', 'icon-style-launcher');
-    const rows = [
-      this.controls.choice(group, 'Look', [
-        {title: 'Tinted', patch: {'icon-style-mode': 'tinted'}},
-        {title: 'Mono', patch: {'icon-style-mode': 'mono'}},
-        {title: 'Clear', patch: {'icon-style-mode': 'clear'}},
-      ], '', false),
-      this.controls.toggle(group, 'Accent color', 'icon-style-use-accent', 'The system accent color, from GNOME 47 on'),
-    ];
+    const look = this.controls.choice(group, 'Look', [
+      {title: 'Tinted', patch: {'icon-style-mode': 'tinted'}},
+      {title: 'Mono', patch: {'icon-style-mode': 'mono'}},
+      {title: 'Clear', patch: {'icon-style-mode': 'clear'}},
+    ], '', false);
+    const accentRow = this.controls.toggle(group, 'Accent color', 'icon-style-use-accent',
+      'The system accent color, from GNOME 47 on');
     const colorRow = this.controls.color(group, 'Color', ['icon-style-color']);
-    rows.push(colorRow,
+    const strengthRow = this.controls.number(group, 'Tint strength', ['icon-style-tint-strength'], 0, 1, 0.05,
+      'From frosted white to the full color', {slider: true});
+    const rows = [look,
+      this.controls.number(group, 'Size', ['icon-style-size'], 0.8, 1.3, 0.05,
+        'As a share of what the dock or the launcher gives them', {slider: true}),
       this.controls.number(group, 'Symbol opacity', ['icon-style-symbol-opacity'], 0, 1, 0.05, '', {slider: true}),
       this.controls.toggle(group, 'Light symbol', 'icon-style-light-symbol', 'White instead of a translucent black'),
-      this.controls.toggle(group, 'Include all applications', 'icon-style-all-apps'));
-    this.controls.watch([...ANY_ICON_STYLE, 'icon-style-use-accent'], () => {
+      this.controls.toggle(group, 'Include all applications', 'icon-style-all-apps')];
+    this.controls.watch([...ANY_ICON_STYLE, 'icon-style-mode', 'icon-style-use-accent'], () => {
       const on = ANY_ICON_STYLE.some(key => this.settings.get_boolean(key));
+      const tinted = on && this.settings.get_string('icon-style-mode') === 'tinted';
       for (const row of rows) row.visible = on;
-      colorRow.visible = on && !this.settings.get_boolean('icon-style-use-accent');
+      accentRow.visible = strengthRow.visible = tinted;
+      colorRow.visible = tinted && !this.settings.get_boolean('icon-style-use-accent');
     });
     for (const [all, key, title] of [
       [false, 'icon-style-whitelist', 'Icons to redraw'],

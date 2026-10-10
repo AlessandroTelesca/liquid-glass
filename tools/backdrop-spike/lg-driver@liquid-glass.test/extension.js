@@ -1732,8 +1732,9 @@ export default class LgDriver extends Extension {
     const styled = () => icons().filter(i => i.get_effect(EFFECT));
     const report = what => {
       const all = icons();
+      const scales = [...new Set(all.map(i => `${i.get_effect(EFFECT) ? 's' : 'u'}${i.scale_x.toFixed(2)}`))].join(',');
       log(`icon style ${what}: ${styled().length}/${all.length} styled: ` +
-        all.map(i => `${appOf(i)}${i.get_effect(EFFECT) ? '*' : ''}`).join(' '));
+        all.map(i => `${appOf(i)}${i.get_effect(EFFECT) ? '*' : ''}`).join(' ') + ` scales=${scales}`);
     };
     const [dx, dy] = dock.get_transformed_position();
     const [dw, dh] = dock.get_transformed_size();
@@ -1771,6 +1772,13 @@ export default class LgDriver extends Extension {
       await shot(`icon-style-${mode}`, dockRect);
     }
     settings.reset('icon-style-mode');
+    settings.set_double('icon-style-tint-strength', 0.2);
+    settings.set_double('icon-style-size', 1.25);
+    await sleep(800);
+    report('weak tint, size 1.25');
+    await shot('icon-style-weak-large', dockRect);
+    settings.reset('icon-style-tint-strength');
+    settings.reset('icon-style-size');
     settings.set_boolean('icon-style-light-symbol', true);
     await sleep(800);
     await shot('icon-style-light-symbol', dockRect);
