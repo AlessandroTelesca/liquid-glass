@@ -49,6 +49,7 @@ export class Launcher {
     _path;
     _settings;
     _logger;
+    _icons;
     // The open launcher, for the test driver.
     static instance = null;
     _settingsIds = [];
@@ -80,10 +81,11 @@ export class Launcher {
     // The panel's top and height its text colour was last chosen for.
     _coloredFor = '';
 
-    constructor(_path, _settings, _logger) {
+    constructor(_path, _settings, _logger, _icons) {
         this._path = _path;
         this._settings = _settings;
         this._logger = _logger;
+        this._icons = _icons;
         // One colour for the field and the results, set on the panel. Rows that come in take it at once, and the
         // colour for the panel's new size is chosen as they come, while the glass is still growing to it.
         this._text = new AdaptiveTextColor(() => (this._panel ? [this._panel] : []), () => (this._glass ? [this._glass] : []), _logger, 'launcher', { ownColor: true, held: () => this._shape.remaining(GLib.get_monotonic_time()) > 0 });
@@ -421,6 +423,8 @@ export class Launcher {
                 label.clutter_text.ellipsize = Pango.EllipsizeMode.END;
                 text.add_child(label);
             }
+            if (icon instanceof St.Icon && result.provider.id === 'applications')
+                this._icons.styleLauncherIcon(icon, result.meta.id);
             if (icon)
                 box.add_child(icon);
             box.add_child(text);

@@ -1024,6 +1024,62 @@
       <summary>Saturation</summary>
     </key>
 
+    <key name="icon-style-dock" type="b">
+      <default>false</default>
+      <summary>Glass icons in the dock</summary>
+      <description>Redraws application icons in Dash to Dock as glass plates under a one-color symbol.</description>
+    </key>
+    <key name="icon-style-launcher" type="b">
+      <default>false</default>
+      <summary>Glass icons in the launcher</summary>
+      <description>Redraws application icons in the launcher's results as glass plates under a one-color symbol.</description>
+    </key>
+    <key name="icon-style-mode" type="s">
+      <choices>
+        <choice value="tinted"/>
+        <choice value="mono"/>
+        <choice value="clear"/>
+      </choices>
+      <default>"tinted"</default>
+      <summary>Icon look</summary>
+      <description>tinted: plates in the icon color; mono: grey plates; clear: nearly transparent plates.</description>
+    </key>
+    <key name="icon-style-use-accent" type="b">
+      <default>true</default>
+      <summary>Icon color from the accent color</summary>
+      <description>Tints the icons in the system accent color (GNOME 47 and later) instead of icon-style-color.</description>
+    </key>
+    <key name="icon-style-color" type="s">
+      <default>"#3584e4"</default>
+      <summary>Icon color (Hex)</summary>
+    </key>
+    <key name="icon-style-symbol-opacity" type="d">
+      <range min="0" max="1"/>
+      <default>0.5</default>
+      <summary>Symbol opacity</summary>
+      <description>How strongly the symbol on the plates shows.</description>
+    </key>
+    <key name="icon-style-light-symbol" type="b">
+      <default>false</default>
+      <summary>Light symbol</summary>
+      <description>Draws the symbol in white instead of a translucent black.</description>
+    </key>
+    <key name="icon-style-all-apps" type="b">
+      <default>true</default>
+      <summary>Style all applications' icons</summary>
+      <description>When on, every icon is styled except those in icon-style-blacklist; when off, only those in icon-style-whitelist.</description>
+    </key>
+    <key name="icon-style-whitelist" type="as">
+      <default>[]</default>
+      <summary>Applications whose icons are styled</summary>
+      <description>Desktop file ids (and "show-apps" for the Show Apps button). Only consulted when icon-style-all-apps is off.</description>
+    </key>
+    <key name="icon-style-blacklist" type="as">
+      <default>[]</default>
+      <summary>Applications whose icons are left as they are</summary>
+      <description>Desktop file ids (and "show-apps" for the Show Apps button). Only consulted when icon-style-all-apps is on.</description>
+    </key>
+
     <key name="enable-launcher" type="b">
       <default>false</default>
       <summary>Search launcher</summary>

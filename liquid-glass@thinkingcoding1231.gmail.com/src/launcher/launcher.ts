@@ -18,6 +18,7 @@ import { AdaptiveTextColor } from '../adaptiveText.js';
 import { sanitizeColorPreference } from '../contrastSampler.js';
 import { verticalBoxParams } from '../shellVersion.js';
 import type { Logger } from '../logger.js';
+import type { IconStyler } from '../iconStyle/iconStyler.js';
 
 const WIDTH = 680;
 // The search field's top, as a fraction of the monitor's height.
@@ -87,7 +88,7 @@ export class Launcher {
   // The panel's top and height its text colour was last chosen for.
   private _coloredFor = '';
 
-  constructor(private _path: string, private _settings: Gio.Settings, private _logger: Logger) {
+  constructor(private _path: string, private _settings: Gio.Settings, private _logger: Logger, private _icons: IconStyler) {
     // One colour for the field and the results, set on the panel. Rows that come in take it at once, and the
     // colour for the panel's new size is chosen as they come, while the glass is still growing to it.
     this._text = new AdaptiveTextColor(() => (this._panel ? [this._panel] : []),
@@ -408,6 +409,7 @@ export class Launcher {
         label.clutter_text.ellipsize = Pango.EllipsizeMode.END;
         text.add_child(label);
       }
+      if (icon instanceof St.Icon && result.provider.id === 'applications') this._icons.styleLauncherIcon(icon, result.meta.id);
       if (icon) box.add_child(icon);
       box.add_child(text);
       row.set_child(box);

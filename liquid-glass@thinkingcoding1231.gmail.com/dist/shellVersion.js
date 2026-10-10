@@ -53,6 +53,15 @@ export function accentColors() {
     return accent && accentFg ? [accent, accentFg] : null;
 }
 
+// Calls `callback` whenever the accent colour changes; returns what stops that. GNOME 46 has none.
+export function watchAccentColor(callback) {
+    if (SHELL_MAJOR < 47)
+        return () => { };
+    const context = St.ThemeContext.get_for_stage(global.stage);
+    const id = context.connect('notify::accent-color', callback);
+    return () => context.disconnect(id);
+}
+
 // Until mutter 46.3.1, which Ubuntu 24.04 does not have, a Clutter.Clone
 // scaled its whole transform by its size over its source's, not only what it
 // paints. A paint volume set in the clone's own coordinates is then scaled too.

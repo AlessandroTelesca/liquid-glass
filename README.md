@@ -115,11 +115,21 @@ The effect can be enabled or disabled per UI element on the **Effects** page. In
 | --- | --- |
 | **Top Bar** | The bar itself, as **one pill** across the screen or **three pills** behind its groups of buttons (activities, clock, status icons), chosen on the Effects page (Appearance → Top bar in the Advanced view). The space around the pills (**margin**) and between their edges and the buttons (**padding**) can be set per side in the Advanced view; the bar grows to make room, and maximized windows stay below it. Off by default. Supports **adaptive text coloring**. |
 | **Dash to Dock** | Glass behind the dock. Adds a bottom margin control so the dock can float above the screen edge. Works with the Dash to Dock / Ubuntu Dock extension. |
+| **Application Icons** | The icons in Dash to Dock (the Show Apps button too) and in the launcher's results, redrawn as glass plates under a one-color symbol, as in macOS 26 and iOS 26. See [Glass Icons](#glass-icons). Off by default. |
 | **Calendar & Other Top Bar Menus** | Glass behind the calendar (clock) menu and behind the menus of the other top bar indicators — the keyboard layout and accessibility menus, and the indicators other extensions add, including [ArcMenu](https://gitlab.com/arcmenu/ArcMenu)'s menu and its right-click menu. Each detected menu can be switched off on its own. Menus **grow out of their button**, after [liquid-dom](https://github.com/AndrewPrifer/liquid-dom)'s menu demo: the button's highlight drops out of the button and rounds off into a drop of glass, which is thrown out to where the menu will be — each time with a small push in a random downward direction — and swells into the menu, its items coming up through the glass, seen bent by its rim at first. Closing runs it back: the menu shrinks into a drop that rises into the button, widening into its highlight on the way, and fades once it has become the highlight. Off by default (Appearance → Behavior → "Menus grow from their button"). With that off, a **custom spring animation** (stiffness / damping / mass) scales the menu instead. Also supports **adaptive text coloring**. |
 | **Notifications** | Glass behind notification banners. Supports **adaptive text coloring** and a hide safety margin to avoid flicker while the banner is dismissed. |
 | **Quick Settings** | Two modes: **Whole menu** applies one sheet of glass behind the whole panel, and **Individual buttons** turns every toggle button into its own piece of glass, keeping each toggle's own accent color (see "Button base color"). Also supports spring animation and adaptive text coloring. |
 | **OSD** | Glass behind the on-screen displays (volume, brightness, and so on), with adaptive text coloring. |
 | **Application Windows** | Glass behind application windows, with a **window content opacity** slider so the glass shows through the window itself. Applies either to selected applications, or to all windows minus exclusions. Both lists are filled from a live picker of your currently open windows, so there is no need to look up `WM_CLASS` values by hand. |
+
+### Glass Icons
+
+No icon is redrawn by hand: each one is taken apart once, in a process of its own, into the plates it is drawn on (rounded squares, circles, squircles and other smooth shapes, a gear's regular teeth included, outermost first) and the symbol on them. The plates become glass in the icon color, and the symbol is drawn over them in one translucent color, its finer details a little weaker. An icon that is not drawn on a rounded square is set on one, so that every icon has the same outline; one whose plate carries a picture, such as a photo or pixel art, is shown as it is. The results are kept in the user's cache, so an icon is only taken apart again when it changes. While an application starts, the icon that zooms out of the dock keeps its picture, in the icon color.
+
+- **Look** — **Tinted** (plates in the icon color), **Mono** (grey glass) or **Clear** (nearly transparent glass).
+- **Color** — the system accent color (GNOME 47 and later) or a color of your own.
+- **Symbol opacity**, and a **light symbol** (white) instead of the translucent black one.
+- Every application's icon, minus the ones you leave out, or only the ones you pick, each list filled from a picker of the installed applications.
 
 ### Adaptive Text Coloring
 
@@ -162,7 +172,7 @@ A search field on glass in the middle of the screen, like Spotlight, opened with
 ## Preferences
 
 - **Appearance** — shared blur, corners and tint; animations, automatic text contrast and matching menu heights.
-- **Effects** — choose where glass appears: top bar, dock, menus, popups and application windows.
+- **Effects** — choose where glass appears: top bar, dock, menus, popups, application icons and application windows.
 - **Desktop** — the glass clock, the desktop widgets and the launcher.
 - **Rendering** — rendering quality, refraction, edge lighting, shadows and diagnostics.
 
@@ -280,6 +290,7 @@ A significant part of this codebase was written with the help of AI coding assis
 - [x] Snapping guides for moving the clock and the widgets
 
 ### Next
+- [ ] Glass application icons in the dock and the launcher (tinted, mono, clear)
 - [ ] Publish to extensions.gnome.org (not approved yet)
 - [ ] glass-lib: a glass library for apps
 

@@ -165,5 +165,6 @@ export class PreferenceControls {
         .map(value => Math.round(value * 255).toString(16).padStart(2, '0')).join('');
       this.write(uniformPatch(keys, hex));
     });
+    return row;
   }
 }

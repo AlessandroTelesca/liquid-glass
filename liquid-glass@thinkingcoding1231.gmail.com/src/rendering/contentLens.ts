@@ -50,6 +50,23 @@ const DEPTH = 80;
 const IOR = 1.5;
 const BAND = 70;
 
+/**
+ * Where `rect` [x, y, w, h] (the actor's own px) is in an offscreen effect's
+ * texture, as texture coordinates [x0, y0, x1, y1], and the size of what the
+ * texture covers. The texture covers the actor's paint volume as
+ * _clutter_actor_box_enlarge_for_effects() pads it.
+ */
+export function rectInOffscreen(actor: Clutter.Actor, rect: number[]): { box: number[], width: number, height: number } | null {
+  const volume = actor.get_paint_volume();
+  if (!volume) return null;
+  const origin = volume.get_origin();
+  const w = Math.round(volume.get_width()) + 3, h = Math.round(volume.get_height()) + 3;
+  const x0 = Math.ceil(origin.x + volume.get_width() + 0.75) - w;
+  const y0 = Math.ceil(origin.y + volume.get_height() + 0.75) - h;
+  const [cx, cy, cw, ch] = rect;
+  return { box: [(cx - x0) / w, (cy - y0) / h, (cx + cw - x0) / w, (cy + ch - y0) / h], width: w, height: h };
+}
+
 /** Put on the actor that holds the items, clipped to the glass's box. */
 export const ContentLens = GObject.registerClass(
   class ContentLens extends Clutter.OffscreenEffect {
@@ -107,19 +124,12 @@ export const ContentLens = GObject.registerClass(
       this.queue_repaint();
     }
 
-    // Where the glass is in the offscreen, which covers the actor's paint
-    // volume as _clutter_actor_box_enlarge_for_effects() pads it.
     private _locate(): void {
-      const volume = this.get_actor().get_paint_volume();
-      if (!volume) return;
-      const origin = volume.get_origin();
-      const w = Math.round(volume.get_width()) + 3, h = Math.round(volume.get_height()) + 3;
-      const x0 = Math.ceil(origin.x + volume.get_width() + 0.75) - w;
-      const y0 = Math.ceil(origin.y + volume.get_height() + 0.75) - h;
-      const [cx, cy, cw, ch] = this._clip;
+      const box = rectInOffscreen(this.get_actor(), this._clip);
+      if (!box) return;
       const u = this._uniforms;
-      u.box = [(cx - x0) / w, (cy - y0) / h, (cx + cw - x0) / w, (cy + ch - y0) / h];
-      u.px = [w * this._scale, h * this._scale];
+      u.box = box.box;
+      u.px = [box.width * this._scale, box.height * this._scale];
       this._apply();
     }
 

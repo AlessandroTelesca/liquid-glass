@@ -17,6 +17,7 @@ import {WindowListService} from './dist/windowListService.js';
 import {TopBarManager} from './dist/topBarManager.js';
 import {DesktopLayer} from './dist/desktop/desktopLayer.js';
 import {Launcher} from './dist/launcher/launcher.js';
+import {IconStyler} from './dist/iconStyle/iconStyler.js';
 import {Logger} from './dist/logger.js';
 import {adaptiveColorTweener} from './dist/animation/colors.js';
 import {installGlassDiagnostics, removeGlassDiagnostics, flushGlassRing,
@@ -53,7 +54,10 @@ export default class LiquidGlassExtension extends Extension {
     this._desktopLayer = new DesktopLayer(path, this._settings, this._logger, () => this.openPreferences());
     this._desktopLayer.setup();
 
-    this._launcher = new Launcher(path, this._settings, this._logger);
+    this._iconStyler = new IconStyler(path, this._settings, this._logger);
+    this._iconStyler.setup();
+
+    this._launcher = new Launcher(path, this._settings, this._logger, this._iconStyler);
     this._launcher.setup();
 
     this._blurMyShellWatch = new BlurMyShellWatch(this._settings, this._logger);
@@ -159,6 +163,9 @@ export default class LiquidGlassExtension extends Extension {
       this._releaseDashDock(entry);
     this._dashDocks = [];
 
+    this._iconStyler.cleanup();
+    this._iconStyler = null;
+
     this._notificationManager.cleanup();
     this._notificationManager = null;
 
@@ -202,6 +209,7 @@ export default class LiquidGlassExtension extends Extension {
 
       const manager = new DashManager(this.dir.get_path(), container, this._settings, this._logger);
       manager.setup();
+      this._iconStyler.watchDock(container);
       const entry = {container, manager, destroyId: 0};
       entry.destroyId = container.connect('destroy', () => {
         entry.destroyId = 0;
@@ -229,6 +237,7 @@ export default class LiquidGlassExtension extends Extension {
     }
 
     entry.manager.cleanup();
+    this._iconStyler.unwatchDock(entry.container);
   }
 
   // Keeps looking until DASH_RESCAN_IDLE_TICKS scans in a row find nothing new.

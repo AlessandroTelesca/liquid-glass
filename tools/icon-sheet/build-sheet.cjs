@@ -5,6 +5,15 @@
 //   node build-sheet.cjs <out.html> <theme.json>...
 'use strict';
 const fs = require('node:fs');
+const path = require('node:path');
+
+const ext = path.join(__dirname, '../../liquid-glass@thinkingcoding1231.gmail.com');
+// The extension's own shader and colours, so the sheet shows what the dock draws.
+const shader = fs.readFileSync(path.join(ext, 'shaders/icon-style.frag'), 'utf8')
+  .replace(/cogl_tex_coord_in\[0\]\.st/g, 'v_st')
+  .replace(/cogl_color_out/g, 'gl_FragColor');
+const colours = fs.readFileSync(path.join(ext, 'dist/iconStyle/styleColors.js'), 'utf8')
+  .replace(/^export /gm, '');
 
 const [out, ...inputs] = process.argv.slice(2);
 const themes = inputs.map(path => JSON.parse(fs.readFileSync(path, 'utf8')));
@@ -21,6 +30,7 @@ const data = {
   apps: [...apps.values()].sort((a, b) => a.name.localeCompare(b.name)),
 };
 
+const SHADER_JSON = JSON.stringify(shader);
 const html = `<!doctype html>
 <html lang="en">
 <head>
@@ -60,14 +70,18 @@ td.name small { color: var(--muted); word-break: break-all; }
   <h1>Icon Sheet</h1>
   <label>Mode <select id="mode"><option value="tinted">Tinted</option><option value="mono">Mono</option><option value="clear">Clear</option></select></label>
   <label>Accent <input id="accent" type="color" value="#3584e4"></label>
+  <label>Symbol <input id="opacity" type="range" min="0" max="1" step="0.05" value="0.5"></label>
+  <label><input id="light" type="checkbox"> Light symbol</label>
   <label>Size <select id="size"><option>48</option><option selected>64</option><option>96</option><option>128</option></select></label>
-  <label><input id="jail" type="checkbox" checked> Plate behind icons without one</label>
+  <label><input id="launch" type="checkbox"> Launch animation column</label>
   <label><input id="debug" type="checkbox" checked> Analysis column</label>
   <label><input id="info" type="checkbox" checked> Details</label>
   <label>Filter <input id="filter" type="text" placeholder="name or id, a|b for either"></label>
 </header>
 <div class="summary" id="summary"></div>
-<div class="legend">Analysis: plates outlined outermost first (white, yellow, cyan, magenta, ...); dashed = carries a picture
+<div class="legend">Columns: the icon, the analysis, the icon as the dock draws it (over a blurred wallpaper, as on the dock's glass;
+an icon whose plate carries a picture is shown as it is), and optionally the launch animation's colours.
+Analysis: plates outlined outermost first (white, yellow, cyan, magenta, ...); dashed = carries a picture
 (its content is kept as symbol); red tint = what is taken as the symbol. "theme" = the icon came from the theme itself,
 "hicolor" = from the fallback every theme shares, "other theme" / "file" = from elsewhere.</div>
 <table><thead><tr id="head"></tr></thead><tbody id="rows"></tbody></table>
@@ -104,11 +118,9 @@ wall.width = 1024; wall.height = 512;
 }
 const wallBlur = document.createElement('canvas');
 wallBlur.width = wall.width; wallBlur.height = wall.height;
-{ const g = wallBlur.getContext('2d'); g.filter = 'blur(10px)'; g.drawImage(wall, 0, 0); }
+{ const g = wallBlur.getContext('2d'); g.filter = 'blur(14px)'; g.drawImage(wall, 0, 0); g.fillStyle = 'rgba(255,255,255,0.12)'; g.fillRect(0, 0, wall.width, wall.height); }
 
 function hexRgb(hex) { return [1, 3, 5].map(i => parseInt(hex.slice(i, i + 2), 16)); }
-function mix(a, b, t) { return a.map((v, i) => Math.round(v + (b[i] - v) * t)); }
-function rgba(c, a) { return 'rgba(' + c.join(',') + ',' + a + ')'; }
 
 function path(points) {
   const p = new Path2D();
@@ -117,80 +129,87 @@ function path(points) {
   return p;
 }
 
-function squircle(cx, cy, r, n = 5) {
-  const pts = [];
-  for (let i = 0; i < 96; i++) {
-    const a = i / 96 * 2 * Math.PI, c = Math.cos(a), s = Math.sin(a);
-    pts.push([cx + r * Math.sign(c) * Math.abs(c) ** (2 / n), cy + r * Math.sign(s) * Math.abs(s) ** (2 / n)]);
+${colours}
+
+// One WebGL canvas draws every icon, which is then copied out.
+const gl = (() => {
+  const canvas = document.createElement('canvas');
+  const g = canvas.getContext('webgl', {premultipliedAlpha: true, alpha: true});
+  const compile = (type, src) => {
+    const sh = g.createShader(type);
+    g.shaderSource(sh, src);
+    g.compileShader(sh);
+    if (!g.getShaderParameter(sh, g.COMPILE_STATUS)) throw new Error(g.getShaderInfoLog(sh));
+    return sh;
+  };
+  const program = g.createProgram();
+  g.attachShader(program, compile(g.VERTEX_SHADER,
+    'attribute vec2 pos; varying vec2 v_st; void main() { v_st = vec2(pos.x * 0.5 + 0.5, 0.5 - pos.y * 0.5); gl_Position = vec4(pos, 0.0, 1.0); }'));
+  g.attachShader(program, compile(g.FRAGMENT_SHADER, 'precision highp float;\\nvarying vec2 v_st;\\n' + ${SHADER_JSON}));
+  g.linkProgram(program);
+  if (!g.getProgramParameter(program, g.LINK_STATUS)) throw new Error(g.getProgramInfoLog(program));
+  g.useProgram(program);
+  const buf = g.createBuffer();
+  g.bindBuffer(g.ARRAY_BUFFER, buf);
+  g.bufferData(g.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]), g.STATIC_DRAW);
+  const loc = g.getAttribLocation(program, 'pos');
+  g.enableVertexAttribArray(loc);
+  g.vertexAttribPointer(loc, 2, g.FLOAT, false, 0, 0);
+  g.uniform1i(g.getUniformLocation(program, 'cogl_sampler0'), 0);
+  g.uniform1i(g.getUniformLocation(program, 'cogl_sampler1'), 1);
+  return {g, canvas, program, set: (name, v) => g.uniform1f(g.getUniformLocation(program, name), v)};
+})();
+
+const textures = new Map();
+function texture(img, mipmap) {
+  if (textures.has(img)) return textures.get(img);
+  const g = gl.g;
+  const t = g.createTexture();
+  g.bindTexture(g.TEXTURE_2D, t);
+  g.pixelStorei(g.UNPACK_PREMULTIPLY_ALPHA_WEBGL, !mipmap);
+  g.pixelStorei(g.UNPACK_COLORSPACE_CONVERSION_WEBGL, g.NONE);
+  g.texImage2D(g.TEXTURE_2D, 0, g.RGBA, g.RGBA, g.UNSIGNED_BYTE, img);
+  g.texParameteri(g.TEXTURE_2D, g.TEXTURE_WRAP_S, g.CLAMP_TO_EDGE);
+  g.texParameteri(g.TEXTURE_2D, g.TEXTURE_WRAP_T, g.CLAMP_TO_EDGE);
+  g.texParameteri(g.TEXTURE_2D, g.TEXTURE_MAG_FILTER, g.LINEAR);
+  if (mipmap) g.generateMipmap(g.TEXTURE_2D);
+  g.texParameteri(g.TEXTURE_2D, g.TEXTURE_MIN_FILTER, mipmap ? g.LINEAR_MIPMAP_LINEAR : g.LINEAR);
+  textures.set(img, t);
+  return t;
+}
+
+// Draws the icon as the dock does, or as the launch animation's clone does.
+async function drawStyled(canvas, rec, opts, wallX, wallY, launch) {
+  const g2 = canvas.getContext('2d');
+  const px = canvas.width;
+  g2.clearRect(0, 0, px, px);
+  g2.drawImage(wallBlur, wallX, wallY, SIZE, SIZE, 0, 0, px, px);
+  if (!rec.original) return;
+  const original = await image(rec.original);
+  if (!rec.map && !launch) {
+    g2.drawImage(original, 0, 0, px, px);
+    return;
   }
-  return pts;
-}
-
-function glass(g, outline, style, depth, wallX, wallY) {
-  const p = path(outline);
-  g.save();
-  g.clip(p);
-  if (depth === 0) g.drawImage(wallBlur, wallX, wallY, SIZE, SIZE, 0, 0, SIZE, SIZE);
-  g.fillStyle = style.fill(depth);
-  g.fill(p);
-  g.restore();
-  // A rim lit from the top left.
-  const xs = outline.map(p => p[0]), ys = outline.map(p => p[1]);
-  const rim = g.createLinearGradient(Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys));
-  rim.addColorStop(0, style.rim(0.75));
-  rim.addColorStop(0.5, style.rim(0.12));
-  rim.addColorStop(1, style.rim(0.4));
-  g.save();
-  g.clip(p);
-  g.lineWidth = 3;
-  g.strokeStyle = rim;
-  g.stroke(p);
-  g.restore();
-}
-
-function styles(mode, accent) {
-  const white = [255, 255, 255], black = [0, 0, 0];
-  if (mode === 'mono') return {
-    fill: d => rgba([24, 24, 28], d === 0 ? 0.5 : 0.3), rim: a => rgba(white, a), symbol: white, symbolAlpha: 1 };
-  if (mode === 'clear') return {
-    fill: d => rgba(white, d === 0 ? 0.14 : 0.1), rim: a => rgba(white, a), symbol: white, symbolAlpha: 0.92 };
-  return {
-    fill: d => (d === 0 ? rgba(mix(accent, black, 0.72), 0.62) : rgba(mix(accent, black, 0.45), 0.38)),
-    rim: a => rgba(mix(accent, white, 0.6), a),
-    symbol: mix(accent, white, 0.45), symbolAlpha: 1 };
-}
-
-async function drawResult(canvas, rec, opts, wallX, wallY) {
-  const g = canvas.getContext('2d');
-  g.clearRect(0, 0, SIZE, SIZE);
-  g.drawImage(wall, wallX, wallY, SIZE, SIZE, 0, 0, SIZE, SIZE);
-  if (!rec.symbol) return;
-  const style = styles(opts.mode, opts.accent);
-  const plates = rec.plates;
-  const jail = opts.jail && plates.length === 0;
-  const depthOf = i => (plates[i].parent < 0 ? 0 : depthOf(plates[i].parent) + 1);
-  if (jail) glass(g, squircle(SIZE / 2, SIZE / 2, SIZE * 0.44), style, 0, wallX, wallY);
-  plates.forEach((plate, i) => glass(g, plate.outline, style, depthOf(i), wallX, wallY));
-  const sym = await image(rec.symbol);
-  const off = new OffscreenCanvas(SIZE, SIZE);
-  const o = off.getContext('2d');
-  o.drawImage(sym, 0, 0);
-  o.globalCompositeOperation = 'multiply';
-  o.fillStyle = rgba(style.symbol, 1);
-  o.fillRect(0, 0, SIZE, SIZE);
-  o.globalCompositeOperation = 'destination-in';
-  o.drawImage(sym, 0, 0);
-  g.save();
-  g.globalAlpha = style.symbolAlpha;
-  g.shadowColor = 'rgba(0,0,0,0.3)';
-  g.shadowBlur = 3;
-  if (jail) {
-    const s = 0.7;
-    g.translate(SIZE * (1 - s) / 2, SIZE * (1 - s) / 2);
-    g.scale(s, s);
-  }
-  g.drawImage(off, 0, 0);
-  g.restore();
+  const {g, canvas: glc, set} = gl;
+  glc.width = glc.height = px;
+  g.viewport(0, 0, px, px);
+  g.clearColor(0, 0, 0, 0);
+  g.clear(g.COLOR_BUFFER_BIT);
+  g.activeTexture(g.TEXTURE0);
+  g.bindTexture(g.TEXTURE_2D, texture(original, false));
+  g.activeTexture(g.TEXTURE1);
+  g.bindTexture(g.TEXTURE_2D, rec.map ? texture(await image(rec.map), true) : texture(original, false));
+  const c = iconStyleColors(opts.mode, opts.accent.map(v => v / 255), opts.opacity, opts.light);
+  for (const [name, v] of [['box_x0', 0], ['box_y0', 0], ['box_x1', 1], ['box_y1', 1], ['map_px', 256 / px],
+    ['clone', launch ? 1 : 0], ['rim_a', c.rim], ['opacity', 1]]) set(name, v);
+  ['r', 'g', 'b', 'a'].forEach((k, i) => {
+    set('plate_' + k, c.plate[i]);
+    set('inner_' + k, c.inner[i]);
+    set('symbol_' + k, c.symbol[i]);
+    if (i < 3) set('tint_' + k, c.tint[i]);
+  });
+  g.drawArrays(g.TRIANGLE_STRIP, 0, 4);
+  g2.drawImage(glc, 0, 0);
 }
 
 async function drawDebug(canvas, rec) {
@@ -239,14 +258,16 @@ function describe(rec) {
       ', ' + colour + ')';
   });
   const missing = rec.missing ? '<span class="error">missing, the generic icon</span> · ' : '';
-  return missing + source + ' · ' + rec.ms + ' ms · ' + (plates.length ? plates.join('; ') : 'no plate');
+  return missing + source + ' · ' + rec.ms + ' ms · ' + look + ' · ' + (plates.length ? plates.join('; ') : 'no plate');
 }
 
 function options() {
   return {
     mode: document.getElementById('mode').value,
     accent: hexRgb(document.getElementById('accent').value),
-    jail: document.getElementById('jail').checked,
+    opacity: +document.getElementById('opacity').value,
+    light: document.getElementById('light').checked,
+    launch: document.getElementById('launch').checked,
     debug: document.getElementById('debug').checked,
     info: document.getElementById('info').checked,
     size: +document.getElementById('size').value,
@@ -290,9 +311,9 @@ async function render() {
       if (rec) {
         const cell = document.createElement('div');
         cell.className = 'cell';
-        const make = () => {
+        const make = (px = SIZE) => {
           const c = document.createElement('canvas');
-          c.width = c.height = SIZE;
+          c.width = c.height = px;
           c.style.width = c.style.height = opts.size + 'px';
           cell.appendChild(c);
           return c;
@@ -300,7 +321,9 @@ async function render() {
         jobs.push(drawOriginal(make(), rec));
         if (opts.debug) jobs.push(drawDebug(make(), rec));
         const wx = (row * 137 + t * 251) % (wall.width - SIZE), wy = (row * 59 + t * 97) % (wall.height - SIZE);
-        jobs.push(drawResult(make(), rec, opts, wx, wy));
+        const px = Math.round(opts.size * devicePixelRatio);
+        jobs.push(drawStyled(make(px), rec, opts, wx, wy, false));
+        if (opts.launch) jobs.push(drawStyled(make(px), rec, opts, wx, wy, true));
         td.appendChild(cell);
         if (opts.info) {
           const info = document.createElement('div');
@@ -329,7 +352,7 @@ for (const [key, value] of hash) {
   if (control.type === 'checkbox') control.checked = value !== '0';
   else control.value = value;
 }
-for (const id of ['mode', 'accent', 'size', 'jail', 'debug', 'info', 'filter'])
+for (const id of ['mode', 'accent', 'opacity', 'light', 'launch', 'size', 'debug', 'info', 'filter'])
   document.getElementById(id).addEventListener('input', render);
 summary();
 render();

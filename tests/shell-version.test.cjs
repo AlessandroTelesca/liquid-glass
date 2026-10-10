@@ -94,6 +94,19 @@ test('GNOME 46 has no St accent colour and falls back', () => {
   assert.equal(shellVersion('46.0').accentColors(), null);
 });
 
+test('the accent colour is watched from GNOME 47 on, and the watch can be undone', () => {
+  const connected = [];
+  const context = {
+    connect: (signal, callback) => { connected.push(signal); return 7; },
+    disconnect: id => connected.push(`off:${id}`),
+  };
+  const St = { ThemeContext: { get_for_stage: () => context } };
+  shellVersion('46.0', { St }).watchAccentColor(() => {})();
+  assert.deepEqual(connected, []);
+  shellVersion('47.0', { St, global: { stage: {} } }).watchAccentColor(() => {})();
+  assert.deepEqual(connected, ['notify::accent-color', 'off:7']);
+});
+
 test('from GNOME 50 the stage is painted to content with a colour state argument', () => {
   for (const [version, expected] of [['49.4', 3], ['50.1', 4], ['51.0', 4]]) {
     let args = null;

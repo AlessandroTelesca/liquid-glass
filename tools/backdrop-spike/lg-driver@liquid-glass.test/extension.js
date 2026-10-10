@@ -22,7 +22,7 @@
 //              ($LG_DRV_WALLPAPER); LG_DRV_FEATURES picks parts (comma
 //              separated: morph, topbar, widgets, clock, launcher; default all;
 //              also morphtrace, qssub, clockshot, media, guides, launcherpointer,
-//              launchercolor)
+//              launchercolor, iconstyle; iconstyle needs LG_DTD_DIR)
 //   bench      global._lgBench.run() (run-glass.sh with LG_BENCH=1); LG_DRV_BENCH
 //              picks scenarios (comma separated, default all), LG_DRV_BENCH_SECONDS
 //              the seconds per scenario (default 3), LG_DRV_BENCH_AB=1 adds a run without UI glass
@@ -1077,6 +1077,8 @@ export default class LgDriver extends Extension {
       const name = a.get_name() ?? '';
       if (/^liquid-(glass|box)|^clone-container|^optimization-breaker/.test(name))
         names.push(name);
+      if (a.get_effect('liquid-glass-icon-style'))
+        names.push(`icon-style:${a.icon_name ?? a.gicon?.to_string() ?? '?'}`);
       for (const c of a.get_children())
         walk(c);
     };
@@ -1708,6 +1710,133 @@ export default class LgDriver extends Extension {
     await sleep(500);
   }
 
+  // Application icons redrawn as glass plates under a symbol: in the dock
+  // (and its Show Apps button), in each look, with an application left out
+  // and with only one let in, while the launch animation's clone draws an
+  // icon, and in the launcher's results; then nothing is left once switched off.
+  async _iconStyle(settings, m) {
+    const EFFECT = 'liquid-glass-icon-style';
+    const dock = findActor(Main.layoutManager.uiGroup, 'dashtodockDashContainer');
+    if (!dock) {
+      log('icon style: no dock (LG_DTD_DIR?)');
+      return;
+    }
+    const appOf = icon => {
+      if (icon.has_style_class_name('show-apps-icon')) return 'show-apps';
+      for (let a = icon.get_parent(); a; a = a.get_parent()) {
+        if (a.app instanceof Shell.App) return a.app.get_id();
+      }
+      return null;
+    };
+    const icons = () => findActors(dock, a => a instanceof St.Icon && a.mapped && appOf(a));
+    const styled = () => icons().filter(i => i.get_effect(EFFECT));
+    const report = what => {
+      const all = icons();
+      log(`icon style ${what}: ${styled().length}/${all.length} styled: ` +
+        all.map(i => `${appOf(i)}${i.get_effect(EFFECT) ? '*' : ''}`).join(' '));
+    };
+    const [dx, dy] = dock.get_transformed_position();
+    const [dw, dh] = dock.get_transformed_size();
+    const dockRect = [Math.max(m.x, Math.floor(dx) - 20), Math.max(m.y, Math.floor(dy) - 20), Math.ceil(dw) + 40, Math.ceil(dh) + 40];
+    // Why an icon is left as it is goes to the log.
+    settings.set_boolean('output-logs', true);
+    report('off');
+    const started = GLib.get_monotonic_time();
+    settings.set_boolean('icon-style-dock', true);
+    // The first time, the worker takes every icon apart.
+    for (let i = 0; i < 60 && styled().length < icons().length; i++) await sleep(500);
+    log(`icon style: styled after ${Math.round((GLib.get_monotonic_time() - started) / 1000)} ms`);
+    report('tinted');
+    const theme = new St.IconTheme();
+    for (const icon of icons().filter(i => !i.get_effect(EFFECT))) {
+      const gicons = [icon.gicon, icon.fallback_gicon].filter(Boolean);
+      log(`icon style unstyled ${appOf(icon)}: ${gicons.map(g => `${g.to_string()} -> ${theme.lookup_by_gicon(g, 128, 0)?.get_filename() ?? 'none'}`).join(', ')}`);
+    }
+    const probe = styled()[0];
+    if (probe) {
+      const {rectInOffscreen} = await this._lgModule('rendering/contentLens.js');
+      const image = probe.get_first_child();
+      const box = image?.get_allocation_box();
+      const effect = probe.get_effect(EFFECT);
+      const texture = effect.get_texture();
+      log(`icon style probe: image=${image?.constructor.name} box=${box ? [box.x1, box.y1, box.get_width(), box.get_height()] : '-'} ` +
+        `icon=${probe.width}x${probe.height} offscreen=${JSON.stringify(rectInOffscreen(probe, box ? [box.x1, box.y1, box.get_width(), box.get_height()] : [0, 0, probe.width, probe.height]))} ` +
+        `texture=${texture ? `${texture.get_width()}x${texture.get_height()}` : 'none'} pipeline=${!!effect._pipeline}`);
+    }
+    await shot('icon-style-tinted', dockRect);
+    for (const mode of ['mono', 'clear']) {
+      settings.set_string('icon-style-mode', mode);
+      await sleep(800);
+      report(mode);
+      await shot(`icon-style-${mode}`, dockRect);
+    }
+    settings.reset('icon-style-mode');
+    settings.set_boolean('icon-style-light-symbol', true);
+    await sleep(800);
+    await shot('icon-style-light-symbol', dockRect);
+    settings.reset('icon-style-light-symbol');
+
+    const first = icons().map(appOf).find(id => id !== 'show-apps');
+    settings.set_strv('icon-style-blacklist', [first, 'show-apps']);
+    await sleep(800);
+    report(`without ${first} and show-apps`);
+    settings.set_boolean('icon-style-all-apps', false);
+    settings.set_strv('icon-style-whitelist', [first]);
+    await sleep(800);
+    report(`only ${first}`);
+    for (const key of ['icon-style-all-apps', 'icon-style-whitelist', 'icon-style-blacklist']) settings.reset(key);
+    await sleep(800);
+
+    // The launch animation clones the icon and zooms it out; slowed down, so
+    // that it is still there to be seen.
+    const appIcon = findActors(dock, a => a.app instanceof Shell.App && typeof a.animateLaunch === 'function')[0];
+    if (appIcon) {
+      let clone = null, seen = false, styledSource = false;
+      const addedId = Main.uiGroup.connect('child-added', (_g, child) => {
+        if (!(child instanceof Clutter.Clone) || seen) return;
+        seen = true;
+        clone = child;
+        styledSource = findActors(child.source, a => a.get_effect?.(EFFECT)).length > 0;
+        child.connect('destroy', () => { clone = null; });
+      });
+      St.Settings.get().slow_down_factor = 10;
+      appIcon.animateLaunch();
+      Main.uiGroup.disconnect(addedId);
+      await sleep(300);
+      log(`icon style launch: clone=${seen} still there=${!!clone} source styled=${styledSource}`);
+      if (clone) {
+        const [cx, cy] = clone.get_transformed_position();
+        const [cw, ch] = clone.get_transformed_size();
+        await shot('icon-style-launch', [Math.max(m.x, Math.floor(cx) - 40), Math.max(m.y, Math.floor(cy) - 40), Math.ceil(cw) + 80, Math.ceil(ch) + 80]);
+      }
+      St.Settings.get().slow_down_factor = 1;
+      await sleep(3000);
+    }
+
+    settings.set_boolean('enable-launcher', true);
+    settings.set_boolean('icon-style-launcher', true);
+    await sleep(500);
+    const {Launcher} = await this._lgModule('launcher/launcher.js');
+    const launcher = Launcher.instance;
+    launcher.open();
+    launcher.setText(GLib.getenv('LG_DRV_LAUNCHER_QUERY') ?? 'set');
+    await sleep(2500);
+    const rowIcons = launcher._rows.map(r => findActors(r, a => a instanceof St.Icon)[0]).filter(Boolean);
+    log(`icon style launcher: ${rowIcons.filter(i => i.get_effect(EFFECT)).length}/${rowIcons.length} styled: ` +
+      launcher._results.map((r, i) => `${r.meta.id}${rowIcons[i]?.get_effect(EFFECT) ? '*' : ''}`).join(' '));
+    await shot('icon-style-launcher', [m.x, m.y, m.width, m.height]);
+    launcher.close();
+    settings.set_boolean('icon-style-dock', false);
+    settings.set_boolean('icon-style-launcher', false);
+    await sleep(800);
+    report('switched off');
+    settings.set_boolean('icon-style-dock', true);
+    settings.set_boolean('icon-style-launcher', true);
+    await sleep(1500);
+    report('on again (from the cache)');
+    settings.reset('output-logs');
+  }
+
   async _featuresScenario() {
     const parts = (GLib.getenv('LG_DRV_FEATURES') ?? 'morph,topbar,widgets,clock,launcher').split(',');
     const settings = this._lgSettings();
@@ -2066,6 +2195,8 @@ export default class LgDriver extends Extension {
       await this._launcherPointer(settings, m);
     if (parts.includes('launchercolor'))
       await this._launcherColor(settings, m);
+    if (parts.includes('iconstyle'))
+      await this._iconStyle(settings, m);
     // Everything switched on, the launcher open: disabling has to leave nothing.
     (await this._lgModule('launcher/launcher.js')).Launcher.instance?.open();
     await sleep(500);

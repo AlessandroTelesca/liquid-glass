@@ -3,15 +3,15 @@
 // Run through run.sh, which sets up St outside the shell and picks the theme
 // without touching the user's settings (GSETTINGS_BACKEND=memory).
 //
-//   gjs -m collect.js <theme> <out.json>
-import Cairo from 'cairo';
+//   gjs -m collect.js <theme> <out.json> [id substring...]
 import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
-import Rsvg from 'gi://Rsvg?version=2.0';
 import St from 'gi://St';
 
 import {analyzeIcon, oklabToSrgb, plateColor, shapeDistance} from '../../liquid-glass@thinkingcoding1231.gmail.com/dist/iconStyle/iconAnalysis.js';
-import {decodePngRgba, encodePngRgba} from '../../liquid-glass@thinkingcoding1231.gmail.com/dist/imaging/png.js';
+import {drawIcon} from '../../liquid-glass@thinkingcoding1231.gmail.com/dist/iconStyle/iconRaster.js';
+import {buildStyleMap} from '../../liquid-glass@thinkingcoding1231.gmail.com/dist/iconStyle/styleMap.js';
+import {encodePngRgba} from '../../liquid-glass@thinkingcoding1231.gmail.com/dist/imaging/png.js';
 
 const SIZE = 128;
 const [theme, outPath] = ARGV;
@@ -24,34 +24,6 @@ function iconFile(gicon) {
         return gicon.get_file().get_path();
     const info = iconTheme.lookup_by_gicon(gicon, SIZE, 0);
     return info?.get_filename() ?? null;
-}
-
-// The icon drawn at SIZE px into a PNG (Cairo writes 8-bit, unpremultiplied RGBA).
-function draw(path) {
-    const surface = new Cairo.ImageSurface(Cairo.Format.ARGB32, SIZE, SIZE);
-    const cr = new Cairo.Context(surface);
-    if (/\.svgz?$/i.test(path)) {
-        const handle = Rsvg.Handle.new_from_file(path);
-        handle.render_document(cr, new Rsvg.Rectangle({x: 0, y: 0, width: SIZE, height: SIZE}));
-    } else if (/\.png$/i.test(path)) {
-        const image = Cairo.ImageSurface.createFromPNG(path);
-        const scale = SIZE / Math.max(image.getWidth(), image.getHeight());
-        cr.translate((SIZE - image.getWidth() * scale) / 2, (SIZE - image.getHeight() * scale) / 2);
-        cr.scale(scale, scale);
-        cr.setSourceSurface(image, 0, 0);
-        cr.getSource().setFilter(Cairo.Filter.GOOD);
-        cr.paint();
-    } else {
-        throw new Error('not an SVG or a PNG');
-    }
-    cr.$dispose();
-    const [fd, tmp] = GLib.file_open_tmp('lg-icon-XXXXXX.png');
-    GLib.close(fd);
-    surface.writeToPNG(tmp);
-    surface.finish();
-    const [, bytes] = GLib.file_get_contents(tmp);
-    GLib.unlink(tmp);
-    return bytes;
 }
 
 // The plate's outline as points, for the sheet to draw.
@@ -85,6 +57,7 @@ const seen = new Set();
 const entries = [{id: 'show-apps', name: 'Show Apps', gicon: new Gio.ThemedIcon({name: 'view-app-grid-symbolic'})}]
     .concat(apps)
     .filter(e => !seen.has(e.id) && seen.add(e.id))
+    .filter(e => ARGV.length <= 2 || ARGV.slice(2).some(part => `${e.id} ${e.name}`.toLowerCase().includes(part.toLowerCase())))
     .sort((a, b) => a.name.localeCompare(b.name));
 
 const results = [];
@@ -100,18 +73,20 @@ for (const entry of entries) {
         if (!record.file)
             throw new Error('not found in the theme');
         record.fromTheme = record.file.includes(`/${theme}/`);
-        const png = draw(record.file);
-        const pixels = decodePngRgba(png);
+        const pixels = await drawIcon(record.file, SIZE);
         const started = GLib.get_monotonic_time();
         const analysis = analyzeIcon(pixels);
+        const map = buildStyleMap(analysis, await drawIcon(record.file, SIZE * 2));
         record.ms = Math.round((GLib.get_monotonic_time() - started) / 1000);
-        record.original = GLib.base64_encode(png);
+        record.original = GLib.base64_encode(encodePngRgba(SIZE, SIZE, pixels.data));
         const symbol = new Uint8Array(SIZE * SIZE * 4);
         for (let i = 0; i < SIZE * SIZE; i++) {
             const v = Math.round(analysis.intensity[i] * 255);
             symbol.set([v, v, v, Math.round(analysis.symbol[i] * 255)], i * 4);
         }
         record.symbol = GLib.base64_encode(encodePngRgba(SIZE, SIZE, symbol));
+        record.map = map ? GLib.base64_encode(encodePngRgba(map.size, map.size, map.data)) : null;
+        record.ownPlate = map?.ownPlate ?? false;
         record.plates = analysis.plates.map(plate => ({
             shape: plate.shape,
             outline: outline(plate.shape),

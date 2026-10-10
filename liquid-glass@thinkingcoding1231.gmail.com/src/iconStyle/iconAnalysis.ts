@@ -537,14 +537,11 @@ export function analyzeIcon(icon: IconPixels): IconAnalysis {
 
   // Per pixel, the innermost plate it is in.
   const owner = new Int32Array(n).fill(-1);
-  const depth = new Float32Array(n).fill(-Infinity);
   for (let i = 0; i < n; i++) {
     const x = i % w + 0.5, y = Math.floor(i / w) + 0.5;
     for (let k = kept.length - 1; k >= 0; k--) {
-      const d = shapeDistance(kept[k].shape, x, y);
-      if (d < 0) {
+      if (shapeDistance(kept[k].shape, x, y) < 0) {
         owner[i] = k;
-        depth[i] = d;
         break;
       }
     }
@@ -586,79 +583,167 @@ export function analyzeIcon(icon: IconPixels): IconAnalysis {
     return plate;
   });
 
-  // The symbol: whatever is not the colour of the plate it is on. Near an
-  // inner plate's edge, the pixel mixes it with the one under it.
-  const symbol = new Float32Array(n);
-  const at = [0, 0, 0];
-  const distanceTo = (plate: Plate, i: number) => {
-    plateColor(plate, i % w + 0.5, Math.floor(i / w) + 0.5, at);
-    return Math.hypot(at[0] - lab[i * 3], at[1] - lab[i * 3 + 1], at[2] - lab[i * 3 + 2]);
-  };
+  const { symbol, intensity } = symbolLayer(plates, w, icon);
+  return { width: w, height: h, plates, symbol, intensity };
+}
+
+// Oklab distance from `c` to the segment from `p` to `q`: a pixel on the
+// line between two plates mixes their colours.
+function segmentDistance(c: ArrayLike<number>, p: number[], q: number[]): number {
+  const v = [q[0] - p[0], q[1] - p[1], q[2] - p[2]];
+  const len2 = v[0] * v[0] + v[1] * v[1] + v[2] * v[2];
+  const t = len2 > 0 ? Math.min(Math.max(((c[0] - p[0]) * v[0] + (c[1] - p[1]) * v[1] + (c[2] - p[2]) * v[2]) / len2, 0), 1) : 0;
+  return Math.hypot(c[0] - p[0] - v[0] * t, c[1] - p[1] - v[1] * t, c[2] - p[2] - v[2] * t);
+}
+
+/**
+ * The symbol over `plates` (from analyzeIcon() at `analysisWidth` px) in
+ * `pixels`, which may be the icon drawn at another size: per pixel how much of
+ * it is symbol, and the symbol's own lightness against its main tone.
+ *
+ * A pixel's distance from its plate's colour grows with how much of it the
+ * symbol covers, up to the symbol's full colour; that is taken from the
+ * strongest pixel next to it that differs from the plate the same way, so
+ * that anti-aliased edges keep their partial coverage instead of turning
+ * solid.
+ */
+export function symbolLayer(plates: Plate[], analysisWidth: number, pixels: IconPixels):
+  { symbol: Float32Array, intensity: Float32Array } {
+  const { width: w, height: h, data } = pixels;
+  const n = w * h;
+  // Analysis px per pixel.
+  const s = analysisWidth / w;
+  const lab = new Float32Array(n * 3);
+  const alpha = new Float32Array(n);
   for (let i = 0; i < n; i++) {
+    oklab(data[i * 4], data[i * 4 + 1], data[i * 4 + 2], lab, i * 3);
+    alpha[i] = data[i * 4 + 3] / 255;
+  }
+  const owner = new Int32Array(n).fill(-1);
+  // How far inside its plate a pixel is, in pixels.
+  const depth = new Float32Array(n);
+  // Per pixel, the colour of its plate and how far it is from it (Oklab).
+  const base = new Float32Array(n * 3);
+  const raw = new Float32Array(n);
+  const low = new Float32Array(n);
+  const at = [0, 0, 0], other = [0, 0, 0];
+  const c = [0, 0, 0];
+  for (let i = 0; i < n; i++) {
+    const x = (i % w + 0.5) * s, y = (Math.floor(i / w) + 0.5) * s;
+    const near: number[] = [];
+    for (let k = plates.length - 1; k >= 0; k--) {
+      const d = shapeDistance(plates[k].shape, x, y) / s;
+      if (d < 0 && owner[i] < 0) {
+        owner[i] = k;
+        depth[i] = d;
+      } else if (Math.abs(d) < 1.5) {
+        near.push(k);
+      }
+    }
     const k = owner[i];
-    if (k < 0) {
-      symbol[i] = alpha[i];
+    if (k < 0 || !plates[k].plain) {
+      raw[i] = Infinity;
       continue;
     }
     const plate = plates[k];
-    if (!plate.plain) {
-      symbol[i] = alpha[i];
+    plateColor(plate, x, y, at);
+    base.set(at, i * 3);
+    low[i] = Math.max(SYMBOL_LOW, plate.noise * 3);
+    // The plate's own anti-aliased outline is not symbol.
+    if (depth[i] > -1.2 && plate.parent < 0) continue;
+    c[0] = lab[i * 3];
+    c[1] = lab[i * 3 + 1];
+    c[2] = lab[i * 3 + 2];
+    let d = Math.hypot(c[0] - at[0], c[1] - at[1], c[2] - at[2]);
+    // Along the outline between two plates, the pixel mixes them.
+    for (const j of near) {
+      if (j === k || !plates[j].plain) continue;
+      d = Math.min(d, segmentDistance(c, at, plateColor(plates[j], x, y, other)));
+    }
+    raw[i] = d;
+  }
+
+  // Coverage: the distance over that of the strongest pixel within reach that
+  // differs from the plate in the same direction.
+  const reach = Math.max(1, Math.ceil(1 / s));
+  const cover = new Float32Array(n);
+  for (let i = 0; i < n; i++) {
+    const d = raw[i];
+    if (d === Infinity) {
+      cover[i] = 1;
       continue;
     }
-    // The plate's own anti-aliased edge is not symbol.
-    if (depth[i] > -1.2 && plate.parent < 0) continue;
-    let d = distanceTo(plate, i);
-    if (depth[i] > -1.5 && plate.parent >= 0 && plates[plate.parent].plain)
-      d = Math.min(d, distanceTo(plates[plate.parent], i));
-    // Grain on the plate is not symbol.
-    const low = Math.max(SYMBOL_LOW, plate.noise * 3);
-    symbol[i] = alpha[i] * smoothstep(low, low + SYMBOL_HIGH - SYMBOL_LOW, d);
+    if (!(d > low[i])) continue;
+    const x = i % w, y = Math.floor(i / w);
+    const dx = lab[i * 3] - base[i * 3], dy = lab[i * 3 + 1] - base[i * 3 + 1], dz = lab[i * 3 + 2] - base[i * 3 + 2];
+    let full = d;
+    for (let v = Math.max(0, y - reach); v <= Math.min(h - 1, y + reach); v++) {
+      for (let u = Math.max(0, x - reach); u <= Math.min(w - 1, x + reach); u++) {
+        const j = v * w + u;
+        if (raw[j] === Infinity || !(raw[j] > full) || owner[j] !== owner[i]) continue;
+        const ex = lab[j * 3] - base[i * 3], ey = lab[j * 3 + 1] - base[i * 3 + 1], ez = lab[j * 3 + 2] - base[i * 3 + 2];
+        const dot = dx * ex + dy * ey + dz * ez;
+        if (dot > 0.9 * d * Math.hypot(ex, ey, ez)) full = raw[j];
+      }
+    }
+    full = Math.max(full, low[i] + SYMBOL_HIGH - SYMBOL_LOW);
+    cover[i] = Math.min(Math.max((d - low[i]) / (full - low[i]), 0), 1);
   }
 
   // A line that runs all along a plate at one depth (a lit edge, a border) is
   // part of the plate. A symbol rarely fills most of a ring at one depth.
   plates.forEach((plate, k) => {
     if (!plate.plain) return;
-    const deepest = Math.max(6, Math.min(plate.shape.rx, plate.shape.ry) * 0.15);
+    const deepest = Math.max(6, Math.min(plate.shape.rx, plate.shape.ry) * 0.15) / s;
     const bins = Math.ceil(deepest * 2);
     const total = new Float64Array(bins), marked = new Float64Array(bins), sums = new Float64Array(bins * 3);
     for (let i = 0; i < n; i++) {
       if (owner[i] !== k || -depth[i] >= deepest) continue;
       const b = Math.floor(-depth[i] * 2);
       total[b]++;
-      if (symbol[i] <= 0.5) continue;
+      if (cover[i] <= 0.5) continue;
       marked[b]++;
-      for (let c = 0; c < 3; c++) sums[b * 3 + c] += lab[i * 3 + c];
+      for (let ch = 0; ch < 3; ch++) sums[b * 3 + ch] += lab[i * 3 + ch];
     }
-    const ring = (b: number) => b >= 0 && b < bins && total[b] >= 20 && marked[b] > total[b] * 0.6;
+    const ring = (b: number) => b >= 0 && b < bins && total[b] >= 20 / s && marked[b] > total[b] * 0.6;
+    const spread = Math.ceil(1 / s);
     for (let i = 0; i < n; i++) {
-      if (owner[i] !== k || -depth[i] >= deepest || !symbol[i]) continue;
+      if (owner[i] !== k || -depth[i] >= deepest || !cover[i]) continue;
       const b = Math.floor(-depth[i] * 2);
-      // The ring's own bin, or one next to it for its anti-aliased sides.
-      const r = ring(b) ? b : ring(b - 1) ? b - 1 : ring(b + 1) ? b + 1 : -1;
+      // The ring's own bins, or ones next to them for its anti-aliased sides.
+      let r = -1;
+      for (let o = 0; o <= spread * 2 && r < 0; o++) {
+        if (ring(b - o)) r = b - o;
+        else if (ring(b + o)) r = b + o;
+      }
       if (r < 0) continue;
-      const d = Math.hypot(lab[i * 3] - sums[r * 3] / marked[r], lab[i * 3 + 1] - sums[r * 3 + 1] / marked[r],
-        lab[i * 3 + 2] - sums[r * 3 + 2] / marked[r]);
-      if (d < 0.1) symbol[i] = 0;
+      const mean = [sums[r * 3] / marked[r], sums[r * 3 + 1] / marked[r], sums[r * 3 + 2] / marked[r]];
+      const d = segmentDistance(lab.subarray(i * 3, i * 3 + 3), Array.from(base.subarray(i * 3, i * 3 + 3)), mean);
+      cover[i] *= smoothstep(0.04, 0.1, d);
     }
   });
 
-  // The symbol's main tone (the median lightness of its core: its
-  // anti-aliased edges mix in the plate) is drawn at full strength, and parts
-  // that differ from it, lighter or darker, a little weaker, so that details
-  // stay visible in one colour.
+  // The symbol's main tone (the median lightness of its core) is drawn at
+  // full strength, and parts that differ from it, lighter or darker, a little
+  // weaker, so that details stay visible in one colour. A partly covered
+  // pixel's lightness is taken back to the symbol's own.
+  const own = new Float32Array(n);
   const lights: number[] = [];
   for (let i = 0; i < n; i++) {
-    if (symbol[i] > 0.9) lights.push(lab[i * 3]);
+    const L = lab[i * 3];
+    own[i] = raw[i] === Infinity || cover[i] <= 0 ? L
+      : base[i * 3] + (L - base[i * 3]) / Math.max(cover[i], 0.25);
+    if (cover[i] > 0.9 && alpha[i] > 0.5) lights.push(own[i]);
   }
   lights.sort((a, b) => a - b);
   const main = lights.length ? lights[Math.floor(lights.length / 2)] : 0;
   const spread = lights.map(l => Math.abs(l - main)).sort((a, b) => a - b)[Math.floor(lights.length * 0.9)] ?? 0;
+  const symbol = new Float32Array(n);
   const intensity = new Float32Array(n);
   for (let i = 0; i < n; i++) {
+    symbol[i] = alpha[i] * cover[i];
     intensity[i] = spread < FLAT_SYMBOL / 2 ? 1
-      : 1 - DETAIL_DIM * smoothstep(FLAT_SYMBOL / 4, Math.max(spread, FLAT_SYMBOL), Math.abs(lab[i * 3] - main));
+      : 1 - DETAIL_DIM * smoothstep(FLAT_SYMBOL / 4, Math.max(spread, FLAT_SYMBOL), Math.abs(own[i] - main));
   }
-
-  return { width: w, height: h, plates, symbol, intensity };
+  return { symbol, intensity };
 }

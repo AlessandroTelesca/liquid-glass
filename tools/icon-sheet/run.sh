@@ -5,7 +5,8 @@
 # extension first (npm run build): the analysis is its dist/iconStyle.
 #
 #   tools/icon-sheet/run.sh [theme...]
-#   LG_ICON_SHEET_OUT  output directory (default: tools/icon-sheet/out)
+#   LG_ICON_SHEET_OUT   output directory (default: tools/icon-sheet/out)
+#   LG_ICON_SHEET_ONLY  only applications whose id or name contains one of these words
 set -euo pipefail
 
 here=$(cd "$(dirname "$0")" && pwd)
@@ -30,7 +31,8 @@ export GSETTINGS_BACKEND=memory
 
 files=()
 for theme in "${themes[@]}"; do
-  gjs -m "$here/collect.js" "$theme" "$out/$theme.json"
+  # shellcheck disable=SC2086
+  gjs -m "$here/collect.js" "$theme" "$out/$theme.json" ${LG_ICON_SHEET_ONLY:-}
   files+=("$out/$theme.json")
 done
 node "$here/build-sheet.cjs" "$out/icon-sheet.html" "${files[@]}"

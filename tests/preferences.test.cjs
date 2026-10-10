@@ -89,7 +89,7 @@ function fixture(overrides = {}, dbusResponses = [], blurMyShell = null) {
     return props?.settings_schema === 'blur-my-shell-popup' ? blurMyShell : new Settings(props);
   };
   const Gio = {Settings: GioSettings, SettingsBindFlags: {GET: 1, DEFAULT: 0}, DBusCallFlags: {NONE: 0},
-    AppInfo: {get_all: () => []},
+    AppInfo: {get_all: () => []}, ThemedIcon: class { constructor(props) { Object.assign(this, props); } },
     SettingsSchemaSource: {get_default: () => null,
       new_from_directory: dir => ({lookup: id => dir === bmsSchemas && id === 'org.gnome.shell.extensions.blur-my-shell.popup'
         ? 'blur-my-shell-popup' : null})},
@@ -186,6 +186,21 @@ test('window rules only show the active list while window glass is enabled', () 
   f.controls.write({'application-glass-all-windows': true});
   assert.equal(f.row('Included applications').visible, false);
   assert.equal(f.row('Excluded applications').visible, true);
+});
+
+test('icon rules show their controls only while icons are redrawn somewhere, and one list at a time', () => {
+  const f = fixture();
+  for (const title of ['Look', 'Symbol opacity', 'Icons to redraw', 'Icons to leave as they are'])
+    assert.equal(f.row(title).visible, false, title);
+  f.controls.write({'icon-style-launcher': true});
+  assert.equal(f.row('Look').visible, true);
+  assert.equal(f.row('Color').visible, false);
+  assert.equal(f.row('Icons to redraw').visible, false);
+  assert.equal(f.row('Icons to leave as they are').visible, true);
+  f.controls.write({'icon-style-all-apps': false, 'icon-style-use-accent': false});
+  assert.equal(f.row('Color').visible, true);
+  assert.equal(f.row('Icons to redraw').visible, true);
+  assert.equal(f.row('Icons to leave as they are').visible, false);
 });
 
 test('closing disconnects manually owned settings subscriptions', () => {
