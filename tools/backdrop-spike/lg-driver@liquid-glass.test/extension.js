@@ -1491,6 +1491,8 @@ export default class LgDriver extends Extension {
     };
     const rows = () => launcher._rows ?? [];
     const hovered = () => rows().map(r => (r.hover ? 1 : 0)).join('');
+    // LG_DRV_LAUNCHER_QUERY: what to search for (default "set").
+    const query = GLib.getenv('LG_DRV_LAUNCHER_QUERY') ?? 'set';
     const press = async button => {
       pointer.notify_button(t(), button, Clutter.ButtonState.PRESSED);
       await sleep(60);
@@ -1507,7 +1509,7 @@ export default class LgDriver extends Extension {
         await sleep(1500);
       }
       launcher.open();
-      launcher.setText('set');
+      launcher.setText(query);
       await sleep(1500);
       const centre = row => {
         const [x, y] = row.get_transformed_position();
@@ -1521,7 +1523,7 @@ export default class LgDriver extends Extension {
       // Where the last row will be, before there are any rows.
       pointer.notify_absolute_motion(t(), ...last);
       await sleep(300);
-      launcher.setText('set');
+      launcher.setText(query);
       await sleep(400);
       log(`launcher pointer ${where}: early hover=${hovered()}`);
       await sleep(where === 'slow' ? 2000 : 1200);
@@ -1531,6 +1533,13 @@ export default class LgDriver extends Extension {
       await sleep(1000);
       global.stage.disconnect(updateId);
       const picked = global.stage.get_actor_at_pos(Clutter.PickMode.REACTIVE, ...last);
+      const describe = a => {
+        const chain = [];
+        for (let x = a; x && chain.length < 5; x = x.get_parent())
+          chain.push(`${x.constructor.name}.${x.style_class ?? x.name ?? ''}${x.reactive ? '*' : ''}`);
+        return chain.join(' < ');
+      };
+      log(`launcher pointer ${where}: picked ${describe(picked)} open=${!!launcher._root} last=${last.map(Math.round)} modal=${Main.modalCount}`);
       log(`launcher pointer ${where}: rows=${rows().length} hover=${hovered()} under the pointer: row ${rows().indexOf(picked)} ` +
         `clip=${launcher._panel.get_clip().map(Math.round)} panel=${launcher._panel.get_allocation_box().get_size().map(Math.round)} ` +
         `idle updates=${updates}`);
@@ -1558,9 +1567,27 @@ export default class LgDriver extends Extension {
     delete launcher._activate;
     launcher._shape._durationMs = 220;
     settings.reset('launcher-enable-adaptive-text-color');
+    // One more letter with the same number of results: the glass keeps its height.
+    const [before, after] = (GLib.getenv('LG_DRV_LAUNCHER_STEADY') ?? 'weat,weath').split(',');
+    launcher.open();
+    launcher.setText(before);
+    await sleep(2500);
+    const heights = [];
+    const traceId = global.stage.connect('before-update', () => {
+      if (launcher._panel)
+        heights.push(Math.round(launcher._shape.rect(GLib.get_monotonic_time())[3]));
+    });
+    const firstCount = rows().length;
+    launcher.setText(after);
+    await sleep(2500);
+    global.stage.disconnect(traceId);
+    log(`launcher steady: '${before}' ${firstCount} rows -> '${after}' ${rows().length} rows, glass height ` +
+      `${Math.min(...heights)}..${Math.max(...heights)} over ${heights.length} frames`);
+    launcher.close();
+    await sleep(500);
     // The field keeps it open, a click outside closes it, and a row really activates.
     launcher.open();
-    launcher.setText('set');
+    launcher.setText(query);
     await sleep(1500);
     const [ex, ey] = launcher._entry.get_transformed_position();
     const [, eh] = launcher._entry.get_transformed_size();

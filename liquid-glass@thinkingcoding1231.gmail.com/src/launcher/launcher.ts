@@ -26,12 +26,16 @@ const MAX_RESULTS = 8;
 const PER_PROVIDER = 5;
 const ICON_SIZE = 32;
 const SEARCH_DELAY_MS = 120;
+// How long the previous results stay up while slow providers are still answering.
+const SETTLE_MS = 400;
 const SHADER_PADDING = 20;
 const SHADOW_MARGIN = 60;
 const FADE_MS = 150;
 // The glass opens from this much larger, like SwiftUI's materialize.
 const OPEN_SCALE = 1.06;
 const SHAPE_MS = 220;
+// Frames asked for past the glass's tween, and after the panel changes size.
+const TICK_MS = 50;
 
 interface Result {
   provider: any;
@@ -70,6 +74,10 @@ export class Launcher {
   private _frameSignalId = 0;
   private _searchId = 0;
   private _cancellable: Gio.Cancellable | null = null;
+  // The running search's results so far, the providers it still waits for, and its deadline.
+  private _found: Result[] = [];
+  private _waiting = 0;
+  private _settleId = 0;
   private _results: Result[] = [];
   private _rows: St.Button[] = [];
   private _selected = 0;
@@ -133,9 +141,15 @@ export class Launcher {
     });
     // The glass follows the panel from before-update, which does not ask for frames and runs ahead of the layout
     // that resizes the panel. Without the ticker, an idle stage leaves the glass, and the clip that also limits
-    // where rows can be hovered and clicked, at the old size.
-    const ticker = new Clutter.Timeline({ actor: root, duration: 1000, repeat_count: -1 });
-    panel.connect('notify::allocation', () => ticker.start());
+    // where rows can be hovered and clicked, at the old size. It runs for a set time, so that it stops even when
+    // no JS can run.
+    const ticker = new Clutter.Timeline({ actor: root, duration: TICK_MS });
+    ticker.connect('completed', () => this._keepTicking());
+    panel.connect('notify::allocation', () => {
+      if (ticker.is_playing()) return;
+      ticker.set_duration(TICK_MS);
+      ticker.start();
+    });
     const entry = new St.Entry({ style_class: 'lg-launcher-entry', hint_text: 'Search', can_focus: true, x_expand: true,
       primary_icon: new St.Icon({ icon_name: 'edit-find-symbolic', style_class: 'lg-launcher-entry-icon' }) });
     // Hidden while empty, so the panel's spacing does not add room below the field.
@@ -243,11 +257,17 @@ export class Launcher {
     glass.setResolution(root.width, root.height);
     glass.setGlassGeometry(x - p, y - p, gw + p * 2, gh + p * 2);
     panel.set_clip(x - panel.x, y - panel.y, gw, gh);
-    const ticker = this._ticker!;
-    if (this._shape.done(now)) ticker.stop();
-    else if (!ticker.is_playing()) ticker.start();
+    this._keepTicking();
     ensureGlassAllocated(glass);
     glass.syncSources();
+  }
+
+  private _keepTicking(): void {
+    const ticker = this._ticker;
+    const left = this._shape.remaining(GLib.get_monotonic_time());
+    if (!ticker || ticker.is_playing() || left <= 0) return;
+    ticker.set_duration(Math.ceil(left) + TICK_MS);
+    ticker.start();
   }
 
   private _onKey(event: Clutter.Event): boolean {
@@ -292,6 +312,8 @@ export class Launcher {
   private _cancelSearch(): void {
     if (this._searchId) GLib.Source.remove(this._searchId);
     this._searchId = 0;
+    if (this._settleId) GLib.Source.remove(this._settleId);
+    this._settleId = 0;
     this._cancellable?.cancel();
     this._cancellable = null;
   }
@@ -310,32 +332,50 @@ export class Launcher {
     return (Main.overview as any).searchController._searchResults._providers;
   }
 
+  // The previous results stay up until every provider has answered, or SETTLE_MS have passed, so that the glass
+  // does not shrink and grow back on each keystroke. Answers after the deadline are shown as they come.
   private _search(): void {
     const text = this._entry?.text.trim() ?? '';
     this._terms = text ? text.split(/\s+/) : [];
-    this._results = [];
-    this._show();
-    if (!this._terms.length) return;
+    const providers = this._terms.length ? this._providers() : [];
+    this._found = [];
+    this._waiting = providers.length;
+    if (!this._waiting) {
+      this._commit();
+      return;
+    }
     const cancellable = new Gio.Cancellable();
     this._cancellable = cancellable;
-    this._providers().forEach((provider, order) => this._ask(provider, order, cancellable));
+    this._settleId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, SETTLE_MS, () => {
+      this._settleId = 0;
+      this._commit();
+      return GLib.SOURCE_REMOVE;
+    });
+    providers.forEach((provider, order) => this._ask(provider, order, cancellable));
   }
 
   private async _ask(provider: any, order: number, cancellable: Gio.Cancellable): Promise<void> {
     const terms = this._terms;
+    let metas: any[] = [];
     try {
       const ids = await provider.getInitialResultSet(terms, cancellable);
       const wanted = provider.filterResults(ids, PER_PROVIDER);
-      if (cancellable.is_cancelled() || wanted.length === 0) return;
-      const metas = await provider.getResultMetas(wanted, cancellable);
-      if (cancellable.is_cancelled()) return;
-      this._results.push(...metas.map((meta: any) => ({ provider, order, meta })));
-      this._results.sort((a, b) => a.order - b.order);
-      this._results.length = Math.min(this._results.length, MAX_RESULTS);
-      this._show();
+      if (wanted.length > 0 && !cancellable.is_cancelled())
+        metas = await provider.getResultMetas(wanted, cancellable);
     } catch (e) {
       if (!isCancelled(e)) this._logger.log(`[Liquid Glass] Search provider failed: ${e}`);
     }
+    if (cancellable.is_cancelled()) return;
+    this._found.push(...metas.map(meta => ({ provider, order, meta })));
+    this._waiting--;
+    if (this._waiting === 0 || !this._settleId) this._commit();
+  }
+
+  private _commit(): void {
+    if (this._settleId) GLib.Source.remove(this._settleId);
+    this._settleId = 0;
+    this._results = [...this._found].sort((a, b) => a.order - b.order).slice(0, MAX_RESULTS);
+    this._show();
   }
 
   private _show(): void {
@@ -345,7 +385,9 @@ export class Launcher {
     this._rows = this._results.map((result, i) => {
       const row = new St.Button({ style_class: 'lg-launcher-result', can_focus: false, x_expand: true });
       const box = new St.BoxLayout({ style_class: 'lg-launcher-result-box', x_expand: true });
-      const icon = result.meta.createIcon(ICON_SIZE);
+      // A remote provider's result may come without an icon; its application's icon stands in.
+      const gicon = result.provider.appInfo?.get_icon();
+      const icon = result.meta.createIcon(ICON_SIZE) ?? (gicon ? new St.Icon({ gicon, icon_size: ICON_SIZE }) : null);
       const text = new St.BoxLayout({ y_align: Clutter.ActorAlign.CENTER, x_expand: true, ...verticalBoxParams() } as any);
       const name = new St.Label({ text: result.meta.name ?? '', style_class: 'lg-launcher-name' });
       name.clutter_text.ellipsize = Pango.EllipsizeMode.END;
@@ -356,7 +398,7 @@ export class Launcher {
         label.clutter_text.ellipsize = Pango.EllipsizeMode.END;
         text.add_child(label);
       }
-      box.add_child(icon);
+      if (icon) box.add_child(icon);
       box.add_child(text);
       row.set_child(box);
       row.connect('clicked', () => this._activate(i));

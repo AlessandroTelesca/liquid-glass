@@ -29,3 +29,14 @@ test('a new target eases on from where the rect is, and the same target does not
   assert.deepEqual(tween.rect(100000), mid);
   assert.equal(tween.rect(300000)[3], 150);
 });
+
+test('a tween counts down to landing from its last restart', () => {
+  const tween = new RectTween(200);
+  tween.start([0, 0, 100, 100], [0, 0, 100, 300], 0);
+  assert.equal(tween.remaining(0), 200);
+  assert.ok(tween.remaining(199999) > 0);
+  assert.equal(tween.remaining(200000), 0);
+  tween.setTarget([0, 0, 100, 150], 200000);
+  assert.equal(tween.remaining(300000), 100);
+  assert.equal(tween.remaining(400000), 0);
+});
