@@ -2,6 +2,8 @@ import Adw from 'gi://Adw';
 import Gio from 'gi://Gio';
 import Gtk from 'gi://Gtk';
 
+import {addIconTuning} from './icon-tuning.js';
+
 // The id the Show Apps button goes by in the lists (see src/iconStyle/iconStyler.ts).
 const SHOW_APPS_ID = 'show-apps';
 
@@ -41,6 +43,10 @@ export class IconStyleRules {
       {title: 'Mono', patch: {'icon-style-mode': 'mono'}},
       {title: 'Clear', patch: {'icon-style-mode': 'clear'}},
     ], '', false);
+    const variantRow = this.controls.choice(group, 'Variant', [
+      {title: 'Dark', patch: {'icon-style-tint-variant': 'dark'}},
+      {title: 'Light', patch: {'icon-style-tint-variant': 'light'}},
+    ], 'Dark glass under a colored symbol, or colored glass under a white one', false);
     const accentRow = this.controls.toggle(group, 'Accent color', 'icon-style-use-accent',
       'The system accent color, from GNOME 47 on');
     const colorRow = this.controls.color(group, 'Color', ['icon-style-color']);
@@ -51,11 +57,12 @@ export class IconStyleRules {
         'As a share of what the dock or the launcher gives them', {slider: true}),
       this.controls.number(group, 'Symbol opacity', ['icon-style-symbol-opacity'], 0, 1, 0.05, '', {slider: true}),
       this.controls.toggle(group, 'Include all applications', 'icon-style-all-apps')];
-    this.controls.watch([...ANY_ICON_STYLE, 'icon-style-mode', 'icon-style-use-accent'], () => {
+    this.controls.watch([...ANY_ICON_STYLE, 'icon-style-mode', 'icon-style-tint-variant', 'icon-style-use-accent'], () => {
       const on = ANY_ICON_STYLE.some(key => this.settings.get_boolean(key));
       const tinted = on && this.settings.get_string('icon-style-mode') === 'tinted';
       for (const row of rows) row.visible = on;
-      accentRow.visible = strengthRow.visible = tinted;
+      variantRow.visible = accentRow.visible = tinted;
+      strengthRow.visible = tinted && this.settings.get_string('icon-style-tint-variant') === 'dark';
       colorRow.visible = tinted && !this.settings.get_boolean('icon-style-use-accent');
     });
     for (const [all, key, title] of [
@@ -63,6 +70,7 @@ export class IconStyleRules {
       [true, 'icon-style-blacklist', 'Icons to leave as they are'],
     ])
       this._addList(page, key, title, all);
+    addIconTuning(page, this.settings, this.controls, ANY_ICON_STYLE);
   }
 
   _addList(page, key, title, activeWhen) {

@@ -1779,6 +1779,17 @@ export default class LgDriver extends Extension {
     await shot('icon-style-weak-large', dockRect);
     settings.reset('icon-style-tint-strength');
     settings.reset('icon-style-size');
+    settings.set_string('icon-style-tint-variant', 'light');
+    await sleep(800);
+    report('light');
+    await shot('icon-style-light', dockRect);
+    settings.reset('icon-style-tint-variant');
+    // A tuned number takes effect without the icons being styled again.
+    settings.set_value('icon-style-tuning', new GLib.Variant('a{sd}', {darkGlass: 0.45, rimWidth: 2}));
+    await sleep(800);
+    report('tuned');
+    await shot('icon-style-tuned', dockRect);
+    settings.reset('icon-style-tuning');
 
     const first = icons().map(appOf).find(id => id !== 'show-apps');
     settings.set_strv('icon-style-blacklist', [first, 'show-apps']);

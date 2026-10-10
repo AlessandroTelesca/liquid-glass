@@ -30,7 +30,12 @@ uniform float symbol_inner_r;
 uniform float symbol_inner_g;
 uniform float symbol_inner_b;
 uniform float symbol_inner_a;
+// The lit rim: brightness, width (map px), and light on the sides away from the light.
 uniform float rim_a;
+uniform float rim_width;
+uniform float rim_base;
+// How much lighter the outer plate is at its top than at its bottom.
+uniform float sheen;
 uniform float tint_r;
 uniform float tint_g;
 uniform float tint_b;
@@ -38,10 +43,6 @@ uniform float opacity;
 
 const float MAP_SIZE = 256.0;
 const float MAP_RANGE = 16.0;
-// The lit rim's width, map px.
-const float RIM = 7.0;
-// How much lighter the outer plate is at its top than at its bottom.
-const float SHEEN = 0.1;
 
 float field(float v) {
     return (0.5 - v) * 2.0 * MAP_RANGE;
@@ -56,10 +57,10 @@ vec4 over(vec4 dst, vec4 src) {
 // and the bottom right, as glass does.
 vec4 plate(float d, vec2 n, vec3 rgb, float alpha) {
     float cover = clamp(0.5 - d / max(map_px, 0.5), 0.0, 1.0);
-    float rim = 1.0 - clamp(-d / RIM, 0.0, 1.0);
+    float rim = 1.0 - clamp(-d / max(rim_width, 0.5), 0.0, 1.0);
     rim *= rim;
     float facing = abs(dot(n, normalize(vec2(-0.55, -0.83))));
-    float light = rim_a * rim * (0.2 + 0.8 * facing);
+    float light = rim_a * rim * mix(rim_base, 1.0, facing);
     vec4 c = vec4(rgb * alpha, alpha);
     c = over(c, vec4(vec3(light), light));
     return c * cover;
@@ -90,7 +91,7 @@ void main() {
     vec4 b = texture2D(cogl_sampler1, at + vec2(0.0, t));
     vec4 icon = texture2D(cogl_sampler0, st);
 
-    vec3 base = vec3(plate_r, plate_g, plate_b) * (1.0 + SHEEN * (0.5 - at.y));
+    vec3 base = vec3(plate_r, plate_g, plate_b) * (1.0 + sheen * (0.5 - at.y));
     vec4 c = plate(field(m.r), gradient(l, r, u, b, 0), base, plate_a);
     vec3 inner = vec3(inner_r, inner_g, inner_b);
     vec4 first = plate(field(m.g), gradient(l, r, u, b, 1), inner, inner_a);

@@ -13,7 +13,7 @@ function fixture(overrides = {}, dbusResponses = [], blurMyShell = null) {
   const xml = fs.readFileSync(path.join(root, 'schemas/org.gnome.shell.extensions.liquid-glass@thinkingcoding1231.gmail.com.gschema.xml'), 'utf8');
   for (const [, key, type, body] of xml.matchAll(/<key name="([^"]+)" type="([^"]+)">([\s\S]*?)<\/key>/g)) {
     const raw = body.match(/<default>([\s\S]*?)<\/default>/)[1].trim();
-    const value = type === 'as' ? [] : type === 's' ? raw.slice(1, -1) : type === 'b' ? raw === 'true'
+    const value = type === 'as' ? [] : type === 'a{sd}' ? {} : type === 's' ? raw.slice(1, -1) : type === 'b' ? raw === 'true'
       : type.startsWith('(') ? JSON.parse(`[${raw.slice(1, -1)}]`) : Number(raw);
     types.set(key, type); values.set(key, value);
     const range = body.match(/<range min="([^"]+)" max="([^"]+)"\s*\/>/);
@@ -209,6 +209,26 @@ test('icon rules show their controls only while icons are redrawn somewhere, and
   for (const title of ['Accent color', 'Color', 'Tint strength'])
     assert.equal(iconRow(title).visible, false, title);
   assert.equal(iconRow('Size').visible, true);
+});
+
+test("icon glass tuning shows the current look's numbers and stores only what differs from the default", () => {
+  const f = fixture({'icon-style-dock': true});
+  const group = f.row('Icon glass tuning');
+  const row = title => group.children.find(r => r.title === title && r.visible);
+  assert.equal(group.visible, true);
+  assert.equal(f.row('Variant').visible, true);
+  assert.ok(row('Symbol: white mixed into the color'));
+  assert.equal(row('Symbol: color mixed into white'), undefined);
+  f.controls.write({'icon-style-tint-variant': 'light'});
+  assert.equal(f.row('Application icons').children.find(r => r.title === 'Tint strength').visible, false);
+  const tint = row('Symbol: color mixed into white');
+  f.writes.length = 0;
+  tint.value = 0.3;
+  tint.emit('notify::value');
+  assert.deepEqual(f.writes.at(-1), {'icon-style-tuning': {lightSymbolTint: 0.3}});
+  f.controls.write({'icon-style-mode': 'clear'});
+  assert.equal(row('Symbol: color mixed into white'), undefined);
+  assert.ok(row('Glass: white over the backdrop'));
 });
 
 test('closing disconnects manually owned settings subscriptions', () => {

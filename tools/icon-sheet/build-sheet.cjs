@@ -69,6 +69,7 @@ td.name small { color: var(--muted); word-break: break-all; }
 <header>
   <h1>Icon Sheet</h1>
   <label>Mode <select id="mode"><option value="tinted">Tinted</option><option value="mono">Mono</option><option value="clear">Clear</option></select></label>
+  <label>Variant <select id="variant"><option value="dark">Dark</option><option value="light">Light</option></select></label>
   <label>Accent <input id="accent" type="color" value="#3584e4"></label>
   <label>Tint <input id="strength" type="range" min="0" max="1" step="0.05" value="0"></label>
   <label>Symbol <input id="opacity" type="range" min="0" max="1" step="0.05" value="1"></label>
@@ -199,7 +200,7 @@ async function drawStyled(canvas, rec, opts, wallX, wallY, launch) {
   g.bindTexture(g.TEXTURE_2D, texture(original, false));
   g.activeTexture(g.TEXTURE1);
   g.bindTexture(g.TEXTURE_2D, rec.map ? texture(await image(rec.map), true) : texture(original, false));
-  const c = iconStyleColors(opts.mode, opts.accent.map(v => v / 255), opts.strength, opts.opacity);
+  const c = iconStyleColors(opts.mode, opts.accent.map(v => v / 255), opts.strength, opts.opacity, opts.variant);
   for (const [name, v] of [['box_x0', 0], ['box_y0', 0], ['box_x1', 1], ['box_y1', 1], ['map_px', 256 / px],
     ['clone', launch ? 1 : 0], ['opacity', 1], ...iconStyleUniforms(c)]) set(name, v);
   g.drawArrays(g.TRIANGLE_STRIP, 0, 4);
@@ -260,6 +261,7 @@ function options() {
   return {
     mode: document.getElementById('mode').value,
     accent: hexRgb(document.getElementById('accent').value),
+    variant: document.getElementById('variant').value,
     strength: +document.getElementById('strength').value,
     opacity: +document.getElementById('opacity').value,
     launch: document.getElementById('launch').checked,
@@ -347,7 +349,7 @@ for (const [key, value] of hash) {
   if (control.type === 'checkbox') control.checked = value !== '0';
   else control.value = value;
 }
-for (const id of ['mode', 'accent', 'strength', 'opacity', 'launch', 'size', 'debug', 'info', 'filter'])
+for (const id of ['mode', 'variant', 'accent', 'strength', 'opacity', 'launch', 'size', 'debug', 'info', 'filter'])
   document.getElementById(id).addEventListener('input', render);
 summary();
 render();

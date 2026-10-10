@@ -13,9 +13,10 @@ export const SHOW_APPS_ID = 'show-apps';
 // Icons are looked up at the size their maps are taken from.
 const LOOKUP_SIZE = 128;
 const EFFECT_NAME = 'liquid-glass-icon-style';
-const KEYS = ['icon-style-dock', 'icon-style-launcher', 'icon-style-mode', 'icon-style-use-accent', 'icon-style-color',
-    'icon-style-tint-strength', 'icon-style-size', 'icon-style-symbol-opacity', 'icon-style-all-apps',
-    'icon-style-whitelist', 'icon-style-blacklist'];
+// Keys that decide which icons are styled, and keys that only change how they look.
+const KEYS = ['icon-style-dock', 'icon-style-launcher', 'icon-style-all-apps', 'icon-style-whitelist', 'icon-style-blacklist'];
+const COLOR_KEYS = ['icon-style-mode', 'icon-style-use-accent', 'icon-style-color', 'icon-style-tint-variant',
+    'icon-style-tint-strength', 'icon-style-symbol-opacity', 'icon-style-tuning'];
 
 function appIdOf(icon) {
     // The shell's and Dash to Dock's Show Apps buttons, whatever icon they show.
@@ -67,7 +68,11 @@ export class IconStyler {
     }
 
     setup() {
-        this._settingsIds = KEYS.map(key => this._settings.connect(`changed::${key}`, () => this._restyleAll()));
+        this._settingsIds = [
+            ...KEYS.map(key => this._settings.connect(`changed::${key}`, () => this._restyleAll())),
+            ...COLOR_KEYS.map(key => this._settings.connect(`changed::${key}`, () => this._recolorAll())),
+            this._settings.connect('changed::icon-style-size', () => this._resizeAll()),
+        ];
         this._themeId = St.TextureCache.get_default().connect('icon-theme-changed', () => {
             this._theme = new St.IconTheme();
             this._restyleAll();
@@ -198,7 +203,9 @@ export class IconStyler {
         const tint = accent ? [accent[0].red / 255, accent[0].green / 255, accent[0].blue / 255]
             : hexToColorArray(s.get_string('icon-style-color'));
         const mode = s.get_string('icon-style-mode');
-        return iconStyleColors((['mono', 'clear'].includes(mode) ? mode : 'tinted'), tint, s.get_double('icon-style-tint-strength'), s.get_double('icon-style-symbol-opacity'));
+        const variant = s.get_string('icon-style-tint-variant') === 'light' ? 'light' : 'dark';
+        const tuning = s.get_value('icon-style-tuning').deep_unpack();
+        return iconStyleColors((['mono', 'clear'].includes(mode) ? mode : 'tinted'), tint, s.get_double('icon-style-tint-strength'), s.get_double('icon-style-symbol-opacity'), variant, tuning);
     }
 
     _apply(icon) {
@@ -225,14 +232,25 @@ export class IconStyler {
                 styled.effect = effect;
                 icon.add_effect_with_name(EFFECT_NAME, effect);
             }
-            // Scaled as an actor rather than drawn past its box, so that Clutter keeps what it redraws and culls right.
-            const size = this._settings.get_double('icon-style-size');
-            icon.set_pivot_point(0.5, 0.5);
-            icon.set_scale(size, size);
+            this._resize(icon);
         }).catch(e => {
             if (!(e instanceof GLib.Error && e.matches(Gio.IOErrorEnum, Gio.IOErrorEnum.CANCELLED)))
                 this._logger.log(`[Liquid Glass] Could not style the icon of ${styled.appId}: ${e}`);
         });
+    }
+
+    // Scaled as an actor rather than drawn past its box, so that Clutter keeps what it redraws and culls right.
+    _resize(icon) {
+        const size = this._settings.get_double('icon-style-size');
+        icon.set_pivot_point(0.5, 0.5);
+        icon.set_scale(size, size);
+    }
+
+    _resizeAll() {
+        for (const [icon, styled] of this._styled) {
+            if (styled.effect)
+                this._resize(icon);
+        }
     }
 
     _unstyle(icon, styled) {

@@ -1053,6 +1053,20 @@
       <default>"#3584e4"</default>
       <summary>Icon color (Hex)</summary>
     </key>
+    <key name="icon-style-tint-variant" type="s">
+      <choices>
+        <choice value="dark"/>
+        <choice value="light"/>
+      </choices>
+      <default>"dark"</default>
+      <summary>Tinted icons' variant</summary>
+      <description>"dark": dark glass under a symbol in the color. "light": glass in the color under an almost white symbol.</description>
+    </key>
+    <key name="icon-style-tuning" type="a{sd}">
+      <default>{}</default>
+      <summary>Icon glass tuning</summary>
+      <description>Values that replace the icon look's built-in numbers, by name, while their defaults are being chosen.</description>
+    </key>
     <key name="icon-style-tint-strength" type="d">
       <range min="0" max="1"/>
       <default>0.0</default>
