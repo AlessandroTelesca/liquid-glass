@@ -20,6 +20,8 @@ export function iconStylePipeline(source: string): Cogl.Pipeline {
   pipeline.set_layer_wrap_mode(1, Cogl.PipelineWrapMode.CLAMP_TO_EDGE);
   // The map is drawn much smaller than it is; its mipmaps keep the symbol's edges smooth.
   pipeline.set_layer_filters(1, Cogl.PipelineFilter.LINEAR_MIPMAP_LINEAR, Cogl.PipelineFilter.LINEAR);
+  pipeline.set_layer_wrap_mode(2, Cogl.PipelineWrapMode.CLAMP_TO_EDGE);
+  pipeline.set_layer_filters(2, Cogl.PipelineFilter.LINEAR, Cogl.PipelineFilter.LINEAR);
   const { decl, body } = splitShader(source);
   const snippet = Cogl.Snippet.new(Cogl.SnippetHook.FRAGMENT, decl.replace(/uniform\s+sampler2D\s+cogl_sampler\d\s*;[^\n]*/g, ''), null);
   snippet.set_replace(body);
@@ -27,7 +29,13 @@ export function iconStylePipeline(source: string): Cogl.Pipeline {
   return pipeline;
 }
 
-/** A style map's pixels (MAP_SIZE square, RGBA) as a texture. */
+/** An icon's style map and its plates' tones (see styleMap.ts). */
+export interface IconStyleTextures {
+  map: Cogl.Texture;
+  tone: Cogl.Texture;
+}
+
+/** A style map's or its tones' pixels (MAP_SIZE square, RGBA) as a texture. */
 export function iconStyleTexture(data: Uint8Array): Cogl.Texture {
   // Declared premultiplied so that Cogl keeps the channels as they are: they are distances, not a colour.
   return Cogl.Texture2D.new_from_data(coglContext(), MAP_SIZE, MAP_SIZE, Cogl.PixelFormat.RGBA_8888_PRE, MAP_SIZE * 4, data);
@@ -57,10 +65,11 @@ export const IconStyleEffect = GObject.registerClass(
     }
 
     /** @param pipeline A copy of iconStylePipeline(), for this effect alone. */
-    prepare(pipeline: Cogl.Pipeline, map: Cogl.Texture, colors: IconStyleColors): void {
+    prepare(pipeline: Cogl.Pipeline, textures: IconStyleTextures, colors: IconStyleColors): void {
       this._pipeline = pipeline;
       this._locations.clear();
-      pipeline.set_layer_texture(1, map);
+      pipeline.set_layer_texture(1, textures.map);
+      pipeline.set_layer_texture(2, textures.tone);
       this.setColors(colors);
     }
 

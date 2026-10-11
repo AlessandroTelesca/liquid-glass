@@ -86,6 +86,7 @@ for (const entry of entries) {
         }
         record.symbol = GLib.base64_encode(encodePngRgba(SIZE, SIZE, symbol));
         record.map = map ? GLib.base64_encode(encodePngRgba(map.size, map.size, map.data)) : null;
+        record.tone = map ? GLib.base64_encode(encodePngRgba(map.size, map.size, map.tone)) : null;
         record.ownPlate = map?.ownPlate ?? false;
         record.plates = analysis.plates.map(plate => ({
             shape: plate.shape,

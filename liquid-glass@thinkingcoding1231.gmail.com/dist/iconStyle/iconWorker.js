@@ -1,7 +1,7 @@
 // Takes icons apart in a process of its own (gjs -m), so the shell keeps
 // drawing meanwhile. Answers {file, cache} by drawing the icon file, writing
-// its style map's pixels to `cache` (empty when the icon is shown as it is)
-// and saying {styled}.
+// its style map's pixels and then its tones' to `cache` (empty when the icon is
+// shown as it is) and saying {styled}.
 import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
 import { analyzeIcon } from './iconAnalysis.js';
@@ -30,6 +30,11 @@ function write(path, bytes) {
 await serveRequests(async ({ file, cache }) => {
     const analysis = analyzeIcon(await drawIcon(file, ANALYSIS_SIZE));
     const map = buildStyleMap(analysis, await drawIcon(file, ANALYSIS_SIZE * 2));
-    await write(cache, map ? map.data : new Uint8Array(0));
+    const bytes = new Uint8Array(map ? map.data.length * 2 : 0);
+    if (map) {
+        bytes.set(map.data);
+        bytes.set(map.tone, map.data.length);
+    }
+    await write(cache, bytes);
     return { styled: !!map };
 });

@@ -1058,7 +1058,7 @@
         <choice value="dark"/>
         <choice value="light"/>
       </choices>
-      <default>"dark"</default>
+      <default>"light"</default>
       <summary>Tinted icons' variant</summary>
       <description>"dark": dark glass under a symbol in the color. "light": glass in the color under an almost white symbol.</description>
     </key>

@@ -20,6 +20,8 @@ export interface IconStyleColors {
   rimWidth: number;
   rimBase: number;
   sheen: number;
+  // How far the plates' tones take their colour towards white or black.
+  toneSpread: number;
   // The launch animation's colour, which the icon's lightness runs across.
   tint: [number, number, number];
 }
@@ -35,27 +37,30 @@ export interface IconTuning {
   value: number;
 }
 
-// The rim and the sheen of each look: width (map px), light on the sides away from the light, and sheen.
-const GLASS: Record<string, [number, number, number]> = {
-  dark: [9, 0, 0.42], light: [9, 0, 0.42], mono: [9, 0, 0.42], clear: [7, 0, 0.5],
+// Per look: the rim's width (map px), its light on the sides away from the light, the sheen, and how far the plates'
+// tones spread.
+const GLASS: Record<string, [number, number, number, number]> = {
+  dark: [7, 0.2, 0.1, 1], light: [9, 0, 0.42, 1], mono: [9, 0, 0.42, 1], clear: [7, 0, 0.5, 1],
 };
 
 export const ICON_TUNING: IconTuning[] = [
-  ...Object.entries(GLASS).flatMap(([look, [width, base, sheen]]) => [
+  ...Object.entries(GLASS).flatMap(([look, [width, base, sheen, spread]]) => [
     { key: `${look}RimWidth`, title: 'Rim width', looks: [look], min: 1, max: 16, value: width },
     { key: `${look}RimBase`, title: 'Rim light away from the light', looks: [look], min: 0, max: 1, value: base },
     { key: `${look}Sheen`, title: 'Sheen (top lighter than bottom)', looks: [look], min: 0, max: 0.5, value: sheen },
+    { key: `${look}ToneSpread`, title: 'Plates in different colors: how far apart', looks: [look], min: 0, max: 2,
+      value: spread },
   ]),
   { key: 'darkGlass', title: 'Glass lightness', looks: ['dark'], min: 0, max: 0.6, value: 0.12 },
   { key: 'darkGlassAlpha', title: 'Glass opacity', looks: ['dark'], min: 0, max: 1, value: 1 },
-  { key: 'darkTintReach', title: 'Color in the glass at full tint strength', looks: ['dark'], min: 0, max: 1, value: 0.55 },
-  { key: 'darkInnerWhite', title: 'Plates: white mixed into the color', looks: ['dark'], min: 0, max: 1, value: 0.05 },
-  { key: 'darkInnerAlpha', title: 'Plates: opacity', looks: ['dark'], min: 0, max: 1, value: 0.92 },
+  { key: 'darkTintReach', title: 'Color in the glass at full tint strength', looks: ['dark'], min: 0, max: 1, value: 0.38 },
+  { key: 'darkInnerWhite', title: 'Plates: white mixed into the color', looks: ['dark'], min: 0, max: 1, value: 0.11 },
+  { key: 'darkInnerAlpha', title: 'Plates: opacity', looks: ['dark'], min: 0, max: 1, value: 1 },
   { key: 'darkSymbolWhite', title: 'Symbol: white mixed into the color', looks: ['dark'], min: 0, max: 1, value: 0.15 },
   { key: 'darkLightTint', title: 'Colors lighter than this get a dark symbol on plates', looks: ['dark'], min: 0, max: 1,
-    value: 0.2 },
-  { key: 'darkSymbolOnLight', title: 'Dark symbol on plates: color mixed into the glass', looks: ['dark'], min: 0, max: 1,
     value: 0.15 },
+  { key: 'darkSymbolOnLight', title: 'Dark symbol on plates: color mixed into the glass', looks: ['dark'], min: 0, max: 1,
+    value: 0 },
   { key: 'darkSymbolOnDark', title: 'Light symbol on plates: white mixed into the color', looks: ['dark'], min: 0, max: 1,
     value: 0.75 },
   { key: 'darkRim', title: 'Rim brightness', looks: ['dark'], min: 0, max: 1, value: 0.55 },
@@ -92,10 +97,11 @@ function glass(lightness: number): [number, number, number] {
  * @param tuning Values that replace ICON_TUNING's, by key.
  */
 export function iconStyleColors(mode: IconStyleMode, tint: number[], strength: number, symbolOpacity: number,
-  variant: IconStyleVariant = 'dark', tuning: Record<string, number> = {}): IconStyleColors {
+  variant: IconStyleVariant = 'light', tuning: Record<string, number> = {}): IconStyleColors {
   const v = (key: string) => tuning[key] ?? ICON_TUNING.find(p => p.key === key)!.value;
   const look = mode === 'tinted' ? variant : mode;
-  const shared = { rimWidth: v(`${look}RimWidth`), rimBase: v(`${look}RimBase`), sheen: v(`${look}Sheen`) };
+  const shared = { rimWidth: v(`${look}RimWidth`), rimBase: v(`${look}RimBase`), sheen: v(`${look}Sheen`),
+    toneSpread: v(`${look}ToneSpread`) };
   if (mode === 'clear') {
     // Barely frosted, so that the white symbol stands apart from the plates.
     return { ...shared, plate: [1, 1, 1, v('clearGlassAlpha')], inner: [1, 1, 1, v('clearInnerAlpha')],
@@ -125,7 +131,7 @@ export function iconStyleColors(mode: IconStyleMode, tint: number[], strength: n
 /** The shader's uniforms for `colors`, by name. */
 export function iconStyleUniforms(colors: IconStyleColors): [string, number][] {
   const out: [string, number][] = [['rim_a', colors.rim], ['rim_width', colors.rimWidth], ['rim_base', colors.rimBase],
-    ['sheen', colors.sheen]];
+    ['sheen', colors.sheen], ['tone_spread', colors.toneSpread]];
   for (const name of ['plate', 'inner', 'symbol', 'symbolInner'] as const) {
     const uniform = name === 'symbolInner' ? 'symbol_inner' : name;
     colors[name].forEach((c, i) => out.push([`${uniform}_${'rgba'[i]}`, c]));

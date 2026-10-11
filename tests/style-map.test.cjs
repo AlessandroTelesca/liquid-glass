@@ -84,3 +84,31 @@ test("the symbol's anti-aliased edge stays partly covered", () => {
   assert.ok(field(map, 0, 64, 64) < 0);
   assert.equal(map.data[(MAP_SIZE / 2 * MAP_SIZE + MAP_SIZE / 2) * 4 + 3], 255);
 });
+
+// The tone stored at a point given in 128 px icon units (channel 0: the plates on the outer one).
+function tone(map, x, y) {
+  const s = MAP_SIZE / 128;
+  return map.tone[(Math.floor(y * s) * MAP_SIZE + Math.floor(x * s)) * 4] / 255;
+}
+
+test('plates side by side in different colours get different tones, a plate alone the neutral one', () => {
+  const plate = shape('roundrect', 56, { radius: 14 });
+  const halves = mapOf([
+    { distance: of(plate), color: [240, 240, 240] },
+    { distance: bar(14, 14, 62, 114), color: [70, 70, 75] },
+    { distance: bar(66, 14, 114, 114), color: [230, 90, 30] },
+  ]);
+  assert.ok(field(halves, 1, 38, 64) < 0 && field(halves, 1, 90, 64) < 0, 'both halves are plates');
+  assert.ok(tone(halves, 90, 64) - tone(halves, 38, 64) > 0.3, `${tone(halves, 38, 64)} ${tone(halves, 90, 64)}`);
+  const single = mapOf([{ distance: of(plate), color: [240, 240, 240] }, { distance: bar(30, 30, 98, 98), color: [30, 120, 220] }]);
+  assert.equal(Math.round(tone(single, 64, 64) * 10) / 10, 0.5);
+});
+
+test('alike squares a little too small to be plates on their own are plates beside one that is', () => {
+  const plate = shape('roundrect', 56, { radius: 14 });
+  // 36 px is a plate on its own (over a tenth of the plate it is on), 32 px is not.
+  const squares = [[12, 36], [52, 32], [86, 32]].map(([x, side]) => ({ distance: bar(x, 46, x + side, 46 + side),
+    color: [230, 90, 30] }));
+  const map = mapOf([{ distance: of(plate), color: [240, 240, 240] }, ...squares]);
+  for (const x of [30, 68, 102]) assert.ok(field(map, 1, x, 62) < 0, `square at ${x}`);
+});

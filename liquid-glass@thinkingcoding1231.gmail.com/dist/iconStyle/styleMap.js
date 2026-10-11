@@ -8,8 +8,12 @@
 //   A  the symbol, weaker where it differs from its main tone
 //
 // A distance d (map px, negative inside) is stored as 0.5 - d / (2 * RANGE).
+// Beside it, a tone map of the same size: in R the tone of the plate whose
+// distance G holds at that pixel, in G that of B's plate, from 0 (the darkest
+// of its siblings) through 0.5 (the look's own colour) to 1, so that plates side
+// by side in different colours stay apart once they are glass in one colour.
 // Pure computation, for the worker and the tests.
-import { shapeDistance, symbolLayer } from './iconAnalysis.js';
+import { plateColor, shapeDistance, symbolLayer } from './iconAnalysis.js';
 export const MAP_SIZE = 256;
 export const MAP_RANGE = 16;
 // Every outer plate is brought to this half size (a share of the icon's), so
@@ -28,6 +32,8 @@ const SQUARE_EXPONENT = 3.5;
 // A rounded rectangle with corners rounder than this share of its half size is a circle or a pill.
 const SQUARE_RADIUS = 0.62;
 const OUTSIDE_SHARE = 0.01;
+// Tone per unit of Oklab difference between siblings, along the way they differ most.
+const TONE_GAIN = 2.5;
 
 function isSquare(shape, width) {
     const roundEnough = shape.kind === 'roundrect' ? shape.radius <= Math.min(shape.rx, shape.ry) * SQUARE_RADIUS
@@ -126,7 +132,9 @@ export function buildStyleMap(analysis, detail, size = MAP_SIZE) {
         }
         return v;
     };
+    const tones = plateTones(plates, level);
     const data = new Uint8Array(size * size * 4);
+    const tone = new Uint8Array(size * size * 4);
     const mapPx = size / A;
     // Map pixels over content pixels: each map pixel averages this many samples a side.
     const taps = Math.max(1, Math.ceil(1 / (k * mapPx * scale)));
@@ -134,13 +142,18 @@ export function buildStyleMap(analysis, detail, size = MAP_SIZE) {
         for (let x = 0; x < size; x++) {
             const fx = (x + 0.5) / mapPx, fy = (y + 0.5) / mapPx;
             const qx = fromX + (fx - centre) / k, qy = fromY + (fy - centre) / k;
-            const inner = [Infinity, Infinity];
+            // Outside every plate too the nearest plate's tone, so that it does not bleed in at the edges.
+            const inner = [Infinity, Infinity], innerTone = [0.5, 0.5];
             plates.forEach((plate, i) => {
                 const l = level[i];
                 if (l === 0)
                     return;
                 const slot = Math.min(l, 2) - 1;
-                inner[slot] = Math.min(inner[slot], shapeDistance(plate.shape, qx, qy) * k * mapPx);
+                const d = shapeDistance(plate.shape, qx, qy) * k * mapPx;
+                if (d < inner[slot]) {
+                    inner[slot] = d;
+                    innerTone[slot] = tones[i];
+                }
             });
             let sym = 0;
             for (let ty = 0; ty < taps; ty++) {
@@ -155,7 +168,44 @@ export function buildStyleMap(analysis, detail, size = MAP_SIZE) {
             data[at + 1] = encode(inner[0]);
             data[at + 2] = encode(inner[1]);
             data[at + 3] = Math.round(Math.min(sym / (taps * taps), 1) * 255);
+            tone.set([Math.round(innerTone[0] * 255), Math.round(innerTone[1] * 255), 0, 255], at);
         }
     }
-    return { size, data, ownPlate: own };
+    return { size, data, tone, ownPlate: own };
+}
+
+// Each plate's tone among the plates at its level in the map: their colours
+// along the direction they differ most in, lighter higher. A plate alone at its
+// level is 0.5.
+function plateTones(plates, level) {
+    const tones = plates.map(() => 0.5);
+    for (const slot of [1, 2]) {
+        const members = plates.map((_, i) => i).filter(i => level[i] > 0 && Math.min(level[i], 2) === slot);
+        if (members.length < 2)
+            continue;
+        const colors = members.map(i => plateColor(plates[i], plates[i].shape.cx, plates[i].shape.cy));
+        const mean = [0, 1, 2].map(c => colors.reduce((sum, col) => sum + col[c], 0) / colors.length);
+        const centred = colors.map(col => col.map((v, c) => v - mean[c]));
+        // The principal direction, by power iteration on the covariance, starting along lightness.
+        let dir = [1, 0, 0];
+        for (let round = 0; round < 20; round++) {
+            const next = [0, 0, 0];
+            for (const v of centred) {
+                const dot = v[0] * dir[0] + v[1] * dir[1] + v[2] * dir[2];
+                for (let c = 0; c < 3; c++)
+                    next[c] += v[c] * dot;
+            }
+            const len = Math.hypot(...next);
+            if (len < 1e-9)
+                break;
+            dir = next.map(v => v / len);
+        }
+        if (dir[0] < 0)
+            dir = dir.map(v => -v);
+        members.forEach((i, m) => {
+            const along = centred[m][0] * dir[0] + centred[m][1] * dir[1] + centred[m][2] * dir[2];
+            tones[i] = Math.min(Math.max(0.5 + along * TONE_GAIN, 0), 1);
+        });
+    }
+    return tones;
 }

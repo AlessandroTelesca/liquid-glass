@@ -4,6 +4,7 @@
 // WebGL too.
 uniform sampler2D cogl_sampler0; // The icon as drawn, for the launch animation
 uniform sampler2D cogl_sampler1; // The style map
+uniform sampler2D cogl_sampler2; // The tones of the plates in it
 
 // The icon's square in layer 0's texture coordinates.
 uniform float box_x0;
@@ -36,6 +37,8 @@ uniform float rim_width;
 uniform float rim_base;
 // How much lighter the outer plate is at its top than at its bottom.
 uniform float sheen;
+// How far a plate's tone takes its colour towards white or black.
+uniform float tone_spread;
 uniform float tint_r;
 uniform float tint_g;
 uniform float tint_b;
@@ -66,6 +69,14 @@ vec4 plate(float d, vec2 n, vec3 rgb, float alpha) {
     return c * cover;
 }
 
+// A plate's colour and opacity at a tone: 0.5 is the colour itself, 1 towards white and more opaque, 0 towards black
+// and clearer. The opacity carries the difference where the colour is white already.
+vec4 toned(vec3 rgb, float alpha, float tone) {
+    float d = (tone - 0.5) * 2.0 * tone_spread;
+    rgb = mix(mix(rgb, vec3(1.0), max(d, 0.0) * 0.55), vec3(0.0), max(-d, 0.0) * 0.45);
+    return vec4(rgb, clamp(alpha * (1.0 + d * 0.6), 0.0, 1.0));
+}
+
 vec2 gradient(vec4 l, vec4 r, vec4 u, vec4 b, int channel) {
     vec2 g;
     if (channel == 0) g = vec2(l.r - r.r, u.r - b.r);
@@ -90,15 +101,18 @@ void main() {
     vec4 u = texture2D(cogl_sampler1, at - vec2(0.0, t));
     vec4 b = texture2D(cogl_sampler1, at + vec2(0.0, t));
     vec4 icon = texture2D(cogl_sampler0, st);
+    vec4 tone = texture2D(cogl_sampler2, at);
 
     vec3 base = vec3(plate_r, plate_g, plate_b) * (1.0 + sheen * (0.5 - at.y));
     vec4 c = plate(field(m.r), gradient(l, r, u, b, 0), base, plate_a);
     vec3 inner = vec3(inner_r, inner_g, inner_b);
-    vec4 first = plate(field(m.g), gradient(l, r, u, b, 1), inner, inner_a);
-    vec4 deeper = plate(field(m.b), gradient(l, r, u, b, 2), inner, inner_a);
+    vec4 firstTone = toned(inner, inner_a, tone.r);
+    vec4 deeperTone = toned(inner, inner_a, tone.g);
+    vec4 first = plate(field(m.g), gradient(l, r, u, b, 1), firstTone.rgb, firstTone.a);
+    vec4 deeper = plate(field(m.b), gradient(l, r, u, b, 2), deeperTone.rgb, deeperTone.a);
     c = over(over(c, first), deeper);
     // Over a plate on the outer one the symbol takes its other colour, to stand apart from that plate.
-    float onInner = max(first.a, deeper.a) / max(inner_a, 0.01);
+    float onInner = max(first.a / max(firstTone.a, 0.01), deeper.a / max(deeperTone.a, 0.01));
     vec4 symbol = mix(vec4(symbol_r, symbol_g, symbol_b, symbol_a),
                       vec4(symbol_inner_r, symbol_inner_g, symbol_inner_b, symbol_inner_a), clamp(onInner, 0.0, 1.0));
     c = over(c, vec4(symbol.rgb, 1.0) * (symbol.a * m.a));

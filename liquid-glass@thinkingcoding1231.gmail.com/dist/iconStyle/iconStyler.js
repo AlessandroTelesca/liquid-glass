@@ -218,16 +218,16 @@ export class IconStyler {
             this._unstyle(icon, styled);
             return;
         }
-        Promise.all([this._maps.get(file), this._shader]).then(([map, shader]) => {
+        Promise.all([this._maps.get(file), this._shader]).then(([textures, shader]) => {
             if (this._styled.get(icon) !== styled || styled.serial !== serial)
                 return;
-            if (!map) {
+            if (!textures) {
                 this._unstyle(icon, styled);
                 return;
             }
             this._pipeline ??= iconStylePipeline(shader);
             const effect = styled.effect ?? new IconStyleEffect();
-            effect.prepare(this._pipeline.copy(), map, this._colors());
+            effect.prepare(this._pipeline.copy(), textures, this._colors());
             if (!styled.effect) {
                 styled.effect = effect;
                 icon.add_effect_with_name(EFFECT_NAME, effect);

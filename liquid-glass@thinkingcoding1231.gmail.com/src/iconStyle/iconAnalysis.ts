@@ -92,6 +92,12 @@ const MIN_OPAQUE = 0.85;
 const FLAT_SYMBOL = 0.15;
 const DETAIL_DIM = 0.45;
 const MIN_INNER_SHARE = 0.1;
+// A shape that falls a little short of a plate (smaller than MIN_PLATE_AREA or MIN_INNER_SHARE, or fitted less closely
+// than FIT_PLATE) is one all the same when a plate on the same plate has about its size and proportions, so that of two or three
+// alike shapes all become plates, not one.
+const PEER_AREA = 0.012;
+const PEER_FIT = 0.88;
+const PEER_SIZE = 0.3;
 
 const LINEAR = new Float32Array(256).map((_, i) => {
   const c = i / 255;
@@ -296,11 +302,12 @@ function fitRipple(mask: Mask, w: number, h: number, basic: PlateShape): PlateSh
   return shape.fit >= FIT_PLATE ? shape : null;
 }
 
+// The closest shape, which may fit less than FIT_PLATE (down to PEER_FIT).
 function fitShape(mask: Mask, w: number, h: number): PlateShape | null {
-  if (mask.x2 - mask.x1 < 8 || mask.y2 - mask.y1 < 8) return null;
+  if (mask.x2 - mask.x1 < 6 || mask.y2 - mask.y1 < 6) return null;
   const basic = fitBasic(mask, w, h);
   if (basic.fit >= FIT_PLATE) return basic;
-  return fitRipple(mask, w, h, basic);
+  return fitRipple(mask, w, h, basic) ?? (basic.fit >= PEER_FIT ? basic : null);
 }
 
 function areas(lab: Float32Array, opaque: Uint8Array, w: number, h: number): Int32Array {
@@ -465,6 +472,13 @@ function fitColor(shape: PlateShape, pixels: number[], lab: Float32Array, w: num
 interface Candidate {
   mask: Mask;
   shape: PlateShape;
+  // Whether it is a plate on its own, rather than only beside one like it.
+  strict: boolean;
+}
+
+function alike(a: Candidate, b: Candidate): boolean {
+  const near = (x: number, y: number) => Math.abs(x - y) <= PEER_SIZE * Math.max(x, y);
+  return near(a.mask.area, b.mask.area) && near(a.shape.rx, b.shape.rx) && near(a.shape.ry, b.shape.ry);
 }
 
 export function analyzeIcon(icon: IconPixels): IconAnalysis {
@@ -483,12 +497,12 @@ export function analyzeIcon(icon: IconPixels): IconAnalysis {
   const candidates: Candidate[] = [];
   const add = (fill: Uint8Array) => {
     const mask = maskOf(fill, w, h);
-    if (mask.area < n * MIN_PLATE_AREA) return;
+    if (mask.area < n * PEER_AREA) return;
     let solid = 0;
     for (let i = 0; i < n; i++) solid += fill[i] & opaque[i];
     if (solid < mask.area * MIN_OPAQUE) return;
     const shape = fitShape(mask, w, h);
-    if (shape) candidates.push({ mask, shape });
+    if (shape) candidates.push({ mask, shape, strict: mask.area >= n * MIN_PLATE_AREA && shape.fit >= FIT_PLATE });
   };
   add(filled(opaque, w, h));
   const labels = areas(lab, opaque, w, h);
@@ -497,7 +511,7 @@ export function analyzeIcon(icon: IconPixels): IconAnalysis {
     if (labels[i] >= 0) sizes.set(labels[i], (sizes.get(labels[i]) ?? 0) + 1);
   }
   for (const [label, size] of sizes) {
-    if (size < n * MIN_PLATE_AREA * 0.5) continue;
+    if (size < n * PEER_AREA * 0.5) continue;
     const area = new Uint8Array(n);
     for (let i = 0; i < n; i++) area[i] = labels[i] === label ? 1 : 0;
     add(filled(area, w, h));
@@ -508,21 +522,42 @@ export function analyzeIcon(icon: IconPixels): IconAnalysis {
   candidates.sort((a, b) => b.mask.area - a.mask.area);
   const kept: Candidate[] = [];
   const parents: number[] = [];
-  for (const c of candidates) {
-    if (kept.some(k => overlap(k.shape, c.mask, w, h) > 0.95)) continue;
-    const shares = kept.map(k => {
-      let inside = 0;
-      for (let i = 0; i < n; i++) {
-        if (c.mask.data[i] && coverageOf(k.shape, i % w, Math.floor(i / w)) > 0.5) inside++;
-      }
-      return inside / c.mask.area;
-    });
-    if (shares.some(share => share > 0.1 && share < 0.9)) continue;
+  // How much of `mask` lies in `shape`.
+  const share = (mask: Mask, shape: PlateShape) => {
+    let inside = 0;
+    for (let i = 0; i < n; i++) {
+      if (mask.data[i] && coverageOf(shape, i % w, Math.floor(i / w)) > 0.5) inside++;
+    }
+    return inside / mask.area;
+  };
+  // The kept plate `c` lies in, -1 for none, or null when it lies partly over one.
+  const placeOf = (c: Candidate): number | null => {
+    if (kept.some(k => overlap(k.shape, c.mask, w, h) > 0.95)) return null;
+    const shares = kept.map(k => share(c.mask, k.shape));
+    if (shares.some(share => share > 0.1 && share < 0.9)) return null;
     let parent = -1;
     for (let k = kept.length - 1; k >= 0 && parent < 0; k--) {
       if (shares[k] >= 0.9) parent = k;
     }
-    if (parent >= 0 && c.mask.area < kept[parent].mask.area * MIN_INNER_SHARE) continue;
+    return parent;
+  };
+  const loose = candidates.filter(candidate => !candidate.strict);
+  for (const c of candidates.filter(candidate => candidate.strict)) {
+    const parent = placeOf(c);
+    if (parent === null) continue;
+    if (parent >= 0 && c.mask.area < kept[parent].mask.area * MIN_INNER_SHARE) {
+      loose.push(c);
+      continue;
+    }
+    kept.push(c);
+    parents.push(parent);
+  }
+  // Then the shapes alike to a kept plate on the same plate. Nothing kept lies in them, so they go last.
+  loose.sort((a, b) => b.mask.area - a.mask.area);
+  for (const c of loose) {
+    const parent = placeOf(c);
+    if (parent === null || !kept.some((k, i) => parents[i] === parent && alike(k, c))) continue;
+    if (kept.some(k => k.mask.area < c.mask.area && share(k.mask, c.shape) >= 0.9)) continue;
     kept.push(c);
     parents.push(parent);
   }

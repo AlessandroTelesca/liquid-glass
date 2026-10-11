@@ -1,10 +1,12 @@
+// The style maps of icon files, made by the icon worker (iconWorker.ts) and
+// kept in the user's cache directory, so that an icon is taken apart once.
 import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
 import { WorkerProcess } from '../workers/workerProcess.js';
 import { iconStyleTexture } from './iconEffect.js';
 import { MAP_SIZE } from './styleMap.js';
 // Changes whenever the maps would come out differently, so that older ones are made again.
-const MAP_VERSION = 2;
+const MAP_VERSION = 3;
 
 function loadFile(file, cancellable) {
     return new Promise((resolve, reject) => {
@@ -34,7 +36,7 @@ function modified(file, cancellable) {
 
 export class IconMaps {
     _worker;
-    // By icon file: its map's texture, or null for an icon shown as it is.
+    // By icon file: its map's and its tones' textures, or null for an icon shown as it is.
     _maps = new Map();
     _cancellable = new Gio.Cancellable();
     _dir = `${GLib.get_user_cache_dir()}/liquid-glass/icon-maps`;
@@ -73,9 +75,10 @@ export class IconMaps {
         }
         if (bytes.length === 0)
             return null;
-        if (bytes.length !== MAP_SIZE * MAP_SIZE * 4)
+        const length = MAP_SIZE * MAP_SIZE * 4;
+        if (bytes.length !== length * 2)
             throw new Error(`${cache.get_path()} is not a style map`);
-        return iconStyleTexture(bytes);
+        return { map: iconStyleTexture(bytes.subarray(0, length)), tone: iconStyleTexture(bytes.subarray(length)) };
     }
 
     destroy() {

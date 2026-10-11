@@ -207,6 +207,8 @@ test('icon rules show their controls only while icons are redrawn somewhere, and
   assert.equal(f.row('Icons to leave as they are').visible, false);
   // Other pages have rows of these titles too.
   const iconRow = title => f.row('Application icons').children.find(row => row.title === title);
+  assert.equal(iconRow('Tint strength').visible, false, 'Light is the default variant');
+  f.controls.write({'icon-style-tint-variant': 'dark'});
   assert.equal(iconRow('Tint strength').visible, true);
   f.controls.write({'icon-style-mode': 'mono'});
   for (const title of ['Accent color', 'Color', 'Tint strength'])
