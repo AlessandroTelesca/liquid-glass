@@ -1,6 +1,7 @@
-// Redraws application icons in the dock (Dash to Dock) and in the launcher as
-// glass plates under a symbol (see iconEffect.ts), for the
-// applications the settings pick.
+// Redraws application icons in the dock (Dash to Dock), the launcher and the
+// overview's app grid as glass plates under a symbol (see iconEffect.ts), for
+// the applications the settings pick.
+import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import Cogl from 'gi://Cogl';
 import Clutter from 'gi://Clutter';
 import Gio from 'gi://Gio';
@@ -16,7 +17,7 @@ import { IconStyleEffect, iconStylePipeline } from './iconEffect.js';
 import { IconMaps } from './iconMaps.js';
 import { iconStyleColors, type IconStyleColors, type IconStyleMode } from './styleColors.js';
 
-export type IconSurface = 'dock' | 'launcher';
+export type IconSurface = 'dock' | 'launcher' | 'app-grid';
 
 // The id the Show Apps button goes by in the application lists.
 export const SHOW_APPS_ID = 'show-apps';
@@ -27,6 +28,8 @@ const EFFECT_NAME = 'liquid-glass-icon-style';
 interface Styled {
   appId: string;
   surface: IconSurface;
+  // The dock or app grid it was found in.
+  root: Clutter.Actor | null;
   effect: IconStyleEffect | null;
   // Advanced on every restyle, so that a map that comes late for an older look is dropped.
   serial: number;
@@ -34,7 +37,7 @@ interface Styled {
 }
 
 // Keys that decide which icons are styled, and keys that only change how they look.
-const KEYS = ['icon-style-dock', 'icon-style-launcher', 'icon-style-all-apps', 'icon-style-whitelist', 'icon-style-blacklist'];
+const KEYS = ['icon-style-dock', 'icon-style-launcher', 'icon-style-app-grid', 'icon-style-all-apps', 'icon-style-whitelist', 'icon-style-blacklist'];
 const COLOR_KEYS = ['icon-style-mode', 'icon-style-use-accent', 'icon-style-color', 'icon-style-tint-variant',
   'icon-style-tint-strength', 'icon-style-symbol-opacity', 'icon-style-tuning'];
 
@@ -54,8 +57,8 @@ export class IconStyler {
   private _pipeline: Cogl.Pipeline | null = null;
   private _theme = new St.IconTheme();
   private _styled = new Map<St.Icon, Styled>();
-  // Per dock, the actors in it watched for children, by the handler on each.
-  private _docks = new Map<Clutter.Actor, Map<Clutter.Actor, number[]>>();
+  // Per dock and app grid, the actors in it watched for children, by the handlers on each.
+  private _roots = new Map<Clutter.Actor, { surface: IconSurface, watched: Map<Clutter.Actor, number[]> }>();
   private _scanId = 0;
   private _settingsIds: number[] = [];
   private _themeId = 0;
@@ -91,6 +94,7 @@ export class IconStyler {
       this._restyleAll();
     });
     this._unwatchAccent = watchAccentColor(() => this._recolorAll());
+    this._watch(Main.overview._overview.controls._appDisplay, 'app-grid');
   }
 
   cleanup(): void {
@@ -102,7 +106,7 @@ export class IconStyler {
     this._unwatchAccent();
     if (this._scanId) global.compositor.get_laters().remove(this._scanId);
     this._scanId = 0;
-    for (const dock of [...this._docks.keys()]) this.unwatchDock(dock);
+    for (const root of [...this._roots.keys()]) this.unwatchDock(root);
     for (const icon of [...this._styled.keys()]) this._forget(icon);
     this._maps.destroy();
     this._pipeline = null;
@@ -110,19 +114,23 @@ export class IconStyler {
 
   /** Styles the application icons in a Dash to Dock dock, and those it adds later. */
   watchDock(dock: Clutter.Actor): void {
-    if (this._docks.has(dock)) return;
-    this._docks.set(dock, new Map());
-    this._scanSoon();
+    this._watch(dock, 'dock');
   }
 
-  unwatchDock(dock: Clutter.Actor): void {
-    const watched = this._docks.get(dock);
-    if (!watched) return;
-    this._docks.delete(dock);
-    for (const [actor, ids] of watched) ids.forEach(id => actor.disconnect(id));
+  unwatchDock(root: Clutter.Actor): void {
+    const entry = this._roots.get(root);
+    if (!entry) return;
+    this._roots.delete(root);
+    for (const [actor, ids] of entry.watched) ids.forEach(id => actor.disconnect(id));
     for (const [icon, styled] of [...this._styled]) {
-      if (styled.surface === 'dock' && dock.contains(icon)) this._forget(icon);
+      if (styled.root === root) this._forget(icon);
     }
+  }
+
+  private _watch(root: Clutter.Actor, surface: IconSurface): void {
+    if (this._roots.has(root)) return;
+    this._roots.set(root, { surface, watched: new Map() });
+    this._scanSoon();
   }
 
   /** Styles a launcher result's icon, which goes away with its row. */
@@ -135,15 +143,15 @@ export class IconStyler {
     if (this._scanId) return;
     this._scanId = global.compositor.get_laters().add(Meta.LaterType.BEFORE_REDRAW, () => {
       this._scanId = 0;
-      for (const [dock, watched] of this._docks) this._scan(dock, watched);
+      for (const [root, { surface, watched }] of this._roots) this._scan(root, root, surface, watched);
       return GLib.SOURCE_REMOVE;
     });
   }
 
-  private _scan(actor: Clutter.Actor, watched: Map<Clutter.Actor, number[]>): void {
+  private _scan(actor: Clutter.Actor, root: Clutter.Actor, surface: IconSurface, watched: Map<Clutter.Actor, number[]>): void {
     if (actor instanceof St.Icon) {
       const appId = appIdOf(actor);
-      if (appId && !this._styled.has(actor)) this._style(actor, appId, 'dock');
+      if (appId && !this._styled.has(actor)) this._style(actor, appId, surface, root);
       return;
     }
     if (!watched.has(actor)) {
@@ -152,14 +160,17 @@ export class IconStyler {
         actor.connect('destroy', () => watched.delete(actor)),
       ]);
     }
-    for (const child of actor.get_children()) this._scan(child, watched);
+    for (const child of actor.get_children()) this._scan(child, root, surface, watched);
+    // A folder's apps are laid out in a view of their own, which goes into a dialog over the overview once it opens.
+    const folder = (actor as any).view;
+    if (surface === 'app-grid' && folder instanceof Clutter.Actor) this._scan(folder, root, surface, watched);
   }
 
-  private _style(icon: St.Icon, appId: string, surface: IconSurface): void {
+  private _style(icon: St.Icon, appId: string, surface: IconSurface, root: Clutter.Actor | null = null): void {
     if (!this._styled.has(icon)) {
       const restyle = () => this._apply(icon);
       this._styled.set(icon, {
-        appId, surface, effect: null, serial: 0,
+        appId, surface, root, effect: null, serial: 0,
         ids: [icon.connect('destroy', () => this._styled.delete(icon)), icon.connect('notify::gicon', restyle),
           icon.connect('notify::fallback-gicon', restyle)],
       });

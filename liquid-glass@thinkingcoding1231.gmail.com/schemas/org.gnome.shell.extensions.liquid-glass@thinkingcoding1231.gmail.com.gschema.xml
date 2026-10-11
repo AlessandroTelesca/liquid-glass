@@ -1034,6 +1034,11 @@
       <summary>Glass icons in the launcher</summary>
       <description>Redraws application icons in the launcher's results as glass plates under a one-color symbol.</description>
     </key>
+    <key name="icon-style-app-grid" type="b">
+      <default>false</default>
+      <summary>Glass icons in the app grid</summary>
+      <description>Redraws application icons in the overview's app grid, folders included, as glass plates under a one-color symbol.</description>
+    </key>
     <key name="icon-style-mode" type="s">
       <choices>
         <choice value="tinted"/>

@@ -8,8 +8,10 @@
 // plate that carries a picture keeps its shape, and the picture is taken as
 // the symbol. Pure computation on unpremultiplied RGBA, so that it runs in a
 // worker process as well as in tests.
-// A shape counts as a plate when it covers the candidate this well.
+// A shape counts as a plate when it covers the candidate this well, a shape between a diamond and an ellipse only when
+// it covers it as well as FIT_POINTED: one that covers it less rounds off the corners of a polygon.
 const FIT_PLATE = 0.94;
+const FIT_POINTED = 0.96;
 // Oklab distances: neighbours closer than this are one area; a pixel this far
 // from its plate's colour is symbol, fully from SYMBOL_HIGH.
 const SAME_AREA = 0.035;
@@ -18,6 +20,7 @@ const SAME_AREA = 0.035;
 const EDGE_SLOTS = 2 ** 21;
 const FINE_JOIN = 0.6;
 const FINE_MAX = 0.1;
+const FINE_DRIFT = 0.25;
 const SYMBOL_LOW = 0.045;
 const SYMBOL_HIGH = 0.11;
 // A plate whose largest area strays this much (RMS) from a smooth colour, or
@@ -32,15 +35,15 @@ const MIN_PLATE_AREA = 0.04;
 // A shape counts as a plate only when this much of it is opaque (an outline
 // drawn on nothing is a symbol).
 const MIN_OPAQUE = 0.85;
-// A symbol whose large areas differ by less than PIECE_APART where they meet is one colour. Otherwise the weakest of
-// them is drawn DETAIL_DIM weaker than the strongest, or less when they span less than TONE_SPAN along the direction
-// their tones are taken along, the farthest TONE_TRIM of their pixels at either end left out. Only its TONE_PARTS
-// largest areas count, and two of them are told apart easily once TONE_APART (Oklab) lies between them.
-const TONE_SPAN = 0.075;
+// Two areas of the symbol meet on an edge where the colour across it steps by this share of their colours' difference.
+const TONE_STEP = 0.5;
+// The weakest part of a symbol is drawn this much weaker than its strongest; see symbolTone().
 const DETAIL_DIM = 0.45;
-const TONE_PARTS = 48;
-const TONE_APART = 0.08;
-const TONE_TRIM = 0.05;
+const TONE_GROUPS = 6;
+const TONE_LEVELS = 8;
+const TONE_FULL = 0.3;
+const TONE_SEEN = 0.2;
+const TONE_ORDER = 0.12;
 const MIN_INNER_SHARE = 0.1;
 // A shape that falls a little short of a plate (smaller than MIN_PLATE_AREA or MIN_INNER_SHARE, or fitted less closely
 // than FIT_PLATE) is one all the same when a plate on the same plate has about its size and proportions, so that of two or three
@@ -73,6 +76,29 @@ const GROUND_EDGE = 0.015;
 const BAND = 4;
 const GROUND_CLOSEST = 0.05;
 const GROUND_NEAR = 0.1;
+// Nor is an area narrower than this (its breadth, analysis px; see broad()).
+const GROUND_BREADTH = 3;
+// An area with EDGE_INSIDE of its pixels within EDGE_BAND of its plate's half size from its outline is the icon's own
+// rim, which the glass's rim takes the place of.
+const EDGE_BAND = 0.09;
+const EDGE_INSIDE = 0.8;
+// So is a line running along the outline at an even depth within twice that, as long as the plate is wide.
+const EDGE_EVEN = 1.2;
+// Two areas shade into each other when the median step across their edge, at least SEAM_MIN px long, is below SEAM_STEP.
+const SEAM_STEP = 0.02;
+const SEAM_MIN = 12;
+// Inside a plate, deeper than FADE_DEPTH (analysis px), a symbol pixel is drawn whole from twice FADE_FROM opacity.
+const FADE_DEPTH = 2;
+const FADE_FROM = 0.08;
+// A gloss or a shade lays GLOSS_MIN to GLOSS_MAX of white or black over what is under it, the same over each colour to
+// within GLOSS_NEAR (Oklab).
+const GLOSS_MIN = 0.05;
+const GLOSS_MAX = 0.6;
+const GLOSS_NEAR = 0.03;
+// Pixels that stand out of the surface more than STROKE_LOW of the symbol's threshold, next to one another and at
+// least STROKE_MIN analysis px² together, are one stroke.
+const STROKE_LOW = 0.6;
+const STROKE_MIN = 3;
 // The share of a large area's pixels closest to the surface that tell whether it fades into it.
 const FADE_CLOSEST = 0.05;
 // The surface around a pixel is averaged over squares of these half sides (analysis px), the nearer weighing more.
@@ -165,14 +191,17 @@ function maskOf(data, w, h) {
     return { data, x1, y1, x2, y2, area };
 }
 
-function overlap(shape, mask, w, h) {
+// Every `step`th pixel each way only, when ranking shapes.
+function overlap(shape, mask, w, h, step = 1) {
     let inter = 0, union = 0;
-    const x1 = Math.max(Math.floor(Math.min(mask.x1, shape.cx - shape.rx * 1.3)) - 2, 0);
-    const x2 = Math.min(Math.ceil(Math.max(mask.x2, shape.cx + shape.rx * 1.3)) + 2, w - 1);
-    const y1 = Math.max(Math.floor(Math.min(mask.y1, shape.cy - shape.ry * 1.3)) - 2, 0);
-    const y2 = Math.min(Math.ceil(Math.max(mask.y2, shape.cy + shape.ry * 1.3)) + 2, h - 1);
-    for (let y = y1; y <= y2; y++) {
-        for (let x = x1; x <= x2; x++) {
+    // Teeth reach out of the basic shape; nothing else does.
+    const reach = shape.ripple ? 1.3 : 1;
+    const x1 = Math.max(Math.floor(Math.min(mask.x1, shape.cx - shape.rx * reach)) - 2, 0);
+    const x2 = Math.min(Math.ceil(Math.max(mask.x2, shape.cx + shape.rx * reach)) + 2, w - 1);
+    const y1 = Math.max(Math.floor(Math.min(mask.y1, shape.cy - shape.ry * reach)) - 2, 0);
+    const y2 = Math.min(Math.ceil(Math.max(mask.y2, shape.cy + shape.ry * reach)) + 2, h - 1);
+    for (let y = y1; y <= y2; y += step) {
+        for (let x = x1; x <= x2; x += step) {
             const c = coverageOf(shape, x, y);
             const m = mask.data[y * w + x];
             inter += Math.min(c, m);
@@ -193,6 +222,10 @@ const REFINE_GAIN = 0.008;
 const EXPONENTS = [1, 1.25, 1.5, 2, 2.5, 3, 3.5, 4, 4.5, 5, 6, 8];
 const RADII = [0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1];
 
+function fits(shape) {
+    return shape.fit >= (shape.kind === 'superellipse' && shape.exponent < 2 ? FIT_POINTED : FIT_PLATE);
+}
+
 // The shape spans the mask's bounding box unless refined, so that it ends where a piece on the mask's edge begins.
 function fitBasic(mask, w, h, refine = false, exponents = EXPONENTS) {
     const base = {
@@ -202,7 +235,7 @@ function fitBasic(mask, w, h, refine = false, exponents = EXPONENTS) {
     };
     let best = { ...base, kind: 'roundrect' };
     const consider = (shape) => {
-        shape.fit = overlap(shape, mask, w, h);
+        shape.fit = overlap(shape, mask, w, h, 2);
         if (shape.fit > best.fit)
             best = shape;
     };
@@ -210,6 +243,7 @@ function fitBasic(mask, w, h, refine = false, exponents = EXPONENTS) {
         consider({ ...base, kind: 'roundrect', radius: t * Math.min(base.rx, base.ry) });
     for (const n of exponents)
         consider({ ...base, kind: 'superellipse', exponent: n });
+    best.fit = overlap(best, mask, w, h);
     return !refine || best.fit < FIT_PLATE || best.fit >= REFINE_BELOW ? best : refined(best, mask, w, h);
 }
 
@@ -327,7 +361,7 @@ function fitShape(mask, w, h, refine = false) {
     if (mask.x2 - mask.x1 < 6 || mask.y2 - mask.y1 < 6)
         return null;
     const basic = fitBasic(mask, w, h, refine);
-    if (basic.fit >= FIT_PLATE)
+    if (fits(basic))
         return basic;
     // Teeth sit on a round or a square outline, not on a diamond's.
     const round = basic.kind === 'superellipse' && basic.exponent < 2
@@ -372,7 +406,9 @@ function apart(lab, i, j) {
 // Finer areas, by graph-based segmentation (Felzenszwalb and Huttenlocher): neighbours are joined from the closest
 // pair up, and two areas only while the step between them is no larger than the steps already inside each, plus
 // FINE_JOIN over the area's size (`pixel` is the size of an analysis pixel). A gradient's small steps join it whole,
-// while a faint edge parts two areas even where anti-aliasing along a curve softens it.
+// while a faint edge parts two areas even where anti-aliasing along a curve softens it. Two areas whose mean colours
+// are more than FINE_DRIFT apart stay apart all the same, so that a soft edge (a bevel, a blur) is not a gradient
+// that joins a letter to its outline.
 function fineAreas(lab, opaque, w, h, pixel) {
     const n = w * h;
     // Each edge as its weight in millionths and its index in one number, so that a numeric sort orders them by weight.
@@ -390,6 +426,7 @@ function fineAreas(lab, opaque, w, h, pixel) {
     const parent = new Int32Array(n).map((_, i) => i);
     const size = new Float64Array(n).fill(1);
     const inside = new Float64Array(n);
+    const sums = Float64Array.from(lab.subarray(0, n * 3));
     const find = (i) => {
         while (parent[i] !== i) {
             parent[i] = parent[parent[i]];
@@ -403,9 +440,14 @@ function fineAreas(lab, opaque, w, h, pixel) {
         const a = find(i), b = find(slot % 2 ? i + w : i + 1), step = Math.floor(key / EDGE_SLOTS) / 1e6;
         if (a === b || step > FINE_MAX || step > Math.min(inside[a] + join / size[a], inside[b] + join / size[b]))
             continue;
+        const drift = Math.hypot(...[0, 1, 2].map(c => sums[a * 3 + c] / size[a] - sums[b * 3 + c] / size[b]));
+        if (drift > FINE_DRIFT)
+            continue;
         parent[a] = b;
         size[b] += size[a];
         inside[b] = step;
+        for (let c = 0; c < 3; c++)
+            sums[b * 3 + c] += sums[a * 3 + c];
     }
     const labels = new Int32Array(n).fill(-1);
     for (let i = 0; i < n; i++) {
@@ -629,7 +671,7 @@ export function analyzeIcon(icon) {
             return;
         const shape = fitShape(mask, w, h, refine);
         if (shape)
-            candidates.push({ mask, shape, strict: mask.area >= n * MIN_PLATE_AREA && shape.fit >= FIT_PLATE, absorbed });
+            candidates.push({ mask, shape, strict: mask.area >= n * MIN_PLATE_AREA && fits(shape), absorbed });
     };
     add(filled(opaque, w, h), false, true);
     const labels = areas(lab, opaque, w, h);
@@ -643,7 +685,7 @@ export function analyzeIcon(icon) {
         if (mask.area < n * PEER_AREA || mask.x2 - mask.x1 < 6 || mask.y2 - mask.y1 < 6)
             return null;
         const basic = fitBasic(mask, w, h);
-        if (basic.fit >= FIT_PLATE)
+        if (fits(basic))
             return null;
         const inside = new Map();
         for (let i = 0; i < n; i++) {
@@ -710,12 +752,12 @@ export function analyzeIcon(icon) {
                 if (shares[k] >= 0.9)
                     parent = k;
             }
-            // A part of the plate's surface (a stripe, a quarter: reaching its outline, past any rim, in a shade of the
-            // colour around it) lies in it, not on it.
-            if (parent >= 0 && alongOutline(c.mask, kept[parent].shape, w, h) > ALONG_PARENT) {
-                const around = dilated(c.mask.data, w, h, 3).map((v, i) => v & kept[parent].mask.data[i] & (1 - c.mask.data[i]));
+            // A part of the plate's surface lies in it, not on it: a shape in the colour around it (one a line encloses), or
+            // in a shade of that colour reaching the plate's outline past any rim (a stripe, a quarter).
+            if (parent >= 0) {
+                const around = dilated(c.mask.data, w, h, 6).map((v, i) => v & kept[parent].mask.data[i] & (1 - c.mask.data[i]));
                 const near = Math.hypot(...[0, 1, 2].map(ch => medianOf(c.mask.data, ch) - medianOf(around, ch)));
-                if (near < GROUND_NEAR)
+                if (near < SYMBOL_LOW || (near < GROUND_NEAR && alongOutline(c.mask, kept[parent].shape, w, h) > ALONG_PARENT))
                     return null;
             }
             return parent;
@@ -912,11 +954,33 @@ export function symbolLayer(plates, analysisWidth, pixels) {
     });
     // The surface grows from each plate's main area by the large areas along its outline whose closest pixels come
     // near the colour of an area already in it: facets shaded away from it, quarters in a darker shade, stripes.
+    // A line (a trace, a stroke) is not part of a surface however close in colour: its pixels over its edge's are its
+    // breadth, about half its width.
+    const broad = (r) => r.count / Math.max(r.count - r.interior, 1) * s >= GROUND_BREADTH;
+    // The areas that lie along their plate's outline.
+    const rim = new Float64Array(list.length);
+    const deep = new Float64Array(list.length), deep2 = new Float64Array(list.length);
+    const bandOf = (k) => Math.max(1.5, Math.min(plates[k].shape.rx, plates[k].shape.ry) * EDGE_BAND);
+    for (let i = 0; i < n; i++) {
+        const k = owner[i], j = region[i];
+        if (j < 0 || k < 0)
+            continue;
+        if (-depth[i] * s < bandOf(k))
+            rim[j]++;
+        deep[j] -= depth[i] * s;
+        deep2[j] += (depth[i] * s) ** 2;
+    }
+    const even = (r, j) => {
+        const mean = deep[j] / r.count;
+        return !broad(r) && mean < bandOf(r.owner) * 2 && deep2[j] / r.count - mean * mean < EDGE_EVEN ** 2 &&
+            r.count >= plates[r.owner].shape.rx + plates[r.owner].shape.ry;
+    };
     const pending = new Map();
     list.forEach((r, j) => {
-        r.decided = plain(r.owner) && r.count >= n * REGION_MIN && r.interior >= Math.max(8, r.count * THICK);
+        r.edge = plain(r.owner) && j !== main[r.owner] && (rim[j] >= r.count * EDGE_INSIDE || even(r, j));
+        r.decided = plain(r.owner) && !r.edge && r.count >= n * REGION_MIN && r.interior >= Math.max(8, r.count * THICK);
         r.ground = plain(r.owner) && j === main[r.owner];
-        if (r.decided && !r.ground && r.count >= own[r.owner] * GROUND_SHARE && r.band >= band[r.owner] * GROUND_EDGE)
+        if (r.decided && !r.ground && broad(r) && r.count >= own[r.owner] * GROUND_SHARE && r.band >= band[r.owner] * GROUND_EDGE)
             pending.set(j, []);
     });
     for (let i = 0; i < n; i++) {
@@ -941,7 +1005,7 @@ export function symbolLayer(plates, analysisWidth, pixels) {
     const surfaces = list.filter(r => r.ground);
     const closest = new Map();
     list.forEach((r, j) => {
-        if (r.decided && !r.ground)
+        if (r.decided && !r.ground && broad(r))
             closest.set(j, []);
     });
     for (let i = 0; i < n; i++) {
@@ -954,6 +1018,35 @@ export function symbolLayer(plates, analysisWidth, pixels) {
             .sort((a, b) => a - b)[Math.floor(inside.length / 2)];
         if (near < Math.max(SYMBOL_LOW, plates[r.owner].noise * 3))
             r.ground = true;
+    }
+    // And the large areas the surface shades into with no step along most of the edge they share: the side of a raised
+    // shape turned from the light.
+    const seams = new Map();
+    for (let i = 0; i < n; i++) {
+        const j = region[i];
+        if (j < 0)
+            continue;
+        for (const k of [i % w + 1 < w ? i + 1 : -1, i + w < n ? i + w : -1]) {
+            if (k < 0 || region[k] < 0 || region[k] === j)
+                continue;
+            const key = Math.min(j, region[k]) * list.length + Math.max(j, region[k]);
+            if (!seams.has(key))
+                seams.set(key, []);
+            seams.get(key).push(apart(lab, i, k));
+        }
+    }
+    const seamless = [...seams].filter(([, steps]) => steps.length >= SEAM_MIN &&
+        steps.sort((a, b) => a - b)[Math.floor(steps.length / 2)] < SEAM_STEP).map(([key]) => key);
+    for (let grown = true; grown;) {
+        grown = false;
+        for (const key of seamless) {
+            const a = list[Math.floor(key / list.length)], b = list[key % list.length];
+            if (a.owner !== b.owner || a.ground === b.ground)
+                continue;
+            const r = a.ground ? b : a;
+            if (r.decided && broad(r))
+                r.ground = grown = true;
+        }
     }
     const step = (k) => Math.max(SURFACE_STEP, plates[k].noise * 2);
     // How much lighter or darker than the plate's colour a part of its surface is, against the main area's, small
@@ -1044,6 +1137,48 @@ export function symbolLayer(plates, analysisWidth, pixels) {
         if (region[i] >= 0 && list[region[i]].fades)
             low[i] = Math.max(low[i], SYMBOL_HIGH);
     }
+    const like = glossed(list, main, regions, w, h);
+    // Faint lines and specks, which fall into many small areas: each group of pixels next to one another that stand out
+    // of the surface is symbol as a whole, as strongly as its typical pixel stands out, so that a faint line is drawn
+    // evenly instead of in dots.
+    const stroke = new Float32Array(n).fill(-1);
+    {
+        // How far a pixel stands out: from the surface, or within a faint area that is not symbol, from that area's colour
+        // (the lines of a sketch drawn on a pale patch).
+        const out = Float32Array.from(raw, (d, i) => {
+            const r = region[i] >= 0 ? list[region[i]] : null;
+            return r?.decided && !r.ground ? Math.min(d, colorDistance(lab.subarray(i * 3, i * 3 + 3), r.color)) : d;
+        });
+        const loose = (i) => {
+            const r = region[i] >= 0 ? list[region[i]] : null;
+            return out[i] !== Infinity && out[i] > low[i] * STROKE_LOW && !r?.edge && !(r?.decided && !r.ground && r.strength >= 0.5) &&
+                like[region[i]] < 0;
+        };
+        const seen = new Uint8Array(n);
+        for (let start = 0; start < n; start++) {
+            if (seen[start] || !loose(start))
+                continue;
+            const group = [start];
+            seen[start] = 1;
+            for (let g = 0; g < group.length; g++) {
+                const i = group[g], x = i % w;
+                for (const j of [x > 0 ? i - 1 : -1, x < w - 1 ? i + 1 : -1, i - w, i + w]) {
+                    if (j >= 0 && j < n && !seen[j] && owner[j] === owner[i] && loose(j)) {
+                        seen[j] = 1;
+                        group.push(j);
+                    }
+                }
+            }
+            if (group.length * s * s < STROKE_MIN)
+                continue;
+            const d = group.map(i => out[i]).sort((a, b) => a - b);
+            const typical = d[Math.floor(d.length * 0.75)];
+            const lo = low[group[0]];
+            const strength = smoothstep(lo * 0.8, lo * 1.3, typical);
+            for (const i of group)
+                stroke[i] = strength * Math.min(out[i] / typical, 1);
+        }
+    }
     // Coverage: a large area's strength, less along its edge where it mixes with what is next to it; elsewhere the
     // distance over that of the strongest pixel within reach that differs from the surface in the same direction.
     const reach = Math.max(1, Math.ceil(1 / s));
@@ -1055,6 +1190,16 @@ export function symbolLayer(plates, analysisWidth, pixels) {
             continue;
         }
         const r = region[i] >= 0 ? list[region[i]] : null;
+        if (r?.edge)
+            continue;
+        if (r && like[region[i]] >= 0) {
+            cover[i] = list[like[region[i]]].strength;
+            continue;
+        }
+        if (stroke[i] >= 0) {
+            cover[i] = stroke[i];
+            continue;
+        }
         if (r?.decided && !r.ground) {
             cover[i] = regions.inner[i] ? r.strength : r.strength * Math.min(d / Math.max(r.contrast, 1e-3), 1);
             continue;
@@ -1137,7 +1282,10 @@ export function symbolLayer(plates, analysisWidth, pixels) {
     const tint = new Float32Array(n * 3);
     for (let i = 0; i < n; i++) {
         const j = region[i];
-        if (j >= 0 && big(j)) {
+        if (j >= 0 && like[j] >= 0) {
+            tint.set(list[like[j]].color, i * 3);
+        }
+        else if (j >= 0 && big(j)) {
             tint.set(list[j].color, i * 3);
         }
         else if (raw[i] === Infinity || cover[i] <= 0) {
@@ -1148,7 +1296,8 @@ export function symbolLayer(plates, analysisWidth, pixels) {
                 tint[i * 3 + c] = ref[i * 3 + c] + (lab[i * 3 + c] - ref[i * 3 + c]) / Math.max(cover[i], 0.25);
         }
     }
-    // How long the edges are between the symbol's large areas (across a pixel of anti-aliasing, too).
+    // How long the edges are between the symbol's large areas (across a pixel of anti-aliasing, too), where the colour
+    // steps from one to the other rather than shading over smoothly.
     const touching = new Map();
     for (let i = 0; i < n; i++) {
         const j = region[i];
@@ -1160,6 +1309,8 @@ export function symbolLayer(plates, analysisWidth, pixels) {
                 continue;
             const k = region[i + dy * w + dx];
             if (k < 0 || k === j || !big(k))
+                continue;
+            if (apart(lab, i, i + dy * w + dx) < colorDistance(list[j].color, list[k].color) * TONE_STEP)
                 continue;
             const key = Math.min(j, k) * list.length + Math.max(j, k);
             touching.set(key, (touching.get(key) ?? 0) + 1);
@@ -1173,15 +1324,70 @@ export function symbolLayer(plates, analysisWidth, pixels) {
     // little apart in shade, which glass of one colour would make the same.
     const surface = new Float32Array(n);
     for (let i = 0; i < n; i++) {
-        symbol[i] = alpha[i] * cover[i];
+        // A symbol fading out across a hole in its plate (a cut-out that shows through) is drawn whole, its colour being
+        // what tells it from the plate.
+        const seen = owner[i] >= 0 && -depth[i] * s >= FADE_DEPTH ? Math.min(Math.max((alpha[i] - FADE_FROM) / FADE_FROM, 0), 1) : alpha[i];
+        symbol[i] = seen * cover[i];
         intensity[i] = tone(tint.subarray(i * 3, i * 3 + 3));
         const k = owner[i];
         if (!plain(k))
             continue;
         const r = region[i] >= 0 ? list[region[i]] : null;
-        surface[i] = r?.decided && r.strength < 0.5 && cover[i] < 0.5 ? shades[region[i]] : refShade[i];
+        surface[i] = r?.edge ? 0 : r?.decided && r.strength < 0.5 && cover[i] < 0.5 ? shades[region[i]] : refShade[i];
     }
     return { symbol, intensity, surface };
+}
+
+// Per area, the symbol area it is part of under a gloss or a shade (-1: none): an area next to a symbol area whose
+// colour is that area's with the same white or black laid over it as an area of the surface next to it has over the
+// surface's own colour (a highlight across a lens and the rings on it).
+function glossed(list, main, regions, w, h) {
+    const like = list.map(() => -1);
+    const near = new Map();
+    const { region } = regions;
+    for (let i = 0; i < w * h; i++) {
+        const a = region[i];
+        if (a < 0)
+            continue;
+        const x = i % w;
+        for (const j of [x + 1 < w ? i + 1 : -1, x + 2 < w ? i + 2 : -1, i + w, i + 2 * w]) {
+            const b = j < w * h && j >= 0 ? region[j] : -1;
+            if (b < 0 || b === a)
+                continue;
+            if (!near.has(a))
+                near.set(a, new Set());
+            if (!near.has(b))
+                near.set(b, new Set());
+            near.get(a).add(b);
+            near.get(b).add(a);
+        }
+    }
+    const symbol = (r) => r.decided && !r.ground && r.strength >= 0.5;
+    list.forEach((y, j) => {
+        if (symbol(y) || y.edge || y.owner < 0 || main[y.owner] < 0 || y.count < 8)
+            return;
+        const ground = list[main[y.owner]].color;
+        for (const k of near.get(j) ?? []) {
+            const over = list[k];
+            if (!over.ground || k === main[y.owner])
+                continue;
+            // How much white (or black) the gloss lays over the surface, from lightness.
+            const white = over.color[0] > ground[0];
+            const alpha = white ? (over.color[0] - ground[0]) / (1 - ground[0]) : (ground[0] - over.color[0]) / ground[0];
+            if (alpha < GLOSS_MIN || alpha > GLOSS_MAX)
+                continue;
+            const to = white ? [1, 0, 0] : [0, 0, 0];
+            for (const m of near.get(j) ?? []) {
+                const under = list[m];
+                if (!symbol(under))
+                    continue;
+                const expected = under.color.map((v, c) => v + (to[c] - v) * alpha);
+                if (Math.hypot(...expected.map((v, c) => v - y.color[c])) < GLOSS_NEAR)
+                    like[j] = m;
+            }
+        }
+    });
+    return like;
 }
 
 // The colour areas of an image split by the plates they lie in: per pixel an index into `list` (-1: clear), and
@@ -1192,7 +1398,6 @@ function regionsOf(lab, opaque, owner, depth, w, h, s) {
     const region = new Int32Array(n).fill(-1);
     const keys = new Map();
     const list = [];
-    const all = [];
     for (let i = 0; i < n; i++) {
         if (labels[i] < 0)
             continue;
@@ -1202,12 +1407,12 @@ function regionsOf(lab, opaque, owner, depth, w, h, s) {
             j = list.length;
             keys.set(key, j);
             list.push({ owner: owner[i], count: 0, interior: 0, color: [0, 0, 0], band: 0, ground: false, strength: 0, contrast: 0,
-                decided: false, fades: false });
-            all.push([0, 0, 0]);
+                decided: false, fades: false, edge: false });
         }
         region[i] = j;
     }
     const inner = new Uint8Array(n);
+    const pixels = list.map(() => []), inside = list.map(() => []);
     for (let i = 0; i < n; i++) {
         const j = region[i];
         if (j < 0)
@@ -1215,20 +1420,20 @@ function regionsOf(lab, opaque, owner, depth, w, h, s) {
         const r = list[j];
         const x = i % w, y = (i - x) / w;
         r.count++;
-        for (let c = 0; c < 3; c++)
-            all[j][c] += lab[i * 3 + c];
+        pixels[j].push(i);
         if (r.owner >= 0 && -depth[i] * s < BAND)
             r.band++;
         if (x > 0 && x < w - 1 && y > 0 && y < h - 1 && region[i - 1] === j && region[i + 1] === j && region[i - w] === j &&
             region[i + w] === j) {
             inner[i] = 1;
             r.interior++;
-            for (let c = 0; c < 3; c++)
-                r.color[c] += lab[i * 3 + c];
+            inside[j].push(i);
         }
     }
     list.forEach((r, j) => {
-        r.color = r.interior ? r.color.map(v => v / r.interior) : all[j].map(v => v / r.count);
+        const from = inside[j].length ? inside[j] : pixels[j];
+        const middle = from.sort((a, b) => lab[a * 3] - lab[b * 3])[Math.floor(from.length / 2)];
+        r.color = Array.from(lab.subarray(middle * 3, middle * 3 + 3));
     });
     return { region, inner, list };
 }
@@ -1274,70 +1479,122 @@ function localMeans(values, wanted, w, h, channels, radii) {
     return out;
 }
 
-// How strongly each colour of the symbol is drawn, 1 - DETAIL_DIM to 1, from where it falls along the direction in
-// Oklab that keeps the symbol's large areas most apart where they meet (`edges`: two colours and the length of their
-// edge), strongest at the end its largest area is nearer to. Areas of different colours but about the same lightness (red and green) then stay apart,
-// and an area of one colour, whatever its gradient, is drawn evenly.
+// How strongly each colour of the symbol is drawn, 1 - DETAIL_DIM to 1. The symbol's large areas are put together
+// into up to TONE_GROUPS colours (the largest), which are given the strengths, out of TONE_LEVELS steps, that best
+// keep apart the colours that meet (`edges`: two colours and the length of their edge), the more so the more they
+// differ (TONE_FULL of Oklab apart, or more, TONE_SEEN apart in strength, which is told apart at a glance): red next
+// to green stays apart from it even at one lightness. Of two colours TONE_ORDER or more apart in lightness the lighter
+// is never the weaker; other things equal, lighter is stronger, and a colour that meets none of the others is drawn
+// at full strength. A colour between two of them is drawn in between.
 function symbolTone(parts, edges) {
-    const sorted = [...parts].sort((a, b) => b.count - a.count).slice(0, TONE_PARTS);
     const distance = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
-    // Edges between the same two colours (the cells of a pattern) are one pair, so that a pattern's many edges do not
-    // outweigh two colours that meet less often.
-    const pairs = [];
-    for (const [a, b, length] of edges) {
-        if (distance(a, b) < PIECE_APART)
-            continue;
-        const same = pairs.find(([p, q]) => (distance(p, a) < PIECE_APART / 2 && distance(q, b) < PIECE_APART / 2) ||
-            (distance(p, b) < PIECE_APART / 2 && distance(q, a) < PIECE_APART / 2));
-        if (same)
-            same[2] += length;
-        else
-            pairs.push([a, b, length]);
+    const groups = [];
+    for (const r of [...parts].sort((a, b) => b.count - a.count)) {
+        const near = groups.find(g => distance(g.color, r.color) < PIECE_APART);
+        if (near) {
+            near.color = near.color.map((v, c) => (v * near.count + r.color[c] * r.count) / (near.count + r.count));
+            near.count += r.count;
+        }
+        else {
+            groups.push({ color: [...r.color], count: r.count });
+        }
     }
-    if (!sorted.length || !pairs.length)
+    groups.sort((a, b) => b.count - a.count);
+    const kept = groups.slice(0, TONE_GROUPS);
+    if (kept.length < 2)
         return () => 1;
-    // The span of the areas along `v`, leaving out the farthest TONE_TRIM of their pixels at either end (thin outlines).
-    const spanOf = (v) => {
-        const values = sorted.map(r => ({ at: v[0] * r.color[0] + v[1] * r.color[1] + v[2] * r.color[2], count: r.count }))
-            .sort((p, q) => p.at - q.at);
-        const total = values.reduce((sum, p) => sum + p.count, 0);
-        let seen = 0, bottom = values[0].at, top = values[values.length - 1].at;
-        for (const p of values) {
-            if (seen <= total * TONE_TRIM)
-                bottom = p.at;
-            seen += p.count;
-            if (seen >= total * (1 - TONE_TRIM)) {
-                top = p.at;
-                break;
+    const nearest = (c) => {
+        let best = 0;
+        kept.forEach((g, k) => {
+            if (distance(g.color, c) < distance(kept[best].color, c))
+                best = k;
+        });
+        return best;
+    };
+    // How long each two groups meet.
+    const meet = new Map();
+    for (const [a, b, length] of edges) {
+        const p = nearest(a), q = nearest(b);
+        if (p === q)
+            continue;
+        const key = Math.min(p, q) * TONE_GROUPS + Math.max(p, q);
+        meet.set(key, (meet.get(key) ?? 0) + length);
+    }
+    const pairs = [...meet].map(([key, length]) => {
+        const p = Math.floor(key / TONE_GROUPS), q = key % TONE_GROUPS;
+        const apart = distance(kept[p].color, kept[q].color);
+        return { p, q, weight: Math.sqrt(length), want: TONE_SEEN * Math.min(apart / TONE_FULL, 1),
+            lighter: Math.sign(kept[p].color[0] - kept[q].color[0]) };
+    });
+    if (!pairs.length)
+        return () => 1;
+    const levels = Array.from({ length: TONE_LEVELS }, (_, k) => 1 - DETAIL_DIM * k / (TONE_LEVELS - 1));
+    // Of two colours clearly apart in lightness, the lighter is never the weaker.
+    const order = [];
+    kept.forEach((a, p) => kept.forEach((b, q) => {
+        if (a.color[0] - b.color[0] >= TONE_ORDER)
+            order.push([p, q]);
+    }));
+    const scoreOf = (strength) => {
+        if (order.some(([p, q]) => strength[p] < strength[q]))
+            return -Infinity;
+        let score = 0;
+        for (const { p, q, weight, want, lighter } of pairs) {
+            const step = strength[p] - strength[q];
+            score += weight * (Math.min(Math.abs(step) / want, 1) + 0.01 * lighter * Math.sign(step));
+        }
+        return score;
+    };
+    // Each group in turn moved to the step that does best, until none moves, from all at full strength and from strengths
+    // spread by lightness either way.
+    const lightness = kept.map(g => g.color[0]);
+    const lo = Math.min(...lightness), hi = Math.max(...lightness);
+    const spread = (k) => Math.round((hi - lightness[k]) / Math.max(hi - lo, 1e-6) * (TONE_LEVELS - 1));
+    let best = kept.map(() => 1), bestScore = -Infinity;
+    for (const start of [kept.map(() => 0), kept.map((_, k) => spread(k)), kept.map((_, k) => Math.round(spread(k) / 2))]) {
+        const steps = start.slice();
+        let score = scoreOf(steps.map(k => levels[k]));
+        for (let moved = true; moved;) {
+            moved = false;
+            for (let k = 0; k < kept.length; k++) {
+                for (let level = 0; level < TONE_LEVELS; level++) {
+                    if (level === steps[k])
+                        continue;
+                    const tried = steps.slice();
+                    tried[k] = level;
+                    const value = scoreOf(tried.map(t => levels[t]));
+                    if (value > score + 1e-9) {
+                        steps[k] = level;
+                        score = value;
+                        moved = true;
+                    }
+                }
             }
         }
-        return { bottom, top };
-    };
-    let best = [1, 0, 0], bestScore = -1;
-    for (let ia = -6; ia <= 6; ia++) {
-        for (let ib = -6; ib <= 6; ib++) {
-            const len = Math.hypot(1, ia / 2, ib / 2);
-            const v = [1 / len, ia / 2 / len, ib / 2 / len];
-            // Each pair of colours that meet counts by how long they meet and, the more so the more different they are (two
-            // hues more than two shades of one), as far as they are apart along `v`, up to TONE_APART, where they are told
-            // apart easily.
-            const along = (c) => v[0] * c[0] + v[1] * c[1] + v[2] * c[2];
-            let score = 0;
-            for (const [a, b, length] of pairs)
-                score += Math.sqrt(length) * distance(a, b) ** 2 * Math.min(Math.abs(along(a) - along(b)) / TONE_APART, 1);
-            // Lightness first, other things equal.
-            score *= 0.85 + 0.15 * v[0];
-            if (score > bestScore) {
-                best = v;
-                bestScore = score;
-            }
+        if (score > bestScore + 1e-9) {
+            best = steps.map(t => levels[t]);
+            bestScore = score;
         }
     }
-    const along = (c) => best[0] * c[0] + best[1] * c[1] + best[2] * c[2];
-    const { bottom, top } = spanOf(best);
-    const range = Math.max(top - bottom, TONE_SPAN);
-    // The end the largest area lies nearer to is drawn strongest.
-    const main = along(sorted[0].color);
-    const strong = top - main <= main - bottom ? top : bottom;
-    return c => 1 - DETAIL_DIM * Math.min(Math.abs(strong - along(c)) / range, 1);
+    // Colours a little apart are drawn alike; most pixels share their area's colour.
+    const known = new Map();
+    return c => {
+        const key = Math.round(c[0] * 200) * 160000 + Math.round(c[1] * 200 + 200) * 400 + Math.round(c[2] * 200 + 200);
+        const cached = known.get(key);
+        if (cached !== undefined)
+            return cached;
+        const a = nearest(c);
+        let b = -1;
+        kept.forEach((g, k) => {
+            if (k !== a && (b < 0 || distance(g.color, c) < distance(kept[b].color, c)))
+                b = k;
+        });
+        const ab = kept[b].color.map((v, i) => v - kept[a].color[i]);
+        const len2 = ab[0] ** 2 + ab[1] ** 2 + ab[2] ** 2;
+        const u = Math.min(Math.max(((c[0] - kept[a].color[0]) * ab[0] + (c[1] - kept[a].color[1]) * ab[1] +
+            (c[2] - kept[a].color[2]) * ab[2]) / Math.max(len2, 1e-9), 0), 0.5);
+        const value = best[a] + (best[b] - best[a]) * u;
+        known.set(key, value);
+        return value;
+    };
 }

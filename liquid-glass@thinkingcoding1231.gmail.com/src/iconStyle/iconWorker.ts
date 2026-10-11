@@ -15,6 +15,11 @@ const ANALYSIS_SIZE = 128;
 
 function write(path: string, bytes: Uint8Array): Promise<void> {
   GLib.mkdir_with_parents(GLib.path_get_dirname(path), 0o700);
+  // GIO's asynchronous write takes no empty buffer: it would never finish, and every icon after it would wait.
+  if (!bytes.length) {
+    GLib.file_set_contents(path, bytes);
+    return Promise.resolve();
+  }
   const file = Gio.File.new_for_path(path);
   return new Promise((resolve, reject) => {
     file.replace_contents_bytes_async(new GLib.Bytes(bytes), null, false, Gio.FileCreateFlags.NONE, null, (_f, res) => {

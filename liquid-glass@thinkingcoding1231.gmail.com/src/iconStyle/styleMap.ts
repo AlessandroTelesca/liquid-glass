@@ -162,9 +162,15 @@ export function buildStyleMap(analysis: IconAnalysis, detail: IconPixels, size =
         if (l === 0) return;
         const slot = Math.min(l, 2) - 1;
         const d = shapeDistance(plate.shape, qx, qy) * k * mapPx;
-        const deeper = d < 0 && l >= toneLevel[slot];
-        if (deeper || (toneLevel[slot] < 0 && d < inner[slot])) innerTone[slot] = tones[i];
-        if (deeper) toneLevel[slot] = l;
+        // How much of the map pixel the plate covers: a plate inside another of its channel (a disc in a ring) shows
+        // only in the tone, whose step along its outline is anti-aliased so.
+        const cover = Math.min(Math.max(0.5 - d, 0), 1);
+        if (cover > 0 && l >= toneLevel[slot]) {
+          innerTone[slot] = toneLevel[slot] < 0 ? tones[i] : innerTone[slot] + (tones[i] - innerTone[slot]) * cover;
+          toneLevel[slot] = l;
+        } else if (toneLevel[slot] < 0 && d < inner[slot]) {
+          innerTone[slot] = tones[i];
+        }
         if (d < 0) here = Math.max(here, l);
         inner[slot] = Math.min(inner[slot], d);
       });

@@ -7,7 +7,7 @@ import {presentIconTuning} from './icon-tuning.js';
 // The id the Show Apps button goes by in the lists (see src/iconStyle/iconStyler.ts).
 const SHOW_APPS_ID = 'show-apps';
 
-const ANY_ICON_STYLE = ['icon-style-dock', 'icon-style-launcher'];
+const ANY_ICON_STYLE = ['icon-style-dock', 'icon-style-launcher', 'icon-style-app-grid'];
 
 // Installed applications as the lists show them, and the Show Apps button.
 function applications() {
@@ -38,6 +38,7 @@ export class IconStyleRules {
       'Redraws icons as glass plates under a one-color symbol. An icon that carries a picture is left as it is.');
     this.controls.toggle(group, 'Dock', 'icon-style-dock', 'Dash to Dock');
     this.controls.toggle(group, 'Launcher', 'icon-style-launcher');
+    this.controls.toggle(group, 'App grid', 'icon-style-app-grid', 'In the overview, folders included');
     const look = this.controls.choice(group, 'Look', [
       {title: 'Tinted', patch: {'icon-style-mode': 'tinted'}},
       {title: 'Mono', patch: {'icon-style-mode': 'mono'}},
@@ -54,7 +55,7 @@ export class IconStyleRules {
       'From dark glass to the full color', {slider: true});
     const rows = [look,
       this.controls.number(group, 'Size', ['icon-style-size'], 0.8, 1.3, 0.05,
-        'As a share of what the dock or the launcher gives them', {slider: true}),
+        'As a share of the size each place gives them', {slider: true}),
       this.controls.number(group, 'Symbol opacity', ['icon-style-symbol-opacity'], 0, 1, 0.05, '', {slider: true}),
       this._addTuningRow(group),
       this.controls.toggle(group, 'Include all applications', 'icon-style-all-apps')];
