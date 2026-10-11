@@ -63,13 +63,16 @@ td.name small { color: var(--muted); word-break: break-all; }
 .info .fallback { color: #e5a50a; }
 .info .error { color: #ff7b63; }
 .legend { color: var(--muted); padding: 0 16px 6px; font-size: 12px; }
+#tuning { padding: 6px 16px; color: var(--muted); }
+#tuning-rows { display: grid; grid-template-columns: repeat(auto-fill, minmax(330px, 1fr)); gap: 4px 18px; margin: 6px 0; }
+#tuning-rows label { display: grid; grid-template-columns: 1fr 120px 40px; gap: 6px; align-items: center; }
 </style>
 </head>
 <body>
 <header>
   <h1>Icon Sheet</h1>
   <label>Mode <select id="mode"><option value="tinted">Tinted</option><option value="mono">Mono</option><option value="clear">Clear</option></select></label>
-  <label>Variant <select id="variant"><option value="dark">Dark</option><option value="light">Light</option></select></label>
+  <label>Variant <select id="variant"><option value="light">Light</option><option value="dark">Dark</option></select></label>
   <label>Accent <input id="accent" type="color" value="#3584e4"></label>
   <label>Tint <input id="strength" type="range" min="0" max="1" step="0.05" value="0"></label>
   <label>Symbol <input id="opacity" type="range" min="0" max="1" step="0.05" value="1"></label>
@@ -79,6 +82,8 @@ td.name small { color: var(--muted); word-break: break-all; }
   <label><input id="info" type="checkbox" checked> Details</label>
   <label>Filter <input id="filter" type="text" placeholder="name or id, a|b for either"></label>
 </header>
+<details id="tuning"><summary>Glass tuning (the current look's numbers, as in the preferences)</summary>
+<div id="tuning-rows"></div><button id="tuning-reset" type="button">Reset</button></details>
 <div class="summary" id="summary"></div>
 <div class="legend">Columns: the icon, the analysis, the icon as the dock draws it (over a blurred wallpaper, as on the dock's glass;
 an icon whose plate carries a picture is shown as it is), and optionally the launch animation's colours.
@@ -158,6 +163,7 @@ const gl = (() => {
   g.vertexAttribPointer(loc, 2, g.FLOAT, false, 0, 0);
   g.uniform1i(g.getUniformLocation(program, 'cogl_sampler0'), 0);
   g.uniform1i(g.getUniformLocation(program, 'cogl_sampler1'), 1);
+  g.uniform1i(g.getUniformLocation(program, 'cogl_sampler2'), 2);
   return {g, canvas, program, set: (name, v) => g.uniform1f(g.getUniformLocation(program, name), v)};
 })();
 
@@ -191,6 +197,9 @@ async function drawStyled(canvas, rec, opts, wallX, wallY, launch) {
     g2.drawImage(original, 0, 0, px, px);
     return;
   }
+  // Decoded before any GL call: the icons are drawn concurrently, and the GL state between awaits is anyone's.
+  const map = rec.map ? await image(rec.map) : null;
+  const tone = rec.tone ? await image(rec.tone) : null;
   const {g, canvas: glc, set} = gl;
   glc.width = glc.height = px;
   g.viewport(0, 0, px, px);
@@ -199,8 +208,10 @@ async function drawStyled(canvas, rec, opts, wallX, wallY, launch) {
   g.activeTexture(g.TEXTURE0);
   g.bindTexture(g.TEXTURE_2D, texture(original, false));
   g.activeTexture(g.TEXTURE1);
-  g.bindTexture(g.TEXTURE_2D, rec.map ? texture(await image(rec.map), true) : texture(original, false));
-  const c = iconStyleColors(opts.mode, opts.accent.map(v => v / 255), opts.strength, opts.opacity, opts.variant);
+  g.bindTexture(g.TEXTURE_2D, map ? texture(map, true) : texture(original, false));
+  g.activeTexture(g.TEXTURE2);
+  g.bindTexture(g.TEXTURE_2D, tone ? texture(tone, false) : texture(original, false));
+  const c = iconStyleColors(opts.mode, opts.accent.map(v => v / 255), opts.strength, opts.opacity, opts.variant, tuning);
   for (const [name, v] of [['box_x0', 0], ['box_y0', 0], ['box_x1', 1], ['box_y1', 1], ['map_px', 256 / px],
     ['clone', launch ? 1 : 0], ['opacity', 1], ...iconStyleUniforms(c)]) set(name, v);
   g.drawArrays(g.TRIANGLE_STRIP, 0, 4);
@@ -351,6 +362,34 @@ for (const [key, value] of hash) {
 }
 for (const id of ['mode', 'variant', 'accent', 'strength', 'opacity', 'launch', 'size', 'debug', 'info', 'filter'])
   document.getElementById(id).addEventListener('input', render);
+// Values that differ from ICON_TUNING's, as the preferences store them; the rows show the current look's.
+const tuning = {};
+function tuningRows() {
+  const look = document.getElementById('mode').value === 'tinted' ? document.getElementById('variant').value
+    : document.getElementById('mode').value;
+  const rows = document.getElementById('tuning-rows');
+  rows.innerHTML = '';
+  for (const param of ICON_TUNING.filter(p => p.looks.includes(look))) {
+    const label = document.createElement('label');
+    const value = tuning[param.key] ?? param.value;
+    label.innerHTML = '<span>' + param.title + '</span><input type="range" min="' + param.min + '" max="' + param.max +
+      '" step="0.01" value="' + value + '"><output>' + value + '</output>';
+    const input = label.querySelector('input'), output = label.querySelector('output');
+    input.addEventListener('input', () => {
+      tuning[param.key] = +input.value;
+      output.textContent = input.value;
+      render();
+    });
+    rows.appendChild(label);
+  }
+}
+for (const id of ['mode', 'variant']) document.getElementById(id).addEventListener('input', tuningRows);
+document.getElementById('tuning-reset').addEventListener('click', () => {
+  for (const key of Object.keys(tuning)) delete tuning[key];
+  tuningRows();
+  render();
+});
+tuningRows();
 summary();
 render();
 </script>

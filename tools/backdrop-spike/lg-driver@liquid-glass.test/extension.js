@@ -1841,6 +1841,57 @@ export default class LgDriver extends Extension {
       launcher._results.map((r, i) => `${r.meta.id}${rowIcons[i]?.get_effect(EFFECT) ? '*' : ''}`).join(' '));
     await shot('icon-style-launcher', [m.x, m.y, m.width, m.height]);
     launcher.close();
+    await sleep(500);
+
+    // Icons not shown yet are made in the background a few seconds after the dock's were switched on.
+    const cached = () => {
+      let count = 0;
+      try {
+        const files = Gio.File.new_for_path(`${GLib.get_user_cache_dir()}/liquid-glass/icon-maps`).enumerate_children('', 0, null);
+        while (files.next_file(null)) count++;
+      } catch {}
+      return count;
+    };
+    const before = cached();
+    await sleep(10000);
+    log(`icon style cached before the app grid: ${before}, 10 s later ${cached()}`);
+    settings.set_boolean('icon-style-app-grid', true);
+    Main.overview.showApps();
+    const grid = Main.overview._overview.controls._appDisplay;
+    // Every icon in the grid and its folders is taken apart once, which takes a while on a fresh cache.
+    const settle = async of => {
+      let last = -1, still = 0;
+      for (let waited = 0; waited < 90 && still < 4; waited++) {
+        await sleep(1000);
+        const count = findActors(of, a => a.get_effect?.(EFFECT)).length;
+        still = count === last && count > 0 ? still + 1 : 0;
+        last = count;
+      }
+    };
+    await settle(grid);
+    const gridIcons = findActors(grid, a => a instanceof St.Icon && appOf(a));
+    log(`icon style app grid: ${gridIcons.filter(i => i.get_effect(EFFECT)).length}/${gridIcons.length} styled`);
+    // The small icons on a folder's own icon have no app of their own.
+    const previewIcons = findActors(grid, a => a instanceof St.Icon && a.mapped && !appOf(a) && a.get_parent() instanceof St.Bin && !(a.get_parent() instanceof St.Button));
+    log(`icon style folder previews: ${previewIcons.filter(i => i.get_effect(EFFECT)).length}/${previewIcons.length} styled`);
+    await shot('icon-style-app-grid', [m.x, m.y, m.width, m.height]);
+    const folder = findActors(grid, a => a.view instanceof Clutter.Actor && typeof a.open === 'function')[0];
+    if (folder) {
+      folder.open();
+      await settle(folder.view);
+      const folderIcons = findActors(folder.view, a => a instanceof St.Icon && appOf(a));
+      log(`icon style app folder: ${folderIcons.filter(i => i.get_effect(EFFECT)).length}/${folderIcons.length} styled`);
+      await shot('icon-style-app-folder', [m.x, m.y, m.width, m.height]);
+      folder._dialog.popdown();
+      await sleep(800);
+    } else {
+      log('icon style app folder: none');
+    }
+    settings.set_boolean('icon-style-app-grid', false);
+    await sleep(800);
+    log(`icon style app grid off: ${gridIcons.filter(i => i.get_effect(EFFECT)).length} styled`);
+    Main.overview.hide();
+    await sleep(1000);
     settings.set_boolean('icon-style-dock', false);
     settings.set_boolean('icon-style-launcher', false);
     await sleep(800);
