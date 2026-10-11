@@ -17,19 +17,23 @@ export class AdaptiveTextColor {
     _glasses;
     _logger;
     _label;
+    _options;
     _sampler = new StageContrastSampler();
     _config = { ...AdaptiveContrastConfig, enabled: true, samplePerElement: false };
     _timerId = 0;
     _inFlight = false;
     _first = true;
+    // colorFor() calls still measuring; the periodic measurement waits for them.
+    _pending = 0;
     // Each coloured actor's own inline style, put back by clear().
     _styled = new Map();
 
-    constructor(_roots, _glasses, _logger, _label) {
+    constructor(_roots, _glasses, _logger, _label, _options = {}) {
         this._roots = _roots;
         this._glasses = _glasses;
         this._logger = _logger;
         this._label = _label;
+        this._options = _options;
     }
 
     /**
@@ -63,11 +67,15 @@ export class AdaptiveTextColor {
     }
 
     update() {
-        if (this._inFlight)
+        if (this._inFlight || this._pending > 0 || this._options.held?.())
             return;
         const targets = [];
-        for (const root of this._roots())
-            collectText(root, targets);
+        for (const root of this._roots()) {
+            if (!this._options.ownColor)
+                collectText(root, targets);
+            else if (root.visible)
+                targets.push(root);
+        }
         if (targets.length === 0)
             return;
         this._inFlight = true;
@@ -84,6 +92,26 @@ export class AdaptiveTextColor {
             .finally(() => { this._inFlight = false; });
     }
 
+    /**
+     * Colours the roots at once, without a tween, for what is behind `rect` (stage coordinates): for a surface with
+     * ownColor about to take that size, whose new part has no glass under it yet. Does nothing unless started.
+     */
+    colorFor(rect) {
+        if (!this._timerId)
+            return;
+        this._pending++;
+        this._sampler.chooseColorFor(rect, this._config, this._glasses())
+            .then(color => {
+            if (!color)
+                return;
+            const batch = GLib.get_monotonic_time();
+            for (const root of this._roots())
+                this._apply(root, color, true, batch);
+        })
+            .catch(e => this._logger.error(`[Liquid Glass] ${this._label} text colour update failed: ${e}`))
+            .finally(() => { this._pending--; });
+    }
+
     _apply(actor, color, skip, batch) {
         if (!(actor instanceof St.Widget) || !isActorValid(actor))
             return;
@@ -96,7 +124,7 @@ export class AdaptiveTextColor {
             });
             this._styled.set(actor, entry);
         }
-        if (entry.color === color)
+        if (entry.color === color && !skip)
             return;
         entry.color = color;
         const own = entry.style.trim();

@@ -1024,6 +1024,83 @@
       <summary>Saturation</summary>
     </key>
 
+    <key name="icon-style-dock" type="b">
+      <default>false</default>
+      <summary>Glass icons in the dock</summary>
+      <description>Redraws application icons in Dash to Dock as glass plates under a one-color symbol.</description>
+    </key>
+    <key name="icon-style-launcher" type="b">
+      <default>false</default>
+      <summary>Glass icons in the launcher</summary>
+      <description>Redraws application icons in the launcher's results as glass plates under a one-color symbol.</description>
+    </key>
+    <key name="icon-style-mode" type="s">
+      <choices>
+        <choice value="tinted"/>
+        <choice value="mono"/>
+        <choice value="clear"/>
+      </choices>
+      <default>"tinted"</default>
+      <summary>Icon look</summary>
+      <description>tinted: plates in the icon color; mono: grey plates; clear: nearly transparent plates.</description>
+    </key>
+    <key name="icon-style-use-accent" type="b">
+      <default>true</default>
+      <summary>Icon color from the accent color</summary>
+      <description>Tints the icons in the system accent color (GNOME 47 and later) instead of icon-style-color.</description>
+    </key>
+    <key name="icon-style-color" type="s">
+      <default>"#3584e4"</default>
+      <summary>Icon color (Hex)</summary>
+    </key>
+    <key name="icon-style-tint-variant" type="s">
+      <choices>
+        <choice value="dark"/>
+        <choice value="light"/>
+      </choices>
+      <default>"dark"</default>
+      <summary>Tinted icons' variant</summary>
+      <description>"dark": dark glass under a symbol in the color. "light": glass in the color under an almost white symbol.</description>
+    </key>
+    <key name="icon-style-tuning" type="a{sd}">
+      <default>{}</default>
+      <summary>Icon glass tuning</summary>
+      <description>Values that replace the numbers the icon looks are drawn with, by name.</description>
+    </key>
+    <key name="icon-style-tint-strength" type="d">
+      <range min="0" max="1"/>
+      <default>0.0</default>
+      <summary>Tint strength</summary>
+      <description>How much of the color the outer plate of a tinted icon takes, from the dark glass alone (0) to the full color (1).</description>
+    </key>
+    <key name="icon-style-size" type="d">
+      <range min="0.8" max="1.3"/>
+      <default>1.02</default>
+      <summary>Icon size</summary>
+      <description>The redrawn icons' size, as a share of the size the dock or the launcher gives them.</description>
+    </key>
+    <key name="icon-style-symbol-opacity" type="d">
+      <range min="0" max="1"/>
+      <default>1.0</default>
+      <summary>Symbol opacity</summary>
+      <description>How strongly the symbol on the plates shows.</description>
+    </key>
+    <key name="icon-style-all-apps" type="b">
+      <default>true</default>
+      <summary>Style all applications' icons</summary>
+      <description>When on, every icon is styled except those in icon-style-blacklist; when off, only those in icon-style-whitelist.</description>
+    </key>
+    <key name="icon-style-whitelist" type="as">
+      <default>[]</default>
+      <summary>Applications whose icons are styled</summary>
+      <description>Desktop file ids (and "show-apps" for the Show Apps button). Only consulted when icon-style-all-apps is off.</description>
+    </key>
+    <key name="icon-style-blacklist" type="as">
+      <default>[]</default>
+      <summary>Applications whose icons are left as they are</summary>
+      <description>Desktop file ids (and "show-apps" for the Show Apps button). Only consulted when icon-style-all-apps is on.</description>
+    </key>
+
     <key name="enable-launcher" type="b">
       <default>false</default>
       <summary>Search launcher</summary>

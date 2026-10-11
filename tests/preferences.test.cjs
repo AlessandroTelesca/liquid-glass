@@ -13,7 +13,7 @@ function fixture(overrides = {}, dbusResponses = [], blurMyShell = null) {
   const xml = fs.readFileSync(path.join(root, 'schemas/org.gnome.shell.extensions.liquid-glass@thinkingcoding1231.gmail.com.gschema.xml'), 'utf8');
   for (const [, key, type, body] of xml.matchAll(/<key name="([^"]+)" type="([^"]+)">([\s\S]*?)<\/key>/g)) {
     const raw = body.match(/<default>([\s\S]*?)<\/default>/)[1].trim();
-    const value = type === 'as' ? [] : type === 's' ? raw.slice(1, -1) : type === 'b' ? raw === 'true'
+    const value = type === 'as' ? [] : type === 'a{sd}' ? {} : type === 's' ? raw.slice(1, -1) : type === 'b' ? raw === 'true'
       : type.startsWith('(') ? JSON.parse(`[${raw.slice(1, -1)}]`) : Number(raw);
     types.set(key, type); values.set(key, value);
     const range = body.match(/<range min="([^"]+)" max="([^"]+)"\s*\/>/);
@@ -37,6 +37,7 @@ function fixture(overrides = {}, dbusResponses = [], blurMyShell = null) {
     get_value(key) { assert.ok(types.has(key), `unknown schema key ${key}`); return new Variant(types.get(key), values.get(key)); }
     get_boolean(key) { return this.get_value(key).deep_unpack(); }
     get_strv(key) { return this.get_value(key).deep_unpack(); }
+    get_string(key) { return this.get_value(key).deep_unpack(); }
     connect(signal, fn) { const id = nextId++; listeners.set(id, {signal, fn}); return id; }
     disconnect(id) { listeners.delete(id); }
     is_writable() { return true; }
@@ -60,6 +61,8 @@ function fixture(overrides = {}, dbusResponses = [], blurMyShell = null) {
     add_prefix() {} add_suffix(child) { child._parent = this; } add_css_class() {} set_header_suffix() {} set_default_size() {}
     get_parent() { return this._parent ?? null; }
     reorder_child_after() {}
+    set_child(child) { this.child = child; } set_content(child) { this.content = child; } add_top_bar() {} pack_start() {}
+    present() {}
     get_first_child() { return this.children[0] ?? null; }
     get_next_sibling() { return null; }
     connect(signal, fn) { const id = nextId++; this.signals.set(id, {signal, fn}); return id; }
@@ -72,7 +75,8 @@ function fixture(overrides = {}, dbusResponses = [], blurMyShell = null) {
     get active() { return this._active; }
   }
   class RGBA { parse() { this.red = this.green = this.blue = 1; } }
-  const Adw = Object.fromEntries(['PreferencesPage', 'PreferencesGroup', 'SwitchRow', 'ComboRow', 'SpinRow', 'ActionRow', 'EntryRow', 'ExpanderRow'].map(name => [name, class extends Widget {}]));
+  const Adw = Object.fromEntries(['PreferencesPage', 'PreferencesGroup', 'SwitchRow', 'ComboRow', 'SpinRow', 'ActionRow', 'EntryRow', 'ExpanderRow',
+    'Dialog', 'ToolbarView', 'HeaderBar'].map(name => [name, class extends Widget {}]));
   const Gtk = {Adjustment: Widget, ColorDialogButton: Widget, ColorDialog: Widget, Button: Widget, ListBox: Widget,
     Scale: Widget, Orientation: {HORIZONTAL: 0},
     SignalListItemFactory: Widget, Box: Widget, Label: Widget, Image: Widget,
@@ -89,7 +93,7 @@ function fixture(overrides = {}, dbusResponses = [], blurMyShell = null) {
     return props?.settings_schema === 'blur-my-shell-popup' ? blurMyShell : new Settings(props);
   };
   const Gio = {Settings: GioSettings, SettingsBindFlags: {GET: 1, DEFAULT: 0}, DBusCallFlags: {NONE: 0},
-    AppInfo: {get_all: () => []},
+    AppInfo: {get_all: () => []}, ThemedIcon: class { constructor(props) { Object.assign(this, props); } },
     SettingsSchemaSource: {get_default: () => null,
       new_from_directory: dir => ({lookup: id => dir === bmsSchemas && id === 'org.gnome.shell.extensions.blur-my-shell.popup'
         ? 'blur-my-shell-popup' : null})},
@@ -186,6 +190,50 @@ test('window rules only show the active list while window glass is enabled', () 
   f.controls.write({'application-glass-all-windows': true});
   assert.equal(f.row('Included applications').visible, false);
   assert.equal(f.row('Excluded applications').visible, true);
+});
+
+test('icon rules show their controls only while icons are redrawn somewhere, and one list at a time', () => {
+  const f = fixture();
+  for (const title of ['Look', 'Symbol opacity', 'Icons to redraw', 'Icons to leave as they are'])
+    assert.equal(f.row(title).visible, false, title);
+  f.controls.write({'icon-style-launcher': true});
+  assert.equal(f.row('Look').visible, true);
+  assert.equal(f.row('Color').visible, false);
+  assert.equal(f.row('Icons to redraw').visible, false);
+  assert.equal(f.row('Icons to leave as they are').visible, true);
+  f.controls.write({'icon-style-all-apps': false, 'icon-style-use-accent': false});
+  assert.equal(f.row('Color').visible, true);
+  assert.equal(f.row('Icons to redraw').visible, true);
+  assert.equal(f.row('Icons to leave as they are').visible, false);
+  // Other pages have rows of these titles too.
+  const iconRow = title => f.row('Application icons').children.find(row => row.title === title);
+  assert.equal(iconRow('Tint strength').visible, true);
+  f.controls.write({'icon-style-mode': 'mono'});
+  for (const title of ['Accent color', 'Color', 'Tint strength'])
+    assert.equal(iconRow(title).visible, false, title);
+  assert.equal(iconRow('Size').visible, true);
+});
+
+test("glass tuning opens on the current look's numbers and stores only what differs from the default", () => {
+  const f = fixture({'icon-style-dock': true, 'icon-style-tint-variant': 'light'});
+  assert.equal(f.row('Variant').visible, true);
+  assert.equal(f.row('Application icons').children.find(r => r.title === 'Tint strength').visible, false);
+  const open = () => {
+    f.row('Glass tuning').emit('activated');
+    const page = f.widgets.filter(w => w.title === 'Glass Tuning').at(-1).child.content;
+    return title => page.children[0].children.find(r => r.title === title);
+  };
+  let row = open();
+  assert.ok(row('Symbol: color mixed into white'));
+  assert.equal(row('Glass: white over the backdrop'), undefined);
+  f.writes.length = 0;
+  row('Symbol: color mixed into white').value = 0.3;
+  assert.deepEqual(f.writes.at(-1), {'icon-style-tuning': {lightSymbolTint: 0.3}});
+  assert.equal(row('Symbol: color mixed into white').subtitle, 'Default 0.21');
+  f.controls.write({'icon-style-mode': 'clear'});
+  row = open();
+  assert.equal(row('Symbol: color mixed into white'), undefined);
+  assert.equal(row('Glass: white over the backdrop').value, 0.18);
 });
 
 test('closing disconnects manually owned settings subscriptions', () => {

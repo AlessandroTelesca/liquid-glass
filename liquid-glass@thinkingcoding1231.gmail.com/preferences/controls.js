@@ -113,7 +113,7 @@ export class PreferenceControls {
     const row = new Adw.SpinRow({title, subtitle,
       adjustment: new Gtk.Adjustment({lower: min, upper: max, step_increment: step, page_increment: step * 10}),
       digits});
-    if (slider) this._addSlider(row, digits);
+    if (slider) this.addSlider(row, digits);
     group.add(row);
     let syncing = false;
     const refresh = () => {
@@ -131,7 +131,7 @@ export class PreferenceControls {
     return row;
   }
 
-  _addSlider(row, digits) {
+  addSlider(row, digits) {
     const scale = new Gtk.Scale({orientation: Gtk.Orientation.HORIZONTAL, adjustment: row.adjustment,
       draw_value: false, hexpand: true, valign: Gtk.Align.CENTER, width_request: 160, round_digits: digits});
     row.add_suffix(scale);
@@ -165,5 +165,6 @@ export class PreferenceControls {
         .map(value => Math.round(value * 255).toString(16).padStart(2, '0')).join('');
       this.write(uniformPatch(keys, hex));
     });
+    return row;
   }
 }

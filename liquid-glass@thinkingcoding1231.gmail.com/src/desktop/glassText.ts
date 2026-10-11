@@ -12,6 +12,7 @@ import PangoCairo from 'gi://PangoCairo';
 import Cairo from 'cairo';
 
 import { type TrueTypeFont, traceGlyph } from './trueType.js';
+import { decodePng } from '../imaging/png.js';
 
 // Glyphs are drawn this many times larger and their fields scaled down, for
 // sub-pixel accurate edges.
@@ -30,80 +31,12 @@ interface GlyphField extends DistanceField {
   originY: number;
 }
 
-// PNG decoding (8-bit, not interlaced: what Cairo writes)
-
-function readU32(b: Uint8Array, i: number): number {
-  return ((b[i] << 24) | (b[i + 1] << 16) | (b[i + 2] << 8) | b[i + 3]) >>> 0;
-}
-
-function inflate(data: Uint8Array): Uint8Array {
-  const converter = new Gio.ZlibDecompressor({ format: Gio.ZlibCompressorFormat.ZLIB });
-  const input = new Gio.ConverterInputStream({
-    base_stream: Gio.MemoryInputStream.new_from_bytes(new GLib.Bytes(data)),
-    converter,
-  });
-  const output = Gio.MemoryOutputStream.new_resizable();
-  output.splice(input, Gio.OutputStreamSpliceFlags.CLOSE_SOURCE | Gio.OutputStreamSpliceFlags.CLOSE_TARGET, null);
-  return output.steal_as_bytes().toArray();
-}
-
-function paeth(a: number, b: number, c: number): number {
-  const p = a + b - c;
-  const pa = Math.abs(p - a), pb = Math.abs(p - b), pc = Math.abs(p - c);
-  return pa <= pb && pa <= pc ? a : pb <= pc ? b : c;
-}
-
 /** The coverage (alpha, 0-255) of every pixel of a PNG. */
 export function decodePngAlpha(png: Uint8Array): { alpha: Uint8Array, width: number, height: number } {
-  let pos = 8;
-  let width = 0, height = 0, colorType = 0, depth = 0, interlace = 0;
-  const chunks: Uint8Array[] = [];
-  while (pos + 8 <= png.length) {
-    const length = readU32(png, pos);
-    const type = String.fromCharCode(...png.subarray(pos + 4, pos + 8));
-    const body = png.subarray(pos + 8, pos + 8 + length);
-    if (type === 'IHDR') {
-      width = readU32(body, 0);
-      height = readU32(body, 4);
-      depth = body[8];
-      colorType = body[9];
-      interlace = body[12];
-    } else if (type === 'IDAT') {
-      chunks.push(body);
-    } else if (type === 'IEND') {
-      break;
-    }
-    pos += 12 + length;
-  }
-  const channels = ({ 0: 1, 2: 3, 4: 2, 6: 4 } as Record<number, number>)[colorType];
-  if (depth !== 8 || interlace !== 0 || !channels || !width || !height)
-    throw new Error(`unsupported PNG (depth ${depth}, colour type ${colorType}, interlace ${interlace})`);
-
-  const joined = new Uint8Array(chunks.reduce((n, c) => n + c.length, 0));
-  let offset = 0;
-  for (const c of chunks) {
-    joined.set(c, offset);
-    offset += c.length;
-  }
-  const raw = inflate(joined);
-  const stride = width * channels;
-  const rows = new Uint8Array(stride * height);
-  for (let y = 0; y < height; y++) {
-    const filter = raw[y * (stride + 1)];
-    const src = y * (stride + 1) + 1;
-    const dst = y * stride;
-    for (let x = 0; x < stride; x++) {
-      const a = x >= channels ? rows[dst + x - channels] : 0;
-      const b = y > 0 ? rows[dst - stride + x] : 0;
-      const c = x >= channels && y > 0 ? rows[dst - stride + x - channels] : 0;
-      const v = raw[src + x];
-      rows[dst + x] = (filter === 1 ? v + a : filter === 2 ? v + b : filter === 3 ? v + ((a + b) >> 1)
-        : filter === 4 ? v + paeth(a, b, c) : v) & 255;
-    }
-  }
+  const { width, height, channels, data } = decodePng(png);
   const alpha = new Uint8Array(width * height);
   for (let i = 0; i < width * height; i++)
-    alpha[i] = channels === 4 ? rows[i * 4 + 3] : channels === 2 ? rows[i * 2 + 1] : rows[i * channels];
+    alpha[i] = channels === 4 ? data[i * 4 + 3] : channels === 2 ? data[i * 2 + 1] : data[i * channels];
   return { alpha, width, height };
 }
 

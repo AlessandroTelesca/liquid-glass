@@ -1,6 +1,7 @@
 import Adw from 'gi://Adw';
 import {PreferenceControls} from './controls.js';
 import {WindowRules} from './windows.js';
+import {IconStyleRules} from './icons.js';
 import {sharedKeys, TEXT_KEYS, MENU_KEYS, POPUP_KEYS, MOTION, GROW_KEYS, QUALITY, TOP_BAR, booleanChoices} from './model.js';
 import {buildAdvancedPreferences} from './advanced.js';
 import {addBlurMyShellWarning} from './blur-my-shell.js';
@@ -76,6 +77,7 @@ export function buildPreferences(window, settings) {
   buildDesktopPage(desktop, controls);
 
   const effectsTail = collectGroups(effects, () => {
+    new IconStyleRules(settings, controls).add(effects);
     new WindowRules(settings, controls).add(effects);
   });
 
