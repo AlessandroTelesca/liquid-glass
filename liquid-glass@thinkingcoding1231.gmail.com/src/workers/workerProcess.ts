@@ -37,6 +37,11 @@ export class WorkerProcess {
     return !!this._process || (this._starts < MAX_STARTS && !!GLib.find_program_in_path('gjs'));
   }
 
+  /** Requests not answered yet. */
+  get pending(): number {
+    return this._waiting.size;
+  }
+
   /** Rejects when the worker cannot be started, exits meanwhile or answers with an error. */
   request(message: object): Promise<any> {
     if (!this._process && !this._start()) return Promise.reject(new Error(`the ${this._name} cannot start`));

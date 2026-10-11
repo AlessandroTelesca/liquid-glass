@@ -1843,6 +1843,18 @@ export default class LgDriver extends Extension {
     launcher.close();
     await sleep(500);
 
+    // Icons not shown yet are made in the background a few seconds after the dock's were switched on.
+    const cached = () => {
+      let count = 0;
+      try {
+        const files = Gio.File.new_for_path(`${GLib.get_user_cache_dir()}/liquid-glass/icon-maps`).enumerate_children('', 0, null);
+        while (files.next_file(null)) count++;
+      } catch {}
+      return count;
+    };
+    const before = cached();
+    await sleep(10000);
+    log(`icon style cached before the app grid: ${before}, 10 s later ${cached()}`);
     settings.set_boolean('icon-style-app-grid', true);
     Main.overview.showApps();
     const grid = Main.overview._overview.controls._appDisplay;
@@ -1859,6 +1871,9 @@ export default class LgDriver extends Extension {
     await settle(grid);
     const gridIcons = findActors(grid, a => a instanceof St.Icon && appOf(a));
     log(`icon style app grid: ${gridIcons.filter(i => i.get_effect(EFFECT)).length}/${gridIcons.length} styled`);
+    // The small icons on a folder's own icon have no app of their own.
+    const previewIcons = findActors(grid, a => a instanceof St.Icon && a.mapped && !appOf(a) && a.get_parent() instanceof St.Bin && !(a.get_parent() instanceof St.Button));
+    log(`icon style folder previews: ${previewIcons.filter(i => i.get_effect(EFFECT)).length}/${previewIcons.length} styled`);
     await shot('icon-style-app-grid', [m.x, m.y, m.width, m.height]);
     const folder = findActors(grid, a => a.view instanceof Clutter.Actor && typeof a.open === 'function')[0];
     if (folder) {
