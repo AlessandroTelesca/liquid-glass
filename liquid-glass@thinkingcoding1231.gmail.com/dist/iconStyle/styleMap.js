@@ -14,7 +14,7 @@
 // plates side by side in different colours, and parts of a plate a little apart
 // in shade, stay apart once they are glass in one colour.
 // Pure computation, for the worker and the tests.
-import { plateColor, shapeDistance, symbolLayer } from './iconAnalysis.js';
+import { plateColor, shapeDistance, symbolLayer, withoutPlates } from './iconAnalysis.js';
 export const MAP_SIZE = 256;
 export const MAP_RANGE = 16;
 // Every outer plate is brought to this half size (a share of the icon's), so
@@ -87,12 +87,10 @@ function encode(d) {
 /**
  * The style map of an icon, from its analysis and the icon drawn again at
  * `detail` (any size; twice the analysis's keeps the symbol's edges smooth).
- * Null when a plate carries a picture: such an icon is shown as it is.
  */
 export function buildStyleMap(analysis, detail, size = MAP_SIZE) {
-    const { plates } = analysis;
-    if (plates.some(plate => !plate.plain))
-        return null;
+    // A plate that carries a picture is not glass: the picture is drawn as symbol, in shades that keep its colours apart.
+    const plates = withoutPlates(analysis.plates, plate => !plate.plain);
     const A = analysis.width;
     const scale = A / detail.width;
     const centre = A / 2;

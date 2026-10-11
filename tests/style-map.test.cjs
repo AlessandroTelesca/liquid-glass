@@ -65,11 +65,13 @@ test('a circle gets a rounded square around it and shrinks onto it', () => {
   assert.ok(field(map, 1, 64, 8) > 0);
 });
 
-test('an icon whose plate carries a picture has no map', () => {
+test('a plate that carries a picture is drawn as symbol, not as glass', () => {
   let seed = 3;
   const noise = () => (seed = (seed * 16807) % 2147483647) % 256;
   const plate = shape('roundrect', 56, { radius: 14 });
-  assert.equal(mapOf([{ distance: of(plate), color: () => [noise(), noise(), noise()] }]), null);
+  const map = mapOf([{ distance: of(plate), color: () => [noise(), noise(), noise()] }]);
+  assert.ok(field(map, 1, 64, 64) > 0, 'a plate on the outer one');
+  assert.ok(map.data[(128 * 256 + 128) * 4 + 3] > 200, 'the picture is not symbol');
 });
 
 test("the symbol's anti-aliased edge stays partly covered", () => {

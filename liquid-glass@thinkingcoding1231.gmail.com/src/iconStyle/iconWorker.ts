@@ -1,7 +1,6 @@
 // Takes icons apart in a process of its own (gjs -m), so the shell keeps
 // drawing meanwhile. Answers {file, cache} by drawing the icon file, writing
-// its style map's pixels and then its tones' to `cache` (empty when the icon is
-// shown as it is) and saying {styled}.
+// its style map's pixels and then its tones' to `cache` and saying {styled}.
 import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
 
@@ -15,11 +14,6 @@ const ANALYSIS_SIZE = 128;
 
 function write(path: string, bytes: Uint8Array): Promise<void> {
   GLib.mkdir_with_parents(GLib.path_get_dirname(path), 0o700);
-  // GIO's asynchronous write takes no empty buffer: it would never finish, and every icon after it would wait.
-  if (!bytes.length) {
-    GLib.file_set_contents(path, bytes);
-    return Promise.resolve();
-  }
   const file = Gio.File.new_for_path(path);
   return new Promise((resolve, reject) => {
     file.replace_contents_bytes_async(new GLib.Bytes(bytes), null, false, Gio.FileCreateFlags.NONE, null, (_f, res) => {
@@ -36,11 +30,9 @@ function write(path: string, bytes: Uint8Array): Promise<void> {
 await serveRequests(async ({ file, cache }) => {
   const analysis = analyzeIcon(await drawIcon(file, ANALYSIS_SIZE));
   const map = buildStyleMap(analysis, await drawIcon(file, ANALYSIS_SIZE * 2));
-  const bytes = new Uint8Array(map ? map.data.length * 2 : 0);
-  if (map) {
-    bytes.set(map.data);
-    bytes.set(map.tone, map.data.length);
-  }
+  const bytes = new Uint8Array(map.data.length * 2);
+  bytes.set(map.data);
+  bytes.set(map.tone, map.data.length);
   await write(cache, bytes);
-  return { styled: !!map };
+  return { styled: true };
 });

@@ -227,10 +227,6 @@ export class IconStyler {
     }
     Promise.all([this._maps.get(file), this._shader]).then(([textures, shader]) => {
       if (this._styled.get(icon) !== styled || styled.serial !== serial) return;
-      if (!textures) {
-        this._unstyle(icon, styled);
-        return;
-      }
       this._pipeline ??= iconStylePipeline(shader);
       const effect = styled.effect ?? new IconStyleEffect();
       effect.prepare(this._pipeline.copy(), textures, this._colors());

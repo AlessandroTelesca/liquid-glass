@@ -102,6 +102,9 @@ const TONE_STEP = 0.5;
 // The weakest part of a symbol is drawn this much weaker than its strongest; see symbolTone().
 const DETAIL_DIM = 0.45;
 const TONE_GROUPS = 6;
+// See gradientsOf().
+const GRADIENT_SPREAD = 0.15;
+const GRADIENT_TAIL = 0.05;
 const TONE_LEVELS = 8;
 const TONE_FULL = 0.3;
 const TONE_SEEN = 0.2;
@@ -123,6 +126,8 @@ const ABSORB_INSIDE = 0.6;
 const PIECE_SHARE = 0.4;
 const PIECE_MIN = 0.08;
 const PIECE_APART = 0.07;
+// A plate on such a plate whose colour is this far from all the pieces' is not one of them (the disc in a pie's middle).
+const PIECE_FOREIGN = 0.14;
 // A shape on a plate in a shade of its colour with more than this share of its edge along the plate's outline (within
 // BAND) is part of the plate's surface.
 const ALONG_PARENT = 0.1;
@@ -149,14 +154,21 @@ const EDGE_EVEN = 1.2;
 // Two areas shade into each other when the median step across their edge, at least SEAM_MIN px long, is below SEAM_STEP.
 const SEAM_STEP = 0.02;
 const SEAM_MIN = 12;
-// Inside a plate, deeper than FADE_DEPTH (analysis px), a symbol pixel is drawn whole from twice FADE_FROM opacity.
+// Inside a plate, deeper than FADE_DEPTH (analysis px), a symbol pixel's opacity is raised to FADE_GAMMA: a symbol that
+// fades out over a hole in its plate keeps its fade without growing faint.
 const FADE_DEPTH = 2;
-const FADE_FROM = 0.08;
+const FADE_GAMMA = 0.6;
 // A gloss or a shade lays GLOSS_MIN to GLOSS_MAX of white or black over what is under it, the same over each colour to
 // within GLOSS_NEAR (Oklab).
 const GLOSS_MIN = 0.05;
 const GLOSS_MAX = 0.6;
 const GLOSS_NEAR = 0.03;
+// A veil (see symbolLayer()) lays GLOSS_MIN to VEIL_MAX of white or black over at least VEIL_MIN analysis px², within
+// VEIL_NEAR (Oklab) of the surface's colours under it, which change by VEIL_SPREAD or more across it.
+const VEIL_MAX = 0.35;
+const VEIL_MIN = 40;
+const VEIL_NEAR = 0.04;
+const VEIL_SPREAD = 0.08;
 // Pixels that stand out of the surface more than STROKE_LOW of the symbol's threshold, next to one another and at
 // least STROKE_MIN analysis px² together, are one stroke.
 const STROKE_LOW = 0.6;
@@ -858,9 +870,27 @@ export function analyzeIcon(icon: IconPixels): IconAnalysis {
     const without = platesFrom(candidates.filter(c => !c.absorbed)).plates;
     if (!picture(without)) plates = without;
   }
+  // The ring and the disc in the middle of a pie, in colours far from all of its pieces', are drawn as symbol with the
+  // pieces, which they belong to.
+  const cut = plates;
+  plates = withoutPlates(plates, plate => plate.parent >= 0 && cut[plate.parent].pieces.length > 0 &&
+    cut[plate.parent].pieces.every(p => Math.hypot(...plateColor(plate, plate.shape.cx, plate.shape.cy).map((v, c) => v - p[c])) >= PIECE_FOREIGN));
 
   const { symbol, intensity } = symbolLayer(plates, w, icon);
   return { width: w, height: h, plates, symbol, intensity };
+}
+
+/** The plates without those `leftOut` picks and the plates on them. A plate comes after the plate it sits on. */
+export function withoutPlates(plates: Plate[], leftOut: (plate: Plate) => boolean): Plate[] {
+  const index: number[] = [];
+  const out: Plate[] = [];
+  plates.forEach((plate, k) => {
+    index[k] = -1;
+    if (leftOut(plate) || (plate.parent >= 0 && index[plate.parent] < 0)) return;
+    index[k] = out.length;
+    out.push({ ...plate, parent: plate.parent < 0 ? -1 : index[plate.parent] });
+  });
+  return out;
 }
 
 // The mean colours of the pieces a plate's surface is cut into (see PIECE_SHARE), or none.
@@ -1142,10 +1172,66 @@ export function symbolLayer(plates: Plate[], analysisWidth: number, pixels: Icon
     r.contrast = d[Math.floor(d.length / 2)];
     r.strength = smoothstep(lo * 0.8, lo * 1.3, r.contrast);
   });
+  // A large area that is the surface around it under a veil of white or black, laid evenly over a surface whose colour
+  // changes under it (a pane of frosted glass over a gradient), is a shade of the surface.
+  const veiled = list.map(() => [] as number[]);
+  for (let i = 0; i < n; i++) {
+    const r = region[i] >= 0 ? list[region[i]] : null;
+    if (r?.decided && r.strength > 0 && regions.inner[i] && raw[i] !== Infinity && broad(r)) veiled[region[i]].push(i);
+  }
+  const quantile = (values: number[], q: number) => values.sort((a, b) => a - b)[Math.floor((values.length - 1) * q)];
+  veiled.forEach((inside, j) => {
+    if (inside.length < VEIL_MIN / (s * s)) return;
+    const white = quantile(inside.map(i => lab[i * 3] - ref[i * 3]), 0.5) > 0;
+    const alpha = quantile(inside.map(i => (white ? (lab[i * 3] - ref[i * 3]) / (1 - ref[i * 3]) : 1 - lab[i * 3] / ref[i * 3])), 0.5);
+    if (alpha < GLOSS_MIN || alpha > VEIL_MAX) return;
+    const off = quantile(inside.map(i => Math.hypot(lab[i * 3] - (ref[i * 3] + ((white ? 1 : 0) - ref[i * 3]) * alpha),
+      lab[i * 3 + 1] - ref[i * 3 + 1] * (1 - alpha), lab[i * 3 + 2] - ref[i * 3 + 2] * (1 - alpha))), 0.75);
+    const spread = Math.max(...[0, 1, 2].map(c => {
+      const values = inside.map(i => ref[i * 3 + c]);
+      return quantile(values, 0.9) - quantile(values, 0.1);
+    }));
+    if (off < VEIL_NEAR && spread >= VEIL_SPREAD) list[j].strength = 0;
+  });
   for (let i = 0; i < n; i++) {
     if (region[i] >= 0 && list[region[i]].fades) low[i] = Math.max(low[i], SYMBOL_HIGH);
   }
   const like = glossed(list, main, regions, w, h);
+  // Whether the pixels of a group in a large area off the surface, which stand out of it, shade into the rest of that area
+  // (`rest`) with no step: then only a gradient across the area (the shaded side of a raised shape) sets them apart.
+  const stepless = (group: number[], rest: (j: number) => boolean) => {
+    const steps: number[] = [];
+    for (const i of group) {
+      const r = region[i], x = i % w;
+      if (r < 0 || list[r].ground || !(list[r].decided || list[r].fades)) continue;
+      for (const j of [x > 0 ? i - 1 : -1, x < w - 1 ? i + 1 : -1, i - w, i + w]) {
+        if (j >= 0 && j < n && region[j] === r && rest(j)) steps.push(apart(lab, i, j));
+      }
+    }
+    return steps.length >= SEAM_MIN && steps.sort((a, b) => a - b)[Math.floor(steps.length / 2)] < SEAM_STEP;
+  };
+  // In an area that fades into the surface, the pixels that stand far out of it but only through such a gradient, on
+  // the lesser part of it.
+  const smooth = new Uint8Array(n);
+  {
+    const far = (i: number) => region[i] >= 0 && list[region[i]].fades && raw[i] !== Infinity && raw[i] > low[i];
+    const seen = new Uint8Array(n);
+    for (let start = 0; start < n; start++) {
+      if (seen[start] || !far(start)) continue;
+      const group = [start];
+      seen[start] = 1;
+      for (let g = 0; g < group.length; g++) {
+        const i = group[g], x = i % w;
+        for (const j of [x > 0 ? i - 1 : -1, x < w - 1 ? i + 1 : -1, i - w, i + w]) {
+          if (j >= 0 && j < n && !seen[j] && region[j] === region[i] && far(j)) {
+            seen[j] = 1;
+            group.push(j);
+          }
+        }
+      }
+      if (group.length < list[region[start]].count / 2 && stepless(group, j => !far(j))) for (const i of group) smooth[i] = 1;
+    }
+  }
 
   // Faint lines and specks, which fall into many small areas: each group of pixels next to one another that stand out
   // of the surface is symbol as a whole, as strongly as its typical pixel stands out, so that a faint line is drawn
@@ -1177,7 +1263,7 @@ export function symbolLayer(plates: Plate[], analysisWidth: number, pixels: Icon
           }
         }
       }
-      if (group.length * s * s < STROKE_MIN) continue;
+      if (group.length * s * s < STROKE_MIN || stepless(group, j => !seen[j])) continue;
       const d = group.map(i => out[i]).sort((a, b) => a - b);
       const typical = d[Math.floor(d.length * 0.75)];
       const lo = low[group[0]];
@@ -1197,7 +1283,7 @@ export function symbolLayer(plates: Plate[], analysisWidth: number, pixels: Icon
       continue;
     }
     const r = region[i] >= 0 ? list[region[i]] : null;
-    if (r?.edge) continue;
+    if (r?.edge || smooth[i]) continue;
     if (r && like[region[i]] >= 0) {
       cover[i] = list[like[region[i]]].strength;
       continue;
@@ -1275,11 +1361,14 @@ export function symbolLayer(plates: Plate[], analysisWidth: number, pixels: Icon
     if (region[i] >= 0) symbolic[region[i]] += cover[i];
   }
   const big = (j: number) => list[j].count >= n * REGION_MIN && symbolic[j] >= list[j].count * 0.5;
+  const gradients = gradientsOf(regions, lab, big);
   const tint = new Float32Array(n * 3);
   for (let i = 0; i < n; i++) {
     const j = region[i];
     if (j >= 0 && like[j] >= 0) {
       tint.set(list[like[j]].color, i * 3);
+    } else if (gradients.has(j)) {
+      tint.set(lab.subarray(i * 3, i * 3 + 3), i * 3);
     } else if (j >= 0 && big(j)) {
       tint.set(list[j].color, i * 3);
     } else if (raw[i] === Infinity || cover[i] <= 0) {
@@ -1314,11 +1403,11 @@ export function symbolLayer(plates: Plate[], analysisWidth: number, pixels: Icon
   // little apart in shade, which glass of one colour would make the same.
   const surface = new Float32Array(n);
   for (let i = 0; i < n; i++) {
-    // A symbol fading out across a hole in its plate (a cut-out that shows through) is drawn whole, its colour being
-    // what tells it from the plate.
-    const seen = owner[i] >= 0 && -depth[i] * s >= FADE_DEPTH ? Math.min(Math.max((alpha[i] - FADE_FROM) / FADE_FROM, 0), 1) : alpha[i];
+    const seen = owner[i] >= 0 && -depth[i] * s >= FADE_DEPTH ? alpha[i] ** FADE_GAMMA : alpha[i];
     symbol[i] = seen * cover[i];
-    intensity[i] = tone(tint.subarray(i * 3, i * 3 + 3));
+    // A symbol in one colour keeps the gradients in it as its only shading.
+    const gradient = gradients.get(region[i]);
+    intensity[i] = tone ? tone(tint.subarray(i * 3, i * 3 + 3)) : gradient ? 1 - DETAIL_DIM * (1 - gradient(lab, i)) : 1;
     const k = owner[i];
     if (!plain(k)) continue;
     const r = region[i] >= 0 ? list[region[i]] : null;
@@ -1369,6 +1458,48 @@ function glossed(list: Region[], main: number[], regions: { region: Int32Array, 
     }
   });
   return like;
+}
+
+// The symbol's large areas (`big`) that are gradients: their colours spread GRADIENT_SPREAD or more apart along the way
+// they differ most, the extreme GRADIENT_TAIL of them left out. Each with where a pixel's colour lies along that way,
+// from 0 to 1 (the lighter end).
+function gradientsOf(regions: { region: Int32Array, inner: Uint8Array }, lab: Float32Array,
+  big: (j: number) => boolean): Map<number, (lab: Float32Array, i: number) => number> {
+  const inside = new Map<number, number[]>();
+  regions.region.forEach((j, i) => {
+    if (j < 0 || !regions.inner[i] || !big(j)) return;
+    if (!inside.has(j)) inside.set(j, []);
+    inside.get(j)!.push(i);
+  });
+  const out = new Map<number, (lab: Float32Array, i: number) => number>();
+  for (const [j, pixels] of inside) {
+    if (pixels.length < 8) continue;
+    const mean = [0, 1, 2].map(c => pixels.reduce((sum, i) => sum + lab[i * 3 + c], 0) / pixels.length);
+    // The principal direction, by power iteration on the covariance, starting along lightness.
+    let axis = [1, 0, 0];
+    for (let round = 0; round < 12; round++) {
+      const next = [0, 0, 0];
+      for (const i of pixels) {
+        const v0 = lab[i * 3] - mean[0], v1 = lab[i * 3 + 1] - mean[1], v2 = lab[i * 3 + 2] - mean[2];
+        const dot = v0 * axis[0] + v1 * axis[1] + v2 * axis[2];
+        next[0] += v0 * dot;
+        next[1] += v1 * dot;
+        next[2] += v2 * dot;
+      }
+      const len = Math.hypot(...next);
+      if (len < 1e-9) break;
+      axis = next.map(v => v / len);
+    }
+    if (axis[0] < 0) axis = axis.map(v => -v);
+    const along = (data: Float32Array, i: number) =>
+      (data[i * 3] - mean[0]) * axis[0] + (data[i * 3 + 1] - mean[1]) * axis[1] + (data[i * 3 + 2] - mean[2]) * axis[2];
+    const sorted = pixels.map(i => along(lab, i)).sort((a, b) => a - b);
+    const lo = sorted[Math.floor((sorted.length - 1) * GRADIENT_TAIL)];
+    const hi = sorted[Math.floor((sorted.length - 1) * (1 - GRADIENT_TAIL))];
+    if (hi - lo < GRADIENT_SPREAD) continue;
+    out.set(j, (data, i) => Math.min(Math.max((along(data, i) - lo) / (hi - lo), 0), 1));
+  }
+  return out;
 }
 
 // The colour areas of an image split by the plates they lie in: per pixel an index into `list` (-1: clear), and
@@ -1455,14 +1586,14 @@ function localMeans(values: Float32Array, wanted: Uint8Array, w: number, h: numb
   return out;
 }
 
-// How strongly each colour of the symbol is drawn, 1 - DETAIL_DIM to 1. The symbol's large areas are put together
+// How strongly each colour of the symbol is drawn, 1 - DETAIL_DIM to 1 (null: all fully). The symbol's large areas are put together
 // into up to TONE_GROUPS colours (the largest), which are given the strengths, out of TONE_LEVELS steps, that best
 // keep apart the colours that meet (`edges`: two colours and the length of their edge), the more so the more they
 // differ (TONE_FULL of Oklab apart, or more, TONE_SEEN apart in strength, which is told apart at a glance): red next
 // to green stays apart from it even at one lightness. Of two colours TONE_ORDER or more apart in lightness the lighter
 // is never the weaker; other things equal, lighter is stronger, and a colour that meets none of the others is drawn
 // at full strength. A colour between two of them is drawn in between.
-function symbolTone(parts: Region[], edges: [number[], number[], number][]): (color: ArrayLike<number>) => number {
+function symbolTone(parts: Region[], edges: [number[], number[], number][]): ((color: ArrayLike<number>) => number) | null {
   const distance = (a: ArrayLike<number>, b: ArrayLike<number>) => Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
   const groups: { color: number[], count: number }[] = [];
   for (const r of [...parts].sort((a, b) => b.count - a.count)) {
@@ -1476,7 +1607,7 @@ function symbolTone(parts: Region[], edges: [number[], number[], number][]): (co
   }
   groups.sort((a, b) => b.count - a.count);
   const kept = groups.slice(0, TONE_GROUPS);
-  if (kept.length < 2) return () => 1;
+  if (kept.length < 2) return null;
   const nearest = (c: ArrayLike<number>) => {
     let best = 0;
     kept.forEach((g, k) => {
@@ -1498,7 +1629,7 @@ function symbolTone(parts: Region[], edges: [number[], number[], number][]): (co
     return { p, q, weight: Math.sqrt(length), want: TONE_SEEN * Math.min(apart / TONE_FULL, 1),
       lighter: Math.sign(kept[p].color[0] - kept[q].color[0]) };
   });
-  if (!pairs.length) return () => 1;
+  if (!pairs.length) return null;
   const levels = Array.from({ length: TONE_LEVELS }, (_, k) => 1 - DETAIL_DIM * k / (TONE_LEVELS - 1));
   // Of two colours clearly apart in lightness, the lighter is never the weaker.
   const order: [number, number][] = [];

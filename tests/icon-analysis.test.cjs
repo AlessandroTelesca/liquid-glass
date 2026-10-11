@@ -194,7 +194,7 @@ test('a stripe across a plate in a shade of its colour is part of its surface, n
   assert.ok(symbolShare(result, (x, y) => stripe(x, y) < -2) < 0.05);
 });
 
-test('a symbol fading out across a hole in its plate is drawn whole', () => {
+test('a symbol fading out across a hole in its plate keeps its fade, less faint', () => {
   const plate = shape('superellipse', 56, 56);
   // An L, which no basic shape fits.
   const l1 = bar(40, 30, 58, 98), l2 = bar(40, 80, 88, 98);
@@ -207,5 +207,7 @@ test('a symbol fading out across a hole in its plate is drawn whole', () => {
     }
   }
   const result = analyzeIcon(icon);
-  assert.ok(symbolShare(result, (x, y) => glyph(x, y) < -1) > 0.95);
+  const top = result.symbol[33 * S + 48], bottom = result.symbol[95 * S + 48];
+  assert.ok(top > 0.35 && top < 0.6, `top ${top}`);
+  assert.ok(bottom > 0.9, `bottom ${bottom}`);
 });

@@ -6,7 +6,7 @@ import { WorkerProcess } from '../workers/workerProcess.js';
 import { iconStyleTexture } from './iconEffect.js';
 import { MAP_SIZE } from './styleMap.js';
 // Changes whenever the maps would come out differently, so that older ones are made again.
-const MAP_VERSION = 6;
+const MAP_VERSION = 7;
 
 function loadFile(file, cancellable) {
     return new Promise((resolve, reject) => {
@@ -36,7 +36,7 @@ function modified(file, cancellable) {
 
 export class IconMaps {
     _worker;
-    // By icon file: its map's and its tones' textures, or null for an icon shown as it is.
+    // By icon file: its map's and its tones' textures.
     _maps = new Map();
     _cancellable = new Gio.Cancellable();
     _dir = `${GLib.get_user_cache_dir()}/liquid-glass/icon-maps`;
@@ -45,7 +45,7 @@ export class IconMaps {
         this._worker = new WorkerProcess(`${extensionPath}/dist/iconStyle/iconWorker.js`, 'icon worker', logger);
     }
 
-    /** The map of the icon in `path`, or null when it is shown as it is. Rejects when it cannot be made. */
+    /** The map of the icon in `path`. Rejects when it cannot be made. */
     get(path) {
         let map = this._maps.get(path);
         if (!map) {
@@ -73,8 +73,6 @@ export class IconMaps {
             await this._worker.request({ file: path, cache: cache.get_path() });
             bytes = await loadFile(cache, this._cancellable);
         }
-        if (bytes.length === 0)
-            return null;
         const length = MAP_SIZE * MAP_SIZE * 4;
         if (bytes.length !== length * 2)
             throw new Error(`${cache.get_path()} is not a style map`);
