@@ -30,6 +30,10 @@ Dash to Dock:
 
 ![Dash to Dock Screenshot](assets/dock.png)
 
+Dash to Dock with glass icons (Tinted, Light):
+
+![Dash to Dock With Glass Icons Screenshot](assets/dock-glass-icons.png)
+
 Notifications:
 
 ![Notifications Screenshot](assets/notification.png)
