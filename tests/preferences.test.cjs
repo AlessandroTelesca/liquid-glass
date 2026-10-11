@@ -61,6 +61,8 @@ function fixture(overrides = {}, dbusResponses = [], blurMyShell = null) {
     add_prefix() {} add_suffix(child) { child._parent = this; } add_css_class() {} set_header_suffix() {} set_default_size() {}
     get_parent() { return this._parent ?? null; }
     reorder_child_after() {}
+    set_child(child) { this.child = child; } set_content(child) { this.content = child; } add_top_bar() {} pack_start() {}
+    present() {}
     get_first_child() { return this.children[0] ?? null; }
     get_next_sibling() { return null; }
     connect(signal, fn) { const id = nextId++; this.signals.set(id, {signal, fn}); return id; }
@@ -73,7 +75,8 @@ function fixture(overrides = {}, dbusResponses = [], blurMyShell = null) {
     get active() { return this._active; }
   }
   class RGBA { parse() { this.red = this.green = this.blue = 1; } }
-  const Adw = Object.fromEntries(['PreferencesPage', 'PreferencesGroup', 'SwitchRow', 'ComboRow', 'SpinRow', 'ActionRow', 'EntryRow', 'ExpanderRow'].map(name => [name, class extends Widget {}]));
+  const Adw = Object.fromEntries(['PreferencesPage', 'PreferencesGroup', 'SwitchRow', 'ComboRow', 'SpinRow', 'ActionRow', 'EntryRow', 'ExpanderRow',
+    'Dialog', 'ToolbarView', 'HeaderBar'].map(name => [name, class extends Widget {}]));
   const Gtk = {Adjustment: Widget, ColorDialogButton: Widget, ColorDialog: Widget, Button: Widget, ListBox: Widget,
     Scale: Widget, Orientation: {HORIZONTAL: 0},
     SignalListItemFactory: Widget, Box: Widget, Label: Widget, Image: Widget,
@@ -211,24 +214,26 @@ test('icon rules show their controls only while icons are redrawn somewhere, and
   assert.equal(iconRow('Size').visible, true);
 });
 
-test("icon glass tuning shows the current look's numbers and stores only what differs from the default", () => {
-  const f = fixture({'icon-style-dock': true});
-  const group = f.row('Icon glass tuning');
-  const row = title => group.children.find(r => r.title === title && r.visible);
-  assert.equal(group.visible, true);
+test("glass tuning opens on the current look's numbers and stores only what differs from the default", () => {
+  const f = fixture({'icon-style-dock': true, 'icon-style-tint-variant': 'light'});
   assert.equal(f.row('Variant').visible, true);
-  assert.ok(row('Symbol: white mixed into the color'));
-  assert.equal(row('Symbol: color mixed into white'), undefined);
-  f.controls.write({'icon-style-tint-variant': 'light'});
   assert.equal(f.row('Application icons').children.find(r => r.title === 'Tint strength').visible, false);
-  const tint = row('Symbol: color mixed into white');
+  const open = () => {
+    f.row('Glass tuning').emit('activated');
+    const page = f.widgets.filter(w => w.title === 'Glass Tuning').at(-1).child.content;
+    return title => page.children[0].children.find(r => r.title === title);
+  };
+  let row = open();
+  assert.ok(row('Symbol: color mixed into white'));
+  assert.equal(row('Glass: white over the backdrop'), undefined);
   f.writes.length = 0;
-  tint.value = 0.3;
-  tint.emit('notify::value');
+  row('Symbol: color mixed into white').value = 0.3;
   assert.deepEqual(f.writes.at(-1), {'icon-style-tuning': {lightSymbolTint: 0.3}});
+  assert.equal(row('Symbol: color mixed into white').subtitle, 'Default 0.21');
   f.controls.write({'icon-style-mode': 'clear'});
+  row = open();
   assert.equal(row('Symbol: color mixed into white'), undefined);
-  assert.ok(row('Glass: white over the backdrop'));
+  assert.equal(row('Glass: white over the backdrop').value, 0.18);
 });
 
 test('closing disconnects manually owned settings subscriptions', () => {

@@ -124,12 +124,13 @@ The effect can be enabled or disabled per UI element on the **Effects** page. In
 
 ### Glass Icons
 
-No icon is redrawn by hand: each one is taken apart once, in a process of its own, into the plates it is drawn on (rounded squares, circles, squircles and other smooth shapes, a gear's regular teeth included, outermost first) and the symbol on them. After macOS 26's tinted, white and clear icons, the outer plate becomes a piece of glass, the plates on it take the icon color, and the symbol is drawn over them in one color, its finer details a little weaker. An icon that is not drawn on a rounded square is set on a squircle, and every outer plate is brought to one size, so that all icons share the same outline; one whose plate carries a picture, such as a photo or pixel art, is shown as it is. The results are kept in the user's cache, so an icon is only taken apart again when it changes. While an application starts, the icon that zooms out of the dock keeps its picture, in the icon color.
+No icon is redrawn by hand: each one is taken apart once, in a process of its own, into the plates it is drawn on (rounded squares, circles, squircles and other smooth shapes, a gear's regular teeth included, outermost first) and the symbol on them. After macOS 26's tinted, white and clear icons, the outer plate becomes a piece of glass, the plates on it take the icon color, and the symbol is drawn over them in a color that stands apart from the plate under it, its finer details a little weaker. An icon that is not drawn on a rounded square is set on a squircle, and every outer plate is brought to one size, so that all icons share the same outline; one whose plate carries a picture, such as a photo or pixel art, is shown as it is. The results are kept in the user's cache, so an icon is only taken apart again when it changes. While an application starts, the icon that zooms out of the dock keeps its picture, in the icon color.
 
 - **Look** — **Tinted**, **Mono** (dark glass in white and grey) or **Clear** (barely frosted glass under a white symbol). Tinted comes in two variants: **Dark** (dark opaque glass, with the plates on it and the symbol in the icon color) and **Light** (glass in the icon color, a little darkened, under an almost white symbol).
 - **Color** and **Tint strength** (Tinted only) — the system accent color (GNOME 47 and later) or a color of your own, and how much of it the dark variant's glass takes as well (none by default).
 - **Size** — the icons' size as a share of what the dock or the launcher gives them, for icons that look small on the dock without changing Dash to Dock's own icon size.
 - **Symbol opacity**.
+- **Glass tuning** — a small window of sliders for the finer numbers of the current look (the glass's lightness and opacity, how much white or color the plates and the symbol take, the rim and the sheen), with a button that puts every look back to its defaults.
 - Every application's icon, minus the ones you leave out, or only the ones you pick, each list filled from a picker of the installed applications.
 
 ### Adaptive Text Coloring
@@ -289,9 +290,9 @@ A significant part of this codebase was written with the help of AI coding assis
 - [x] Sound bars on the Now playing widget; menus that grow as one drop of glass; tall clock digits that grow evenly
 - [x] Choose how the clock's digits grow taller (evenly or along their upright strokes), and make them in a process of their own so the shell never stalls for them
 - [x] Snapping guides for moving the clock and the widgets
+- [x] Glass application icons in the dock and the launcher (tinted, mono, clear)
 
 ### Next
-- [ ] Glass application icons in the dock and the launcher (tinted, mono, clear)
 - [ ] Publish to extensions.gnome.org (not approved yet)
 - [ ] glass-lib: a glass library for apps
 

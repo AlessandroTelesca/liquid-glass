@@ -127,8 +127,6 @@ function smoothstep(lo: number, hi: number, x: number): number {
   return t * t * (3 - 2 * t);
 }
 
-// Shapes
-
 /** Signed distance (px, negative inside) from a pixel position to the shape's outline. */
 export function shapeDistance(shape: PlateShape, x: number, y: number): number {
   const dx = x - shape.cx, dy = y - shape.cy;
@@ -305,8 +303,6 @@ function fitShape(mask: Mask, w: number, h: number): PlateShape | null {
   return fitRipple(mask, w, h, basic);
 }
 
-// Areas
-
 function areas(lab: Float32Array, opaque: Uint8Array, w: number, h: number): Int32Array {
   const parent = new Int32Array(w * h).map((_, i) => i);
   const find = (i: number): number => {
@@ -362,8 +358,6 @@ function filled(data: Uint8Array, w: number, h: number): Uint8Array {
   }
   return outside.map(v => 1 - v);
 }
-
-// Colour
 
 const TERMS = 6;
 
@@ -467,8 +461,6 @@ function fitColor(shape: PlateShape, pixels: number[], lab: Float32Array, w: num
   }
   return { color, rms, kept: pixels.length ? kept / pixels.length : 0, noise };
 }
-
-// Analysis
 
 interface Candidate {
   mask: Mask;

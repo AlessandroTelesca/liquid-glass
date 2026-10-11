@@ -2,7 +2,7 @@ import Adw from 'gi://Adw';
 import Gio from 'gi://Gio';
 import Gtk from 'gi://Gtk';
 
-import {addIconTuning} from './icon-tuning.js';
+import {presentIconTuning} from './icon-tuning.js';
 
 // The id the Show Apps button goes by in the lists (see src/iconStyle/iconStyler.ts).
 const SHOW_APPS_ID = 'show-apps';
@@ -56,6 +56,7 @@ export class IconStyleRules {
       this.controls.number(group, 'Size', ['icon-style-size'], 0.8, 1.3, 0.05,
         'As a share of what the dock or the launcher gives them', {slider: true}),
       this.controls.number(group, 'Symbol opacity', ['icon-style-symbol-opacity'], 0, 1, 0.05, '', {slider: true}),
+      this._addTuningRow(group),
       this.controls.toggle(group, 'Include all applications', 'icon-style-all-apps')];
     this.controls.watch([...ANY_ICON_STYLE, 'icon-style-mode', 'icon-style-tint-variant', 'icon-style-use-accent'], () => {
       const on = ANY_ICON_STYLE.some(key => this.settings.get_boolean(key));
@@ -70,7 +71,15 @@ export class IconStyleRules {
       [true, 'icon-style-blacklist', 'Icons to leave as they are'],
     ])
       this._addList(page, key, title, all);
-    addIconTuning(page, this.settings, this.controls, ANY_ICON_STYLE);
+  }
+
+  _addTuningRow(group) {
+    const row = new Adw.ActionRow({title: 'Glass tuning', subtitle: 'The finer numbers of the current look',
+      activatable: true});
+    row.add_suffix(new Gtk.Image({icon_name: 'go-next-symbolic'}));
+    row.connect('activated', () => presentIconTuning(row, this.settings, this.controls));
+    group.add(row);
+    return row;
   }
 
   _addList(page, key, title, activeWhen) {

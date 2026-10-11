@@ -1,5 +1,5 @@
 // Redraws an St.Icon from its style map with shaders/icon-style.frag: glass
-// plates under a one-colour symbol, or, while a clone draws it (the launch
+// plates under a symbol, or, while a clone draws it (the launch
 // animation), the icon's own picture in the style's colour.
 import Clutter from 'gi://Clutter';
 import Cogl from 'gi://Cogl';

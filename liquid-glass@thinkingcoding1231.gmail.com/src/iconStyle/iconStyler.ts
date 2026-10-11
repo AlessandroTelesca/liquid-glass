@@ -1,5 +1,5 @@
 // Redraws application icons in the dock (Dash to Dock) and in the launcher as
-// glass plates under a one-colour symbol (see iconEffect.ts), for the
+// glass plates under a symbol (see iconEffect.ts), for the
 // applications the settings pick.
 import Cogl from 'gi://Cogl';
 import Clutter from 'gi://Clutter';

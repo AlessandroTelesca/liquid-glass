@@ -118,6 +118,16 @@ if (widgetPlace.selected !== 5) throw Error('A widget placed on its own is not r
 widgetPlace.selected = 0;
 if (settings.get_string('desktop-widget-anchors') !== '{}' || settings.get_string('desktop-widgets-position') !== 'top-left')
   throw Error('Picking a place for the widgets kept a widget\'s own place');
+settings.set_boolean('icon-style-dock', true);
+settings.set_string('icon-style-mode', 'clear');
+find('Glass tuning').emit('activated');
+const tuning = window.visible_dialog;
+const tuningRows = [...walk(tuning)].filter(widget => widget instanceof Adw.SpinRow);
+if (tuningRows.length !== 6) throw Error(`Clear has ${tuningRows.length} tuning rows`);
+tuningRows.find(row => row.title === 'Rim brightness').value = 0.7;
+if (settings.get_value('icon-style-tuning').deep_unpack().clearRim !== 0.7) throw Error('Tuning did not store its value');
+tuning.close();
+settings.reset('icon-style-tuning');
 controls.dispose();
 window.destroy();
-print(JSON.stringify({nativeGtk: 'passed', rows: rows.length, openingWrites: 0, sharedBlur: 'passed', smoothMotion: 'passed', advanced: 'passed'}));
+print(JSON.stringify({nativeGtk: 'passed', rows: rows.length, tuning: tuningRows.length, openingWrites: 0, sharedBlur: 'passed', smoothMotion: 'passed', advanced: 'passed'}));

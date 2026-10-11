@@ -1785,7 +1785,7 @@ export default class LgDriver extends Extension {
     await shot('icon-style-light', dockRect);
     settings.reset('icon-style-tint-variant');
     // A tuned number takes effect without the icons being styled again.
-    settings.set_value('icon-style-tuning', new GLib.Variant('a{sd}', {darkGlass: 0.45, rimWidth: 2}));
+    settings.set_value('icon-style-tuning', new GLib.Variant('a{sd}', {darkGlass: 0.45, darkRimWidth: 2}));
     await sleep(800);
     report('tuned');
     await shot('icon-style-tuned', dockRect);

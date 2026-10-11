@@ -66,7 +66,6 @@ function smoothstep(lo, hi, x) {
     return t * t * (3 - 2 * t);
 }
 
-// Shapes
 /** Signed distance (px, negative inside) from a pixel position to the shape's outline. */
 export function shapeDistance(shape, x, y) {
     const dx = x - shape.cx, dy = y - shape.cy;
@@ -251,7 +250,6 @@ function fitShape(mask, w, h) {
     return fitRipple(mask, w, h, basic);
 }
 
-// Areas
 function areas(lab, opaque, w, h) {
     const parent = new Int32Array(w * h).map((_, i) => i);
     const find = (i) => {
@@ -314,7 +312,6 @@ function filled(data, w, h) {
     return outside.map(v => 1 - v);
 }
 
-// Colour
 const TERMS = 6;
 
 function terms(shape, x, y, out) {

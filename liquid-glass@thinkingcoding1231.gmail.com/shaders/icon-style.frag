@@ -1,5 +1,5 @@
 // An icon redrawn from its style map (src/iconStyle/styleMap.ts) as glass
-// plates under a one-colour symbol. A Cogl fragment snippet for
+// plates under a symbol. A Cogl fragment snippet for
 // src/iconStyle/iconEffect.ts; the contact sheet (tools/icon-sheet) runs it in
 // WebGL too.
 uniform sampler2D cogl_sampler0; // The icon as drawn, for the launch animation

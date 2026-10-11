@@ -1,4 +1,4 @@
-// The texture an icon is redrawn from (see shaders/icon-style.glsl): the
+// The texture an icon is redrawn from (see shaders/icon-style.frag): the
 // plates as distance fields and the symbol's coverage, on a square of
 // MAP_SIZE px that stands for the icon's square.
 //

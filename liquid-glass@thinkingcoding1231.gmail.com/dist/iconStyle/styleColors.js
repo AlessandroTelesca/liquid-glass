@@ -1,11 +1,16 @@
 // The colours icon-style.frag draws a style map in, per look, after macOS 26's
 // tinted, white and clear icons. Pure, so that the contact sheet and the
 // preferences can use it too.
-const ALL = ['dark', 'light', 'mono', 'clear'];
+// The rim and the sheen of each look: width (map px), light on the sides away from the light, and sheen.
+const GLASS = {
+    dark: [9, 0, 0.42], light: [9, 0, 0.42], mono: [9, 0, 0.42], clear: [7, 0, 0.5],
+};
 export const ICON_TUNING = [
-    { key: 'rimWidth', title: 'Rim width', looks: ALL, min: 1, max: 16, value: 7 },
-    { key: 'rimBase', title: 'Rim light away from the light', looks: ALL, min: 0, max: 1, value: 0.2 },
-    { key: 'sheen', title: 'Sheen (top lighter than bottom)', looks: ALL, min: 0, max: 0.5, value: 0.1 },
+    ...Object.entries(GLASS).flatMap(([look, [width, base, sheen]]) => [
+        { key: `${look}RimWidth`, title: 'Rim width', looks: [look], min: 1, max: 16, value: width },
+        { key: `${look}RimBase`, title: 'Rim light away from the light', looks: [look], min: 0, max: 1, value: base },
+        { key: `${look}Sheen`, title: 'Sheen (top lighter than bottom)', looks: [look], min: 0, max: 0.5, value: sheen },
+    ]),
     { key: 'darkGlass', title: 'Glass lightness', looks: ['dark'], min: 0, max: 0.6, value: 0.12 },
     { key: 'darkGlassAlpha', title: 'Glass opacity', looks: ['dark'], min: 0, max: 1, value: 1 },
     { key: 'darkTintReach', title: 'Color in the glass at full tint strength', looks: ['dark'], min: 0, max: 1, value: 0.55 },
@@ -19,19 +24,19 @@ export const ICON_TUNING = [
     { key: 'darkSymbolOnDark', title: 'Light symbol on plates: white mixed into the color', looks: ['dark'], min: 0, max: 1,
         value: 0.75 },
     { key: 'darkRim', title: 'Rim brightness', looks: ['dark'], min: 0, max: 1, value: 0.55 },
-    { key: 'lightGlassBlack', title: 'Glass: black mixed into the color', looks: ['light'], min: 0, max: 1, value: 0.25 },
+    { key: 'lightGlassBlack', title: 'Glass: black mixed into the color', looks: ['light'], min: 0, max: 1, value: 0.21 },
     { key: 'lightGlassAlpha', title: 'Glass opacity', looks: ['light'], min: 0, max: 1, value: 1 },
-    { key: 'lightInnerAlpha', title: 'Plates: white over the glass', looks: ['light'], min: 0, max: 1, value: 0.22 },
-    { key: 'lightSymbolTint', title: 'Symbol: color mixed into white', looks: ['light'], min: 0, max: 1, value: 0.08 },
+    { key: 'lightInnerAlpha', title: 'Plates: white over the glass', looks: ['light'], min: 0, max: 1, value: 0.26 },
+    { key: 'lightSymbolTint', title: 'Symbol: color mixed into white', looks: ['light'], min: 0, max: 1, value: 0.21 },
     { key: 'lightRim', title: 'Rim brightness', looks: ['light'], min: 0, max: 1, value: 0.6 },
     { key: 'monoGlass', title: 'Glass lightness', looks: ['mono'], min: 0, max: 0.6, value: 0.12 },
-    { key: 'monoInner', title: 'Plates: lightness', looks: ['mono'], min: 0, max: 1, value: 0.74 },
+    { key: 'monoInner', title: 'Plates: lightness', looks: ['mono'], min: 0, max: 1, value: 0.64 },
     { key: 'monoInnerAlpha', title: 'Plates: opacity', looks: ['mono'], min: 0, max: 1, value: 0.92 },
-    { key: 'monoSymbol', title: 'Symbol: lightness', looks: ['mono'], min: 0, max: 1, value: 0.94 },
+    { key: 'monoSymbol', title: 'Symbol: lightness', looks: ['mono'], min: 0, max: 1, value: 1 },
     { key: 'monoRim', title: 'Rim brightness', looks: ['mono'], min: 0, max: 1, value: 0.55 },
-    { key: 'clearGlassAlpha', title: 'Glass: white over the backdrop', looks: ['clear'], min: 0, max: 1, value: 0.08 },
-    { key: 'clearInnerAlpha', title: 'Plates: white over the glass', looks: ['clear'], min: 0, max: 1, value: 0.1 },
-    { key: 'clearRim', title: 'Rim brightness', looks: ['clear'], min: 0, max: 1, value: 0.8 },
+    { key: 'clearGlassAlpha', title: 'Glass: white over the backdrop', looks: ['clear'], min: 0, max: 1, value: 0.18 },
+    { key: 'clearInnerAlpha', title: 'Plates: white over the glass', looks: ['clear'], min: 0, max: 1, value: 0.13 },
+    { key: 'clearRim', title: 'Rim brightness', looks: ['clear'], min: 0, max: 1, value: 0.45 },
 ];
 const WHITE = [1, 1, 1];
 
@@ -52,7 +57,8 @@ function glass(lightness) {
  */
 export function iconStyleColors(mode, tint, strength, symbolOpacity, variant = 'dark', tuning = {}) {
     const v = (key) => tuning[key] ?? ICON_TUNING.find(p => p.key === key).value;
-    const shared = { rimWidth: v('rimWidth'), rimBase: v('rimBase'), sheen: v('sheen') };
+    const look = mode === 'tinted' ? variant : mode;
+    const shared = { rimWidth: v(`${look}RimWidth`), rimBase: v(`${look}RimBase`), sheen: v(`${look}Sheen`) };
     if (mode === 'clear') {
         // Barely frosted, so that the white symbol stands apart from the plates.
         return { ...shared, plate: [1, 1, 1, v('clearGlassAlpha')], inner: [1, 1, 1, v('clearInnerAlpha')],

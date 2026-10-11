@@ -1065,7 +1065,7 @@
     <key name="icon-style-tuning" type="a{sd}">
       <default>{}</default>
       <summary>Icon glass tuning</summary>
-      <description>Values that replace the icon look's built-in numbers, by name, while their defaults are being chosen.</description>
+      <description>Values that replace the numbers the icon looks are drawn with, by name.</description>
     </key>
     <key name="icon-style-tint-strength" type="d">
       <range min="0" max="1"/>
