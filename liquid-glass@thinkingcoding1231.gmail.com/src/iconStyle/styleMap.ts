@@ -9,9 +9,10 @@
 //
 // A distance d (map px, negative inside) is stored as 0.5 - d / (2 * RANGE).
 // Beside it, a tone map of the same size: in R the tone of the plate whose
-// distance G holds at that pixel, in G that of B's plate, from 0 (the darkest
-// of its siblings) through 0.5 (the look's own colour) to 1, so that plates side
-// by side in different colours stay apart once they are glass in one colour.
+// distance G holds at that pixel, in G that of B's plate and in B the outer
+// plate's, from 0 (darker) through 0.5 (the look's own colour) to 1, so that
+// plates side by side in different colours, and parts of a plate a little apart
+// in shade, stay apart once they are glass in one colour.
 // Pure computation, for the worker and the tests.
 import { type IconAnalysis, type IconPixels, type Plate, type PlateShape, plateColor, shapeDistance, symbolLayer }
   from './iconAnalysis.js';
@@ -35,8 +36,10 @@ const SQUARE_EXPONENT = 3.5;
 // A rounded rectangle with corners rounder than this share of its half size is a circle or a pill.
 const SQUARE_RADIUS = 0.62;
 const OUTSIDE_SHARE = 0.01;
-// Tone per unit of Oklab difference between siblings, along the way they differ most.
+// Tone per unit of Oklab difference between siblings, along the way they differ most, and per unit of lightness
+// a part of a plate's surface differs from the plate.
 const TONE_GAIN = 2.5;
+const SURFACE_GAIN = 5;
 
 export interface StyleMap {
   size: number;
@@ -123,10 +126,10 @@ export function buildStyleMap(analysis: IconAnalysis, detail: IconPixels, size =
   }
   const level = plates.map((_, i) => depthOf(plates, i) + (own ? 0 : 1));
 
-  const { symbol, intensity } = symbolLayer(plates, A, detail);
+  const { symbol, intensity, surface } = symbolLayer(plates, A, detail);
   const field = new Float32Array(symbol.length);
   for (let i = 0; i < field.length; i++) field[i] = symbol[i] * intensity[i];
-  const sample = (x: number, y: number) => {
+  const sample = (x: number, y: number, values: Float32Array = field) => {
     // Bilinear, in detail pixels.
     const fx = x / scale - 0.5, fy = y / scale - 0.5;
     const x0 = Math.floor(fx), y0 = Math.floor(fy);
@@ -134,7 +137,7 @@ export function buildStyleMap(analysis: IconAnalysis, detail: IconPixels, size =
     for (const [dx, dy, wgt] of [[0, 0, (1 - (fx - x0)) * (1 - (fy - y0))], [1, 0, (fx - x0) * (1 - (fy - y0))],
       [0, 1, (1 - (fx - x0)) * (fy - y0)], [1, 1, (fx - x0) * (fy - y0)]]) {
       const u = x0 + dx, w = y0 + dy;
-      if (u >= 0 && w >= 0 && u < detail.width && w < detail.height) v += field[w * detail.width + u] * wgt;
+      if (u >= 0 && w >= 0 && u < detail.width && w < detail.height) v += values[w * detail.width + u] * wgt;
     }
     return v;
   };
@@ -149,18 +152,25 @@ export function buildStyleMap(analysis: IconAnalysis, detail: IconPixels, size =
     for (let x = 0; x < size; x++) {
       const fx = (x + 0.5) / mapPx, fy = (y + 0.5) / mapPx;
       const qx = fromX + (fx - centre) / k, qy = fromY + (fy - centre) / k;
-      // Outside every plate too the nearest plate's tone, so that it does not bleed in at the edges.
-      const inner = [Infinity, Infinity], innerTone = [0.5, 0.5];
+      // The tone is the innermost plate's that the point is in (a disc in a ring shares the ring's channel), and outside
+      // them all the nearest plate's, so that it does not bleed in at the edges.
+      const inner = [Infinity, Infinity], innerTone = [0.5, 0.5], toneLevel = [-1, -1];
+      // The level of the innermost plate here, which its surface's shade goes to.
+      let here = own && shapeDistance(plates[tops[0]].shape, qx, qy) < 0 ? 0 : -1;
       plates.forEach((plate, i) => {
         const l = level[i];
         if (l === 0) return;
         const slot = Math.min(l, 2) - 1;
         const d = shapeDistance(plate.shape, qx, qy) * k * mapPx;
-        if (d < inner[slot]) {
-          inner[slot] = d;
-          innerTone[slot] = tones[i];
-        }
+        const deeper = d < 0 && l >= toneLevel[slot];
+        if (deeper || (toneLevel[slot] < 0 && d < inner[slot])) innerTone[slot] = tones[i];
+        if (deeper) toneLevel[slot] = l;
+        if (d < 0) here = Math.max(here, l);
+        inner[slot] = Math.min(inner[slot], d);
       });
+      const shade = here < 0 ? 0 : sample(qx, qy, surface) * SURFACE_GAIN;
+      const outerTone = here === 0 ? 0.5 + shade : 0.5;
+      if (here > 0) innerTone[Math.min(here, 2) - 1] += shade;
       let sym = 0;
       for (let ty = 0; ty < taps; ty++) {
         for (let tx = 0; tx < taps; tx++) {
@@ -174,7 +184,8 @@ export function buildStyleMap(analysis: IconAnalysis, detail: IconPixels, size =
       data[at + 1] = encode(inner[0]);
       data[at + 2] = encode(inner[1]);
       data[at + 3] = Math.round(Math.min(sym / (taps * taps), 1) * 255);
-      tone.set([Math.round(innerTone[0] * 255), Math.round(innerTone[1] * 255), 0, 255], at);
+      const byte = (t: number) => Math.round(Math.min(Math.max(t, 0), 1) * 255);
+      tone.set([byte(innerTone[0]), byte(innerTone[1]), byte(outerTone), 255], at);
     }
   }
   return { size, data, tone, ownPlate: own };

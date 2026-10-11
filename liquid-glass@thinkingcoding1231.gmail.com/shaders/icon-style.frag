@@ -103,7 +103,7 @@ void main() {
     vec4 icon = texture2D(cogl_sampler0, st);
     vec4 tone = texture2D(cogl_sampler2, at);
 
-    vec3 base = vec3(plate_r, plate_g, plate_b) * (1.0 + sheen * (0.5 - at.y));
+    vec3 base = toned(vec3(plate_r, plate_g, plate_b), plate_a, tone.b).rgb * (1.0 + sheen * (0.5 - at.y));
     vec4 c = plate(field(m.r), gradient(l, r, u, b, 0), base, plate_a);
     vec3 inner = vec3(inner_r, inner_g, inner_b);
     vec4 firstTone = toned(inner, inner_a, tone.r);

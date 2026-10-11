@@ -112,3 +112,53 @@ test('alike squares a little too small to be plates on their own are plates besi
   const map = mapOf([{ distance: of(plate), color: [240, 240, 240] }, ...squares]);
   for (const x of [30, 68, 102]) assert.ok(field(map, 1, x, 62) < 0, `square at ${x}`);
 });
+
+test('a plate cut into three pieces of different colours has all of them as symbol', () => {
+  const disc = shape('superellipse', 56);
+  const sector = (from, to) => (x, y) => {
+    const a = (Math.atan2(y - 64, x - 64) + 2 * Math.PI) % (2 * Math.PI);
+    return a >= from && a < to ? of(disc)(x, y) : 1;
+  };
+  const third = 2 * Math.PI / 3;
+  const analysis = analyzeIcon(draw(128, [
+    { distance: sector(0, third), color: [220, 50, 40] },
+    { distance: sector(third, 2 * third), color: [40, 160, 80] },
+    { distance: sector(2 * third, 2 * Math.PI), color: [250, 190, 20] },
+  ]));
+  assert.equal(analysis.plates[0].pieces.length, 3);
+  // A point well inside each sector.
+  for (const [x, y] of [[80, 84], [40, 76], [70, 36]]) assert.ok(analysis.symbol[y * 128 + x] > 0.8, `sector at ${x},${y}`);
+});
+
+test('a toggle whose knob sits on its edge is a plate, knob and all', () => {
+  const plate = shape('roundrect', 56, { radius: 14 });
+  const pill = shape('roundrect', 34, { cx: 64, cy: 64, ry: 17, radius: 17 });
+  const knob = shape('superellipse', 15, { cx: 82, cy: 64 });
+  const map = mapOf([{ distance: of(plate), color: [240, 240, 240] }, { distance: of(pill), color: [228, 82, 32] },
+    { distance: of(knob), color: [255, 255, 255] }]);
+  assert.ok(field(map, 1, 44, 64) < 0, 'the pill is a plate');
+  assert.ok(field(map, 1, 82, 64) < 0, 'with the knob in it');
+});
+
+test('a disc in a ring takes its own tone, and a darker part of a plate a lower one', () => {
+  // Circle, ring and disc: the ring and the disc are both deeper than the plates on the base, so they share a channel.
+  const circle = shape('superellipse', 56);
+  const ring = shape('superellipse', 30);
+  const disc = shape('superellipse', 18);
+  const map = mapOf([{ distance: of(circle), color: [220, 60, 50] }, { distance: of(ring), color: [255, 255, 255] },
+    { distance: of(disc), color: [30, 110, 230] }]);
+  const row = [];
+  for (let x = MAP_SIZE / 2; x < MAP_SIZE; x++) {
+    const at = (MAP_SIZE / 2 * MAP_SIZE + x) * 4;
+    if (map.data[at + 2] > 128) row.push(map.tone[at + 1] / 255);
+  }
+  assert.ok(row[0] < Math.max(...row) - 0.2, `disc ${row[0]} ring ${Math.max(...row)}`);
+
+  // A square plate with a little darker L shape on it (no plate's shape), too little darker to be symbol.
+  const plate = shape('roundrect', 56, { radius: 14 });
+  const quarter = (x, y) => Math.max(of(plate)(x, y), Math.min(Math.max(x - 64, y - 64), Math.max(x - 100, y - 40)));
+  const shaded = mapOf([{ distance: of(plate), color: [94, 94, 94] }, { distance: quarter, color: [84, 84, 84] }]);
+  const outer = (x, y) => shaded.tone[(Math.floor(y * 2) * MAP_SIZE + Math.floor(x * 2)) * 4 + 2] / 255;
+  assert.equal(shaded.ownPlate, true);
+  assert.ok(outer(36, 36) < outer(92, 92) - 0.1, `dark ${outer(36, 36)} light ${outer(92, 92)}`);
+});

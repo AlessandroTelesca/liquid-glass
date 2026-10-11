@@ -38,6 +38,18 @@ const MIN_INNER_SHARE = 0.1;
 const PEER_AREA = 0.012;
 const PEER_FIT = 0.88;
 const PEER_SIZE = 0.3;
+// An area with pieces of other colours on its edge (a toggle's knob) is not closed by filling its holes: the pieces
+// mostly in the shape fitted to it (which ends where the piece begins), adding at most this share to it, are taken in
+// and the shape fitted again.
+const ABSORB_SHARE = 0.7;
+const ABSORB_INSIDE = 0.6;
+// A plate's surface cut into pieces, each at least this share of the largest and of the plate, in three or more
+// colours this far apart, has none of them as its colour. Two colours are a surface and something on it.
+const PIECE_SHARE = 0.4;
+const PIECE_MIN = 0.08;
+const PIECE_APART = 0.07;
+// Lightness differences on a plate's surface smaller than this (Oklab L), or than twice its grain, are noise.
+const SURFACE_STEP = 0.012;
 const LINEAR = new Float32Array(256).map((_, i) => {
     const c = i / 255;
     return c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
@@ -452,7 +464,7 @@ export function analyzeIcon(icon) {
     }
     // Candidates: the whole silhouette, and every large area with its holes filled.
     const candidates = [];
-    const add = (fill) => {
+    const add = (fill, absorbed = false) => {
         const mask = maskOf(fill, w, h);
         if (mask.area < n * PEER_AREA)
             return;
@@ -463,7 +475,7 @@ export function analyzeIcon(icon) {
             return;
         const shape = fitShape(mask, w, h);
         if (shape)
-            candidates.push({ mask, shape, strict: mask.area >= n * MIN_PLATE_AREA && shape.fit >= FIT_PLATE });
+            candidates.push({ mask, shape, strict: mask.area >= n * MIN_PLATE_AREA && shape.fit >= FIT_PLATE, absorbed });
     };
     add(filled(opaque, w, h));
     const labels = areas(lab, opaque, w, h);
@@ -472,115 +484,178 @@ export function analyzeIcon(icon) {
         if (labels[i] >= 0)
             sizes.set(labels[i], (sizes.get(labels[i]) ?? 0) + 1);
     }
+    const absorbed = (fill) => {
+        const mask = maskOf(fill, w, h);
+        if (mask.area < n * PEER_AREA || mask.x2 - mask.x1 < 6 || mask.y2 - mask.y1 < 6)
+            return null;
+        const basic = fitBasic(mask, w, h);
+        if (basic.fit >= FIT_PLATE)
+            return null;
+        const inside = new Map();
+        for (let i = 0; i < n; i++) {
+            if (fill[i] || labels[i] < 0 || coverageOf(basic, i % w, Math.floor(i / w)) <= 0.5)
+                continue;
+            inside.set(labels[i], (inside.get(labels[i]) ?? 0) + 1);
+        }
+        const taken = [...inside].filter(([label, count]) => count >= sizes.get(label) * ABSORB_INSIDE).map(([label]) => label);
+        const added = taken.reduce((sum, label) => sum + sizes.get(label), 0);
+        if (!added || added > mask.area * ABSORB_SHARE)
+            return null;
+        const out = Uint8Array.from(fill);
+        for (let i = 0; i < n; i++) {
+            if (taken.includes(labels[i]))
+                out[i] = 1;
+        }
+        return out;
+    };
     for (const [label, size] of sizes) {
         if (size < n * PEER_AREA * 0.5)
             continue;
         const area = new Uint8Array(n);
         for (let i = 0; i < n; i++)
             area[i] = labels[i] === label ? 1 : 0;
-        add(filled(area, w, h));
+        const fill = filled(area, w, h);
+        add(fill);
+        const whole = absorbed(fill);
+        if (whole)
+            add(filled(whole, w, h), true);
     }
-    // Outermost first. A candidate the same as one kept already is the same
-    // plate, and one that lies partly over a kept plate is not a plate.
-    candidates.sort((a, b) => b.mask.area - a.mask.area);
-    const kept = [];
-    const parents = [];
-    // How much of `mask` lies in `shape`.
-    const share = (mask, shape) => {
-        let inside = 0;
-        for (let i = 0; i < n; i++) {
-            if (mask.data[i] && coverageOf(shape, i % w, Math.floor(i / w)) > 0.5)
-                inside++;
-        }
-        return inside / mask.area;
-    };
-    // The kept plate `c` lies in, -1 for none, or null when it lies partly over one.
-    const placeOf = (c) => {
-        if (kept.some(k => overlap(k.shape, c.mask, w, h) > 0.95))
-            return null;
-        const shares = kept.map(k => share(c.mask, k.shape));
-        if (shares.some(share => share > 0.1 && share < 0.9))
-            return null;
-        let parent = -1;
-        for (let k = kept.length - 1; k >= 0 && parent < 0; k--) {
-            if (shares[k] >= 0.9)
-                parent = k;
-        }
-        return parent;
-    };
-    const loose = candidates.filter(candidate => !candidate.strict);
-    for (const c of candidates.filter(candidate => candidate.strict)) {
-        const parent = placeOf(c);
-        if (parent === null)
-            continue;
-        if (parent >= 0 && c.mask.area < kept[parent].mask.area * MIN_INNER_SHARE) {
-            loose.push(c);
-            continue;
-        }
-        kept.push(c);
-        parents.push(parent);
-    }
-    // Then the shapes alike to a kept plate on the same plate. Nothing kept lies in them, so they go last.
-    loose.sort((a, b) => b.mask.area - a.mask.area);
-    for (const c of loose) {
-        const parent = placeOf(c);
-        if (parent === null || !kept.some((k, i) => parents[i] === parent && alike(k, c)))
-            continue;
-        if (kept.some(k => k.mask.area < c.mask.area && share(k.mask, c.shape) >= 0.9))
-            continue;
-        kept.push(c);
-        parents.push(parent);
-    }
-    // Per pixel, the innermost plate it is in.
-    const owner = new Int32Array(n).fill(-1);
-    for (let i = 0; i < n; i++) {
-        const x = i % w + 0.5, y = Math.floor(i / w) + 0.5;
-        for (let k = kept.length - 1; k >= 0; k--) {
-            if (shapeDistance(kept[k].shape, x, y) < 0) {
-                owner[i] = k;
-                break;
+    const platesFrom = (pool) => {
+        // Outermost first. A candidate the same as one kept already is the same
+        // plate, and one that lies partly over a kept plate is not a plate.
+        const sorted = [...pool].sort((a, b) => b.mask.area - a.mask.area);
+        const kept = [];
+        const parents = [];
+        // How much of `mask` lies in `shape`.
+        const share = (mask, shape) => {
+            let inside = 0;
+            for (let i = 0; i < n; i++) {
+                if (mask.data[i] && coverageOf(shape, i % w, Math.floor(i / w)) > 0.5)
+                    inside++;
             }
-        }
-    }
-    // A plate's colour is that of its largest smooth area: its rim may carry a
-    // lit edge or a border, and a symbol may cross it. A plate whose largest
-    // area is a small part of it carries a picture.
-    const plates = kept.map((c, k) => {
-        const own = [];
-        const counts = new Map();
-        for (let i = 0; i < n; i++) {
-            if (owner[i] !== k || !opaque[i])
+            return inside / mask.area;
+        };
+        // The kept plate `c` lies in, -1 for none, or null when it lies partly over one.
+        const placeOf = (c) => {
+            if (kept.some(k => overlap(k.shape, c.mask, w, h) > 0.95))
+                return null;
+            const shares = kept.map(k => share(c.mask, k.shape));
+            if (shares.some(share => share > 0.1 && share < 0.9))
+                return null;
+            let parent = -1;
+            for (let k = kept.length - 1; k >= 0 && parent < 0; k--) {
+                if (shares[k] >= 0.9)
+                    parent = k;
+            }
+            return parent;
+        };
+        const loose = sorted.filter(candidate => !candidate.strict);
+        for (const c of sorted.filter(candidate => candidate.strict)) {
+            const parent = placeOf(c);
+            if (parent === null)
                 continue;
-            own.push(i);
-            counts.set(labels[i], (counts.get(labels[i]) ?? 0) + 1);
+            if (parent >= 0 && c.mask.area < kept[parent].mask.area * MIN_INNER_SHARE) {
+                loose.push(c);
+                continue;
+            }
+            kept.push(c);
+            parents.push(parent);
         }
-        let main = -1, most = 0;
-        for (const [label, count] of counts) {
-            if (count > most) {
-                main = label;
-                most = count;
+        // Then the shapes alike to a kept plate on the same plate. Nothing kept lies in them, so they go last.
+        loose.sort((a, b) => b.mask.area - a.mask.area);
+        for (const c of loose) {
+            const parent = placeOf(c);
+            if (parent === null || !kept.some((k, i) => parents[i] === parent && alike(k, c)))
+                continue;
+            if (kept.some(k => k.mask.area < c.mask.area && share(k.mask, c.shape) >= 0.9))
+                continue;
+            kept.push(c);
+            parents.push(parent);
+        }
+        // Per pixel, the innermost plate it is in.
+        const owner = new Int32Array(n).fill(-1);
+        for (let i = 0; i < n; i++) {
+            const x = i % w + 0.5, y = Math.floor(i / w) + 0.5;
+            for (let k = kept.length - 1; k >= 0; k--) {
+                if (shapeDistance(kept[k].shape, x, y) < 0) {
+                    owner[i] = k;
+                    break;
+                }
             }
         }
-        // Grain breaks a plate into specks; then the fit starts from all of it.
-        const share = own.length ? most / own.length : 0;
-        const fit = fitColor(c.shape, share >= MIN_SURFACE ? own.filter(i => labels[i] === main) : own, lab, w);
-        const plate = { shape: c.shape, color: fit.color, plain: false, parent: parents[k], surface: 0, error: fit.rms,
-            share, noise: fit.noise };
-        let surface = 0;
-        const at = [0, 0, 0];
-        const near = Math.max(SYMBOL_LOW, fit.noise * 3);
-        for (const i of own) {
-            plateColor(plate, i % w + 0.5, Math.floor(i / w) + 0.5, at);
-            if (Math.hypot(at[0] - lab[i * 3], at[1] - lab[i * 3 + 1], at[2] - lab[i * 3 + 2]) < near)
-                surface++;
-        }
-        plate.surface = own.length ? surface / own.length : 0;
-        // A grainy plate strays evenly: its typical pixel is near its colour.
-        plate.plain = plate.surface >= MIN_SURFACE && (fit.rms < PLAIN_RMS || fit.noise < MAX_GRAIN);
-        return plate;
-    });
+        // A plate's colour is that of its largest smooth area: its rim may carry a
+        // lit edge or a border, and a symbol may cross it. A plate whose largest
+        // area is a small part of it carries a picture.
+        const plates = kept.map((c, k) => {
+            const own = [];
+            const counts = new Map();
+            for (let i = 0; i < n; i++) {
+                if (owner[i] !== k || !opaque[i])
+                    continue;
+                own.push(i);
+                counts.set(labels[i], (counts.get(labels[i]) ?? 0) + 1);
+            }
+            let main = -1, most = 0;
+            for (const [label, count] of counts) {
+                if (count > most) {
+                    main = label;
+                    most = count;
+                }
+            }
+            // Grain breaks a plate into specks; then the fit starts from all of it.
+            const share = own.length ? most / own.length : 0;
+            const fit = fitColor(c.shape, share >= MIN_SURFACE ? own.filter(i => labels[i] === main) : own, lab, w);
+            const plate = { shape: c.shape, color: fit.color, plain: false, parent: parents[k], surface: 0, error: fit.rms,
+                share, noise: fit.noise, pieces: piecesOf(own, counts, most, labels, lab) };
+            let surface = 0;
+            const at = [0, 0, 0];
+            const near = Math.max(SYMBOL_LOW, fit.noise * 3);
+            for (const i of own) {
+                plateColor(plate, i % w + 0.5, Math.floor(i / w) + 0.5, at);
+                if (Math.hypot(at[0] - lab[i * 3], at[1] - lab[i * 3 + 1], at[2] - lab[i * 3 + 2]) < near)
+                    surface++;
+            }
+            plate.surface = own.length ? surface / own.length : 0;
+            // A grainy plate strays evenly: its typical pixel is near its colour.
+            plate.plain = plate.surface >= MIN_SURFACE && (fit.rms < PLAIN_RMS || fit.noise < MAX_GRAIN);
+            return plate;
+        });
+        return { plates, kept };
+    };
+    // Plates that took in pieces of other colours must not make the icon one that carries a picture (shown as it is,
+    // which happens when such a plate, or the plate it takes the place of part of, is no longer plain): then the
+    // pieces stay symbol on the plates under them.
+    const picture = (plates) => plates.some(plate => !plate.plain);
+    let { plates } = platesFrom(candidates);
+    if (picture(plates) && candidates.some(c => c.absorbed)) {
+        const without = platesFrom(candidates.filter(c => !c.absorbed)).plates;
+        if (!picture(without))
+            plates = without;
+    }
     const { symbol, intensity } = symbolLayer(plates, w, icon);
     return { width: w, height: h, plates, symbol, intensity };
+}
+
+// The mean colours of the pieces a plate's surface is cut into (see PIECE_SHARE), or none.
+function piecesOf(own, counts, most, labels, lab) {
+    const big = [...counts].filter(([label, count]) => label >= 0 && count >= most * PIECE_SHARE && count >= own.length * PIECE_MIN)
+        .map(([label]) => label);
+    if (big.length < 3)
+        return [];
+    const sums = new Map(big.map(label => [label, [0, 0, 0]]));
+    for (const i of own) {
+        const sum = sums.get(labels[i]);
+        if (sum)
+            for (let c = 0; c < 3; c++)
+                sum[c] += lab[i * 3 + c];
+    }
+    const colors = big.map(label => sums.get(label).map(v => v / counts.get(label)));
+    const distinct = [];
+    for (const c of colors) {
+        if (distinct.every(d => Math.hypot(c[0] - d[0], c[1] - d[1], c[2] - d[2]) >= PIECE_APART))
+            distinct.push(c);
+    }
+    return distinct.length >= 3 ? colors : [];
 }
 
 // Oklab distance from `c` to the segment from `p` to `q`: a pixel on the
@@ -729,6 +804,14 @@ export function symbolLayer(plates, analysisWidth, pixels) {
             cover[i] *= smoothstep(0.04, 0.1, d);
         }
     });
+    // The pieces a plate is cut into are symbol, whichever of them its colour was taken from.
+    for (let i = 0; i < n; i++) {
+        const k = owner[i];
+        if (k < 0 || raw[i] === Infinity || !plates[k].pieces.length || (depth[i] > -1.2 && plates[k].parent < 0))
+            continue;
+        const nearest = Math.min(...plates[k].pieces.map(p => Math.hypot(lab[i * 3] - p[0], lab[i * 3 + 1] - p[1], lab[i * 3 + 2] - p[2])));
+        cover[i] = Math.max(cover[i], 1 - smoothstep(0.03, 0.07, nearest));
+    }
     // The symbol's main tone (the median lightness of its core) is drawn at
     // full strength, and parts that differ from it, lighter or darker, a little
     // weaker, so that details stay visible in one colour. A partly covered
@@ -747,10 +830,19 @@ export function symbolLayer(plates, analysisWidth, pixels) {
     const spread = lights.map(l => Math.abs(l - main)).sort((a, b) => a - b)[Math.floor(lights.length * 0.9)] ?? 0;
     const symbol = new Float32Array(n);
     const intensity = new Float32Array(n);
+    // Where the plate shows, how much lighter (positive) or darker it is there than its colour: parts of a surface a
+    // little apart in shade, too close to be symbol, which glass of one colour would make the same.
+    const surface = new Float32Array(n);
     for (let i = 0; i < n; i++) {
         symbol[i] = alpha[i] * cover[i];
         intensity[i] = spread < FLAT_SYMBOL / 2 ? 1
             : 1 - DETAIL_DIM * smoothstep(FLAT_SYMBOL / 4, Math.max(spread, FLAT_SYMBOL), Math.abs(own[i] - main));
+        const k = owner[i];
+        if (k < 0 || raw[i] === Infinity || cover[i] > 0.1 || depth[i] > -1.2)
+            continue;
+        const step = lab[i * 3] - base[i * 3];
+        if (Math.abs(step) >= Math.max(SURFACE_STEP, plates[k].noise * 2))
+            surface[i] = step;
     }
-    return { symbol, intensity };
+    return { symbol, intensity, surface };
 }

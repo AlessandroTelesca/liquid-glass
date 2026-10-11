@@ -34,6 +34,8 @@ export LD_LIBRARY_PATH="$shell_dir:$mutter_dir:${LD_LIBRARY_PATH:-}"
 export GI_TYPELIB_PATH="$shell_dir:$mutter_dir:${GI_TYPELIB_PATH:-}"
 # The theme is picked through org.gnome.desktop.interface; keep that in memory.
 export GSETTINGS_BACKEND=memory
+# Applications shown only in GNOME (OnlyShowIn=GNOME) are listed only when the desktop says it is GNOME.
+export XDG_CURRENT_DESKTOP=GNOME
 
 files=()
 for theme in "${themes[@]}"; do

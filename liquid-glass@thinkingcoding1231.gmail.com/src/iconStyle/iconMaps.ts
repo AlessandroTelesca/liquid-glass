@@ -9,7 +9,7 @@ import { type IconStyleTextures, iconStyleTexture } from './iconEffect.js';
 import { MAP_SIZE } from './styleMap.js';
 
 // Changes whenever the maps would come out differently, so that older ones are made again.
-const MAP_VERSION = 3;
+const MAP_VERSION = 4;
 
 function loadFile(file: Gio.File, cancellable: Gio.Cancellable): Promise<Uint8Array> {
   return new Promise((resolve, reject) => {
