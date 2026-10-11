@@ -6,7 +6,7 @@ import { WorkerProcess } from '../workers/workerProcess.js';
 import { iconStyleTexture } from './iconEffect.js';
 import { MAP_SIZE } from './styleMap.js';
 // Changes whenever the maps would come out differently, so that older ones are made again.
-const MAP_VERSION = 4;
+const MAP_VERSION = 5;
 
 function loadFile(file, cancellable) {
     return new Promise((resolve, reject) => {

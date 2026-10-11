@@ -32,7 +32,7 @@ const SQUARE_FILL = 0.72;
 const SQUARE_EXPONENT = 3.5;
 // A rounded rectangle with corners rounder than this share of its half size is a circle or a pill.
 const SQUARE_RADIUS = 0.62;
-const OUTSIDE_SHARE = 0.01;
+const OUTSIDE_SHARE = 0.03;
 // Tone per unit of Oklab difference between siblings, along the way they differ most, and per unit of lightness
 // a part of a plate's surface differs from the plate.
 const TONE_GAIN = 2.5;

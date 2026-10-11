@@ -74,8 +74,8 @@ test('an icon whose plate carries a picture has no map', () => {
 
 test("the symbol's anti-aliased edge stays partly covered", () => {
   const plate = shape('roundrect', 56, { radius: 14 });
-  // A thick diagonal stroke, whose edges cross pixels at every fraction.
-  const stroke = (x, y) => Math.abs((x - y) / Math.SQRT2) - 8;
+  // A thick diagonal stroke across the plate, whose edges cross pixels at every fraction.
+  const stroke = (x, y) => Math.max(Math.abs((x - y) / Math.SQRT2) - 8, of(plate)(x, y) + 4);
   const map = mapOf([{ distance: of(plate), color: [240, 240, 240] }, { distance: stroke, color: [20, 20, 20] }]);
   const values = new Set();
   for (let i = 0; i < MAP_SIZE * MAP_SIZE; i++) values.add(map.data[i * 4 + 3]);

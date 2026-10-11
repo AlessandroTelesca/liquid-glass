@@ -133,3 +133,63 @@ test('a one-colour symbol is drawn at full strength, edges and all', () => {
     for (let x = 42; x < 86; x++) assert.equal(result.intensity[y * S + x], 1);
   }
 });
+
+test('a gradient no quadratic follows is never symbol, and quarters in shades of the plate are its surface', () => {
+  const plate = shape('roundrect', 56, 56, { radius: 14 });
+  // Lighter to the right over a short stretch, and the top left quarter a little darker.
+  const color = (x, y) => {
+    const lift = 50 / (1 + Math.exp(-(x - 84) / 7));
+    const dark = x < 64 && y < 64 ? 16 : 0;
+    return [40 + lift - dark, 130 + lift - dark, 100 + lift - dark];
+  };
+  const glyph = bar(56, 56, 72, 72);
+  const result = analyzeIcon(draw([layer(plate, color), { distance: glyph, color: () => [255, 255, 255] }]));
+  assert.equal(result.plates.length, 1);
+  assert.ok(symbolShare(result, (x, y) => shapeDistance(plate, x, y) < -3 && glyph(x, y) > 3) < 0.02);
+  assert.ok(symbolShare(result, (x, y) => glyph(x, y) < -1) > 0.95);
+});
+
+test('a diamond is a plate with no teeth, and a hexagon is no plate with six', () => {
+  const diamond = shape('superellipse', 50, 30, { exponent: 1 });
+  const [found] = analyzeIcon(draw([layer(diamond, [90, 160, 60])])).plates;
+  assert.ok(found, 'no plate');
+  assert.equal(found.shape.exponent, 1);
+  assert.equal(found.shape.ripple, null);
+  // A hexagon with upright sides, as a cube is seen from a corner.
+  const hexagon = (x, y) => Math.max(...[0, 60, 120].map(a => {
+    const t = a * Math.PI / 180;
+    return Math.abs((x - 64) * Math.cos(t) + (y - 64) * Math.sin(t)) - 44;
+  }));
+  const plates = analyzeIcon(draw([{ distance: hexagon, color: () => [120, 90, 60] }])).plates;
+  assert.ok(plates.every(p => !p.shape.ripple), plates.map(p => p.shape.ripple?.count).join());
+});
+
+test('red and green of about one lightness in a symbol are drawn at different strengths', () => {
+  const blob = (x, y) => {
+    const a = Math.atan2(y - 64, x - 64);
+    return Math.hypot(x - 64, y - 64) - 40 * (1 + 0.25 * Math.sin(3 * a) + 0.15 * Math.cos(5 * a + 1));
+  };
+  const sector = (from, to, color) => ({
+    distance: (x, y) => {
+      const a = (Math.atan2(y - 64, x - 64) + 2 * Math.PI) % (2 * Math.PI);
+      return a >= from && a < to ? blob(x, y) : 1;
+    },
+    color: () => color,
+  });
+  const third = 2 * Math.PI / 3;
+  const result = analyzeIcon(draw([sector(0, third, [225, 60, 50]), sector(third, 2 * third, [40, 160, 70]),
+    sector(2 * third, 2 * Math.PI, [250, 200, 30])]));
+  assert.equal(result.plates.length, 0);
+  const at = (x, y) => result.intensity[y * S + x];
+  const red = at(76, 76), green = at(48, 74), yellow = at(66, 44);
+  assert.ok(Math.abs(red - green) > 0.1, `red ${red} green ${green}`);
+  assert.ok(Math.abs(yellow - red) > 0.1 && Math.abs(yellow - green) > 0.1, `yellow ${yellow}`);
+});
+
+test('a stripe across a plate in a shade of its colour is part of its surface, not a plate on it', () => {
+  const plate = shape('roundrect', 56, 56, { radius: 14 });
+  const stripe = (x, y) => Math.max(shapeDistance(plate, x, y), Math.abs(x - 80) - 10);
+  const result = analyzeIcon(draw([layer(plate, [110, 110, 120]), { distance: stripe, color: () => [128, 128, 138] }]));
+  assert.equal(result.plates.length, 1);
+  assert.ok(symbolShare(result, (x, y) => stripe(x, y) < -2) < 0.05);
+});
