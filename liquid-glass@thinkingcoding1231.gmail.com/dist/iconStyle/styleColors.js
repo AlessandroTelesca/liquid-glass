@@ -4,7 +4,7 @@
 // Per look: the rim's width (map px), its light on the sides away from the light, the sheen, and how far the plates'
 // tones spread.
 const GLASS = {
-    dark: [7, 0.2, 0.1, 1], light: [9, 0, 0.42, 1], mono: [9, 0, 0.42, 1], clear: [7, 0, 0.5, 1],
+    dark: [7, 0.2, 0.1, 1], light: [9, 0, 0.42, 1], mono: [9, 0, 0.42, 1], clear: [12, 0.35, 0.5, 1],
 };
 export const ICON_TUNING = [
     ...Object.entries(GLASS).flatMap(([look, [width, base, sheen, spread]]) => [
@@ -37,9 +37,11 @@ export const ICON_TUNING = [
     { key: 'monoInnerAlpha', title: 'Plates: opacity', looks: ['mono'], min: 0, max: 1, value: 0.92 },
     { key: 'monoSymbol', title: 'Symbol: lightness', looks: ['mono'], min: 0, max: 1, value: 1 },
     { key: 'monoRim', title: 'Rim brightness', looks: ['mono'], min: 0, max: 1, value: 0.55 },
-    { key: 'clearGlassAlpha', title: 'Glass: white over the backdrop', looks: ['clear'], min: 0, max: 1, value: 0.18 },
-    { key: 'clearInnerAlpha', title: 'Plates: white over the glass', looks: ['clear'], min: 0, max: 1, value: 0.13 },
-    { key: 'clearRim', title: 'Rim brightness', looks: ['clear'], min: 0, max: 1, value: 0.45 },
+    { key: 'clearGlassAlpha', title: 'Glass: light added to the backdrop', looks: ['clear'], min: 0, max: 1, value: 0.1 },
+    { key: 'clearInnerAlpha', title: 'Plates: light added to the glass', looks: ['clear'], min: 0, max: 1, value: 0.08 },
+    { key: 'clearEdgeShade', title: 'Edge: darkening inside the rim', looks: ['clear'], min: 0, max: 0.5, value: 0.2 },
+    { key: 'clearSymbolShadow', title: 'Symbol: shadow under it', looks: ['clear'], min: 0, max: 1, value: 0.4 },
+    { key: 'clearRim', title: 'Rim brightness', looks: ['clear'], min: 0, max: 1, value: 0.8 },
 ];
 const WHITE = [1, 1, 1];
 
@@ -62,10 +64,12 @@ export function iconStyleColors(mode, tint, strength, symbolOpacity, variant = '
     const v = (key) => tuning[key] ?? ICON_TUNING.find(p => p.key === key).value;
     const look = mode === 'tinted' ? variant : mode;
     const shared = { rimWidth: v(`${look}RimWidth`), rimBase: v(`${look}RimBase`), sheen: v(`${look}Sheen`),
-        toneSpread: v(`${look}ToneSpread`) };
+        toneSpread: v(`${look}ToneSpread`), additive: 0, edgeShade: 0, symbolShadow: 0 };
     if (mode === 'clear') {
-        // Barely frosted, so that the white symbol stands apart from the plates.
-        return { ...shared, plate: [1, 1, 1, v('clearGlassAlpha')], inner: [1, 1, 1, v('clearInnerAlpha')],
+        // Barely frosted, so that the white symbol stands apart from the plates; the frost is light added to the
+        // backdrop, which keeps its colours, and a rim lit all round with a shaded band inside holds the outline.
+        return { ...shared, additive: 1, edgeShade: v('clearEdgeShade'), symbolShadow: v('clearSymbolShadow'),
+            plate: [1, 1, 1, v('clearGlassAlpha')], inner: [1, 1, 1, v('clearInnerAlpha')],
             symbol: [1, 1, 1, symbolOpacity], symbolInner: [1, 1, 1, symbolOpacity], rim: v('clearRim'), tint: [0.75, 0.75, 0.78] };
     }
     if (mode === 'mono') {
@@ -92,7 +96,8 @@ export function iconStyleColors(mode, tint, strength, symbolOpacity, variant = '
 /** The shader's uniforms for `colors`, by name. */
 export function iconStyleUniforms(colors) {
     const out = [['rim_a', colors.rim], ['rim_width', colors.rimWidth], ['rim_base', colors.rimBase],
-        ['sheen', colors.sheen], ['tone_spread', colors.toneSpread]];
+        ['sheen', colors.sheen], ['tone_spread', colors.toneSpread], ['additive', colors.additive],
+        ['edge_shade', colors.edgeShade], ['symbol_shadow', colors.symbolShadow]];
     for (const name of ['plate', 'inner', 'symbol', 'symbolInner']) {
         const uniform = name === 'symbolInner' ? 'symbol_inner' : name;
         colors[name].forEach((c, i) => out.push([`${uniform}_${'rgba'[i]}`, c]));

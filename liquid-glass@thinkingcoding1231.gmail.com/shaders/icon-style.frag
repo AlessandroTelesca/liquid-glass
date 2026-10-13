@@ -39,6 +39,12 @@ uniform float rim_base;
 uniform float sheen;
 // How far a plate's tone takes its colour towards white or black.
 uniform float tone_spread;
+// How much of a plate's colour is added to the backdrop rather than laid over it.
+uniform float additive;
+// How much a band inside a plate's rim darkens the backdrop.
+uniform float edge_shade;
+// How dark the soft shadow under the symbol is, which keeps a light symbol readable on a light backdrop.
+uniform float symbol_shadow;
 uniform float tint_r;
 uniform float tint_g;
 uniform float tint_b;
@@ -55,18 +61,24 @@ vec4 over(vec4 dst, vec4 src) {
     return src + dst * (1.0 - src.a);
 }
 
+float coverage(float d) {
+    return clamp(0.5 - d / max(map_px, 0.5), 0.0, 1.0);
+}
+
 // A plate whose outline is at distance d (map px) with outward normal n: a
 // sheet of colour whose rim catches light on the sides facing the top left
 // and the bottom right, as glass does.
 vec4 plate(float d, vec2 n, vec3 rgb, float alpha) {
-    float cover = clamp(0.5 - d / max(map_px, 0.5), 0.0, 1.0);
     float rim = 1.0 - clamp(-d / max(rim_width, 0.5), 0.0, 1.0);
     rim *= rim;
     float facing = abs(dot(n, normalize(vec2(-0.55, -0.83))));
     float light = rim_a * rim * mix(rim_base, 1.0, facing);
-    vec4 c = vec4(rgb * alpha, alpha);
+    float shade = edge_shade * (1.0 - clamp(-d / max(rim_width * 2.5, 0.5), 0.0, 1.0));
+    // Premultiplied, so an alpha below the colour adds light instead of covering.
+    vec4 c = vec4(rgb * alpha, alpha * (1.0 - additive));
+    c = over(c, vec4(0.0, 0.0, 0.0, shade));
     c = over(c, vec4(vec3(light), light));
-    return c * cover;
+    return c * coverage(d);
 }
 
 // A plate's colour and opacity at a tone: 0.5 is the colour itself, 1 towards white and more opaque, 0 towards black
@@ -102,6 +114,8 @@ void main() {
     vec4 b = texture2D(cogl_sampler1, at + vec2(0.0, t));
     vec4 icon = texture2D(cogl_sampler0, st);
     vec4 tone = texture2D(cogl_sampler2, at);
+    // A coarser mipmap level blurs the shadow.
+    float shadowMask = texture2D(cogl_sampler1, at - vec2(0.0, 1.2 * map_px * t), 1.5).a;
 
     vec3 base = toned(vec3(plate_r, plate_g, plate_b), plate_a, tone.b).rgb * (1.0 + sheen * (0.5 - at.y));
     vec4 c = plate(field(m.r), gradient(l, r, u, b, 0), base, plate_a);
@@ -115,6 +129,7 @@ void main() {
     float onInner = max(first.a / max(firstTone.a, 0.01), deeper.a / max(deeperTone.a, 0.01));
     vec4 symbol = mix(vec4(symbol_r, symbol_g, symbol_b, symbol_a),
                       vec4(symbol_inner_r, symbol_inner_g, symbol_inner_b, symbol_inner_a), clamp(onInner, 0.0, 1.0));
+    c = over(c, vec4(0.0, 0.0, 0.0, symbol_shadow * shadowMask * symbol.a));
     c = over(c, vec4(symbol.rgb, 1.0) * (symbol.a * m.a));
     float inside = step(0.0, uv.x) * step(0.0, uv.y) * step(uv.x, 1.0) * step(uv.y, 1.0);
     c *= inside;
