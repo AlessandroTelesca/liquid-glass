@@ -355,8 +355,6 @@ export class QuickSettingsManager {
             this.targetActor.add_style_class_name('liquid-glass-transparent');
         if (!this._hasStyleClass(this.animActor, 'liquid-glass-transparent'))
             this.animActor.add_style_class_name('liquid-glass-transparent');
-        if (!this._hasStyleClass(this.animActor, 'liquid-glass-qs-root'))
-            this.animActor.add_style_class_name('liquid-glass-qs-root');
     }
 
     _applyEffect() {
@@ -1449,7 +1447,6 @@ export class QuickSettingsManager {
         this.targetActor.remove_style_class_name('liquid-glass-transparent');
         if (this.animActor) {
             this.animActor.remove_style_class_name('liquid-glass-transparent');
-            this.animActor.remove_style_class_name('liquid-glass-qs-root');
             this.animActor.translation_x = 0;
             this.animActor.translation_y = 0;
             this.animActor.set_scale(1.0, 1.0);

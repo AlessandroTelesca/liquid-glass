@@ -56,6 +56,9 @@ export const QUICK_SETTINGS_GLASS = [
   {title: 'Individual buttons', patch: {'quick-settings-apply-to': 1}},
 ];
 
+export const QUICK_SETTINGS_GLASS_HINT = 'Whole menu: one pane of glass behind the entire menu. ' +
+  'Individual buttons: only the toggle buttons become glass, on the theme\'s own menu background';
+
 export const booleanChoices = keys => [
   {title: 'Off', patch: uniformPatch(keys, false)},
   {title: 'On', patch: uniformPatch(keys, true)},

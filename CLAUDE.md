@@ -108,6 +108,9 @@ extensions.gnome.org (EGO) のレビューでは「AI 生成らしさ」が却�
   `distrobox enter gnomeNN -- env LG_DTD_DIR=$HOME/.local/share/gnome-shell/extensions/dash-to-dock@micxgx.gmail.com LG_DRV_SCENARIO=<ui|dock|toggles|lifecycle|window> LG_SHELL_TIMEOUT=150 $PWD/tools/backdrop-spike/run-glass.sh ~/gnomeNN-home/lgtest/<シナリオ>`
   （リポジトリのルートで実行）。`shell.log` の `[drv] ... audit ... OK/NG` と `JS ERROR` を見る。46〜48 は `LG_X11=1` で X11 セッションも回せる。
   監査は背面の追従しか見ないので、レイアウトの崩れは `shots/*.png` を版どうし・変更前後で見比べて確かめる。ホスト（50）では `distrobox enter` なしで同じスクリプトを回す。
+- 200 % 表示の確認: `LG_DRV_SCENARIO=features LG_DRV_FEATURES=scale LG_SPIKE_MONITOR=2256x1504 LG_MONITORS_XML=$PWD/tools/backdrop-spike/monitors-200.xml` を足して回す
+  （論理 1128x752 の画面）。メニューが画面に収まるか・ランチャーがデスクトップウィジェットと重ならないかが `[drv] scale:` の行に出る。
+  `LG_DRV_LIGHT=1` で明るいテーマ。UI のサイズや余白に触れた変更は、このシナリオも回して `shots/*.png` を見る。
 - 目で見る確認（入れ子のシェル）: `tools/gnome-versions/run.sh NN`（alias `gnome46` など。`--pack` で zip を作り直してから起動）。ログは `~/gnomeNN-home/gNN.log`。
 - シェルが落ちたら `coredumpctl` で core を取り、ボックスの中の gdb ＋ debuginfod でバックトレースを見る（Fedora のボックス）。
 - 調べた版の違いと地雷は memo.md の追記40・追記41 にある。
