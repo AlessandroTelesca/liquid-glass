@@ -227,7 +227,7 @@ test("glass tuning opens on the current look's numbers and stores only what diff
   };
   let row = open();
   assert.ok(row('Symbol: color mixed into white'));
-  assert.equal(row('Glass: light added to the backdrop'), undefined);
+  assert.equal(row('Glass: white frost'), undefined);
   f.writes.length = 0;
   row('Symbol: color mixed into white').value = 0.3;
   assert.deepEqual(f.writes.at(-1), {'icon-style-tuning': {lightSymbolTint: 0.3}});
@@ -235,7 +235,7 @@ test("glass tuning opens on the current look's numbers and stores only what diff
   f.controls.write({'icon-style-mode': 'clear'});
   row = open();
   assert.equal(row('Symbol: color mixed into white'), undefined);
-  assert.equal(row('Glass: light added to the backdrop').value, 0.1);
+  assert.equal(row('Glass: white frost').value, 0.1);
 });
 
 test('closing disconnects manually owned settings subscriptions', () => {
