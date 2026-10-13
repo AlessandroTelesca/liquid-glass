@@ -285,7 +285,10 @@ test('advanced top bar group owns its style and shows spacing only for pills', (
   const f = fixture({'preferences-advanced': true});
   const effects = f.window.children.find(page => page.title === 'Effects').children
     .find(group => group.title === 'Individual effects');
-  assert.ok(!effects.children.some(row => row.title === 'Top bar'));
+  const effectsStyle = effects.children.find(row => row.title === 'Top bar');
+  effectsStyle.selected = 2;
+  assert.deepEqual(f.writes.at(-1), {'top-bar-style': 'islands'});
+  effectsStyle.selected = 0;
   f.row('Surface').selected = 8;
   const group = f.window.children[0].children.find(group => group.title === 'Top bar');
   const style = group.children.find(row => row.title === 'Style');
@@ -302,6 +305,17 @@ test('advanced top bar group owns its style and shows spacing only for pills', (
   assert.equal(margin.visible, true);
   style.selected = 0;
   assert.equal(padding.visible, false);
+});
+
+test('quick settings glass is chosen with the quick settings surface, and under Show glass on in the simple view', () => {
+  const advanced = fixture({'preferences-advanced': true});
+  advanced.row('Surface').selected = 4;
+  const group = advanced.window.children[0].children.find(group => group.title === 'Quick settings');
+  group.children.find(row => row.title === 'Glass on').selected = 1;
+  assert.deepEqual(advanced.writes.at(-1), {'quick-settings-apply-to': 1});
+  const simple = fixture();
+  simple.row('Quick settings glass').selected = 1;
+  assert.deepEqual(simple.writes.at(-1), {'quick-settings-apply-to': 1});
 });
 
 test('advanced animation intervals stay within their schema ranges on every animated surface', () => {
@@ -338,7 +352,7 @@ test('advanced groups sit above the always-visible groups on each page', () => {
     .filter(group => group.visible !== false).map(group => group.title);
   const effects = titles('Effects'), rendering = titles('Rendering');
   assert.ok(effects.indexOf('Individual effects') < effects.indexOf('Application windows'), effects.join(' | '));
-  assert.ok(rendering.indexOf('Blur') < rendering.indexOf('Compatibility'), rendering.join(' | '));
+  assert.ok(!rendering.includes('Compatibility'), rendering.join(' | '));
   assert.ok(rendering.indexOf('Shadows') < rendering.indexOf('Troubleshooting'), rendering.join(' | '));
 });
 

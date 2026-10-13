@@ -144,6 +144,8 @@ Where it is supported, the extension samples the brightness of what is behind th
 
 ### Quick Settings: Whole menu vs. Individual buttons
 
+Chosen with **Quick settings glass** under **Effects → Show glass on**, or with **Glass on** in the quick settings surface of the advanced **Appearance** page.
+
 - **Whole menu** applies the glass as one continuous sheet behind the whole quick settings panel. Corner radius, X/Y offset and the spring animation apply to that sheet.
 - **Individual buttons** gives each toggle button its own glass shape, tracked individually. "Button corners" sets the roundness of each shape, and "Button base color" controls how much of the toggle's own original color (for example the blue of an active toggle) is kept, independently of the custom tint color.
 
@@ -183,7 +185,7 @@ Point at a result and a pin appears on its left: click it to pin the result (app
 ## Preferences
 
 - **Appearance** — shared blur, corners and tint; animations, automatic text contrast and matching menu heights.
-- **Effects** — choose where glass appears: top bar, dock, menus, popups, application icons and application windows.
+- **Effects** — choose where glass appears: top bar, dock, menus, popups (and whether quick settings get one sheet or one per button), application icons and application windows. The advanced view lists every surface on its own here, the top bar included.
 - **Desktop** — the glass clock, the desktop widgets and the launcher (its shortcut, and how it changes to its pinned items).
 - **Rendering** — rendering quality, refraction, edge lighting, shadows and diagnostics.
 

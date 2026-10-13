@@ -2,7 +2,8 @@ import Adw from 'gi://Adw';
 import {PreferenceControls} from './controls.js';
 import {WindowRules} from './windows.js';
 import {IconStyleRules} from './icons.js';
-import {sharedKeys, TEXT_KEYS, MENU_KEYS, POPUP_KEYS, MOTION, GROW_KEYS, QUALITY, TOP_BAR, booleanChoices} from './model.js';
+import {sharedKeys, TEXT_KEYS, MENU_KEYS, POPUP_KEYS, MOTION, GROW_KEYS, QUALITY, TOP_BAR, QUICK_SETTINGS_GLASS,
+  booleanChoices} from './model.js';
 import {buildAdvancedPreferences} from './advanced.js';
 import {addBlurMyShellWarning} from './blur-my-shell.js';
 import {buildDesktopPage} from './desktop.js';
@@ -61,6 +62,7 @@ export function buildPreferences(window, settings) {
   controls.choice(surfaces, 'Top bar', TOP_BAR, 'The bar itself; menus are below', false);
   controls.toggle(surfaces, 'Dock', 'enable-dock-glass');
   controls.choice(surfaces, 'Menus', booleanChoices(MENU_KEYS), 'Calendar, quick settings, other top bar menus and desktop');
+  controls.choice(surfaces, 'Quick settings glass', QUICK_SETTINGS_GLASS, '', false);
   controls.choice(surfaces, 'Popups', booleanChoices(POPUP_KEYS), 'Notifications and volume / brightness indicators');
 
   const rendering = controls.group(advanced, 'Rendering');
@@ -82,11 +84,6 @@ export function buildPreferences(window, settings) {
   });
 
   const renderingTail = collectGroups(advanced, () => {
-    const compatibility = controls.group(advanced, 'Compatibility');
-    controls.choice(compatibility, 'Quick settings glass', [
-      {title: 'Whole menu', patch: {'quick-settings-apply-to': 0}},
-      {title: 'Individual buttons', patch: {'quick-settings-apply-to': 1}},
-    ]);
     const diagnostics = controls.group(advanced, 'Troubleshooting');
     controls.toggle(diagnostics, 'Logging', 'output-logs');
     controls.toggle(diagnostics, 'Render diagnostics', 'glass-debug-diagnostics', 'Adds rendering overhead; leave off for normal use.');

@@ -58,7 +58,7 @@ const beforeMode = effectsSnapshot();
 find('Settings view').selected = 1;
 if (effectsSnapshot() !== beforeMode) throw Error('Switching mode changed effect values');
 const groupTitles = [...walk(window)].filter(widget => widget instanceof Adw.PreferencesGroup && widget.visible).map(widget => widget.title);
-for (const [first, later] of [['Individual effects', 'Application windows'], ['Shadows', 'Compatibility'], ['Shadows', 'Troubleshooting']]) {
+for (const [first, later] of [['Individual effects', 'Application windows'], ['Shadows', 'Troubleshooting']]) {
   if (groupTitles.lastIndexOf(first) > groupTitles.indexOf(later)) throw Error(`${first} is below ${later}: ${groupTitles.join(' | ')}`);
 }
 const surface = [...walk(window)].find(row => row instanceof Adw.ComboRow && row.title === 'Surface');

@@ -1,7 +1,7 @@
 import Adw from 'gi://Adw';
 import Gtk from 'gi://Gtk';
 import {SURFACE_OPTIONS, APPEARANCE, LAYOUT, SPRING, OPTICS, LIGHTING, SHADOWS} from './advanced-model.js';
-import {ADAPTIVE_SURFACES, TOP_BAR} from './model.js';
+import {ADAPTIVE_SURFACES, TOP_BAR, QUICK_SETTINGS_GLASS} from './model.js';
 import {addPanelMenus} from './panel-menus.js';
 
 function addNumbers(group, controls, specs, prefix = '', slider = true) {
@@ -52,6 +52,7 @@ function addLayout(group, controls, surface, appearance) {
 function addSurface(page, controls, surface, title) {
   const group = controls.group(page, title);
   if (surface === 'top-bar') controls.choice(group, 'Style', TOP_BAR, 'The bar itself; menus have their own entries', false);
+  if (surface === 'quick-settings') controls.choice(group, 'Glass on', QUICK_SETTINGS_GLASS, '', false);
   const appearance = addNumbers(group, controls, APPEARANCE, `${surface}-`);
   controls.color(group, 'Tint', [`${surface}-tint-color`]);
   addLayout(group, controls, surface, appearance);
@@ -104,6 +105,7 @@ export function buildAdvancedPreferences(pages, controls) {
   selectorGroup.add(selector);
   const surfaces = new Map();
   const effects = controls.group(pages.effects, 'Individual effects');
+  controls.choice(effects, 'Top bar', TOP_BAR, 'The bar itself; menus have their own entries', false);
   for (const [surface, title, key, hint] of SURFACE_OPTIONS)
     if (key && surface !== 'application') controls.toggle(effects, title, key, hint ?? '');
   const groups = [selectorGroup, effects, addPanelMenus(pages.effects, controls),
