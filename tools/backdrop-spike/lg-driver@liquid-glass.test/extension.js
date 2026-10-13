@@ -22,7 +22,8 @@
 //              ($LG_DRV_WALLPAPER); LG_DRV_FEATURES picks parts (comma
 //              separated: morph, topbar, widgets, clock, launcher; default all;
 //              also morphtrace, qssub, clockshot, media, guides, launcherpointer,
-//              launchercolor, iconstyle, iconglass; both need LG_DTD_DIR)
+//              launchercolor, iconstyle, iconglass; both need LG_DTD_DIR);
+//              $LG_DRV_SETTINGS_DUMP (a dconf dump) and $LG_DRV_ICON_THEME set up the session first
 //   bench      global._lgBench.run() (run-glass.sh with LG_BENCH=1); LG_DRV_BENCH
 //              picks scenarios (comma separated, default all), LG_DRV_BENCH_SECONDS
 //              the seconds per scenario (default 3), LG_DRV_BENCH_AB=1 adds a run without UI glass
@@ -2147,6 +2148,20 @@ export default class LgDriver extends Extension {
   async _featuresScenario() {
     const parts = (GLib.getenv('LG_DRV_FEATURES') ?? 'morph,topbar,widgets,clock,launcher').split(',');
     const settings = this._lgSettings();
+    // A `dconf dump` of the extension's settings to start from, and an icon theme.
+    const dump = GLib.getenv('LG_DRV_SETTINGS_DUMP');
+    if (dump) {
+      const text = new TextDecoder().decode(GLib.file_get_contents(dump)[1]);
+      for (const line of text.split('\n')) {
+        const at = line.indexOf('=');
+        const key = line.slice(0, at);
+        if (at < 0 || !settings.settings_schema.has_key(key)) continue;
+        const type = new GLib.VariantType(settings.get_value(key).get_type_string());
+        settings.set_value(key, GLib.Variant.parse(type, line.slice(at + 1), null, null));
+      }
+    }
+    const iconTheme = GLib.getenv('LG_DRV_ICON_THEME');
+    if (iconTheme) new Gio.Settings({schema_id: 'org.gnome.desktop.interface'}).set_string('icon-theme', iconTheme);
     const wallpaper = GLib.getenv('LG_DRV_WALLPAPER');
     if (wallpaper) {
       const bg = new Gio.Settings({schema_id: 'org.gnome.desktop.background'});
