@@ -77,6 +77,22 @@ extensions.gnome.org (EGO) のレビューでは「AI 生成らしさ」が却�
 - `enable()` で作ったもの（`global` に置いたオブジェクトも含む）は `disable()` で必ず消す。
 - `this.getSettings()` は引数なしで呼ぶ（スキーマ ID は `metadata.json` の `settings-schema`）。
 - ログは `output-logs` 設定でゲートした logger を通す。無条件の `console.log` は置かない。
+- GNOME 公式の「GNOME Extension Best Practices」（gjs.guide の review-guidelines/best-practices）に従う。上の項目に加えて次を守る。
+  - 自前の `destroy()` は「タイマーと GLib ソースの削除 → シグナルの切断 → 子や資源の解放 → 最後に `super.destroy()`」の順にする。
+    破棄したインスタンスは null にして二度と使わない。
+  - タイマーを作り直しうる関数では、作成の直前の行で古いソースを消す（消す処理を離れた場所や別関数だけに置かない）。
+  - シグナル・タイマー・`Gio.Cancellable`・Soup セッションは、作ったクラス自身が後始末する。作るクラスと消すクラスを分けない。
+  - エントリーポイント（`extension.js`）は小さく保つ。機能ごとの処理は `src/` のクラスに分け、`enable()` と `disable()` は隣に置いて
+    作成と後始末だけを並べる。必要のないメソッドの別名を作らない。1 ファイルに詰め込まず、責務ごとのモジュールに分ける。
+  - `extension.js` と `prefs.js` の両方から読む共有モジュールでは `St`・`Clutter`・`Gtk`・`Gdk`・`Adw` を読み込まない。
+    設定画面だけで使うモジュールは `preferences/` に置く。
+  - 同じ処理を貼り付けて増やさず、ヘルパー関数にまとめる。
+  - アイコンはシェルでは `St.Icon`（`icon_name`）、設定画面では `Gtk.Image` を使う。絵文字をアイコン代わりにしない。
+    進み具合は文字（`█░░`）ではなくシェルの部品（`BarLevel` など）で表す。
+  - シェルのコマンドを外部プロセスで起動しない。システムのサービスとは D-Bus で話す。重い処理は別プロセスに任せる（このリポジトリでは
+    `src/workers/` の gjs ワーカー）。
+  - 中身のない `enable()`・`disable()` や、作りかけの機能を残さない。
+  - 文書にある「Generated with AI for personal use…」の注記コメントは書かない（作者の判断による）。
 - 提出用 zip は `npm run pack`（`liquid-glass@thinkingcoding1231.gmail.com` 内で実行）で作る。TS ソース・`gschemas.compiled`・
   未使用のアイコンは含めない。作ったら `shexli <zip の絶対パス>` で確認する
   （shexli は tree-sitter 0.26 と組み合わせるとセグフォルトするので、`uv tool install --python 3.12 shexli --with 'tree-sitter==0.25.2'` で入れる）。
