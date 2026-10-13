@@ -2210,6 +2210,29 @@ export default class LgDriver extends Extension {
           `first button ${boxes[0].get_first_child()?.get_allocation_box().y1}..${boxes[0].get_first_child()?.get_allocation_box().y2}, ` +
           `workarea y ${Main.layoutManager.getWorkAreaForMonitor(Main.layoutManager.primaryIndex).y}`);
         await shot(`topbar-${style}-spacing`, [m.x, m.y, m.width, 80]);
+        // A press in the margin above a button opens its menu at once, as a press on it does.
+        const backend = SHELL_MAJOR >= 48 ? global.stage.context.get_backend() : Clutter.get_default_backend();
+        const pointer = backend.get_default_seat().create_virtual_device(Clutter.InputDeviceType.POINTER_DEVICE);
+        const t = () => GLib.get_monotonic_time();
+        const dateButton = Main.panel.statusArea.dateMenu;
+        const [bx, by] = dateButton.get_transformed_position();
+        const [bw, bh] = dateButton.get_transformed_size();
+        const presses = [];
+        for (const [label, y] of [['edge', m.y + 2], ['button', by + bh / 2]]) {
+          pointer.notify_absolute_motion(t(), bx + bw / 2, y);
+          await sleep(200);
+          pointer.notify_button(t(), Clutter.BUTTON_PRIMARY, Clutter.ButtonState.PRESSED);
+          await sleep(80);
+          const onPress = dateMenu.isOpen;
+          pointer.notify_button(t(), Clutter.BUTTON_PRIMARY, Clutter.ButtonState.RELEASED);
+          await sleep(300);
+          presses.push(`${label} press=${onPress} release=${dateMenu.isOpen}`);
+          dateMenu.close(false);
+          await sleep(300);
+        }
+        log(`topbar ${style} press: ${presses.join(', ')}`);
+        pointer.notify_absolute_motion(t(), m.x + m.width / 2, m.y + 400);
+        await sleep(200);
         for (const side of sides) {
           settings.reset(`top-bar-margin-${side}`);
           settings.reset(`top-bar-padding-${side}`);

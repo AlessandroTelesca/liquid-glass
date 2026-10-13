@@ -1,4 +1,5 @@
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
+import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
 import Clutter from 'gi://Clutter';
 import Gio from 'gi://Gio';
 import St from 'gi://St';
@@ -46,7 +47,7 @@ export class TopBarManager {
   private _boxSignalIds: [St.Widget, number][] = [];
   private _containerSignalIds: [St.Widget, number][] = [];
   private _containerTargets: [St.Widget, St.Widget][] = [];
-  private _forwardedPresses: Map<St.Widget, { button: number; touch: boolean; nativePress: boolean }> = new Map();
+  private _forwardedPresses = new Map<St.Widget, { touch: boolean, native: boolean }>();
   private _stagePointerSignalId = 0;
   private _applyingLayout = false;
 
@@ -108,12 +109,7 @@ export class TopBarManager {
     this._panelStyleId = panel.connect('style-changed', () => this._applyLayout());
     this._applyLayout();
     this._connectBoxSignals();
-    this._stagePointerSignalId = global.stage.connect('captured-event', (_actor, event: Clutter.Event) => {
-      this._trackNativePress(event);
-      const result = this._handleTrackedRelease(event);
-      this._syncForwardedHover();
-      return result;
-    });
+    this._stagePointerSignalId = global.stage.connect('captured-event', (_actor, event: Clutter.Event) => this._onStageEvent(event));
 
     startSyncLoop(this._frameSignalSlot, this._frameSlot, {
       // The glass may be destroyed before shutdown cleanup runs.
@@ -132,27 +128,30 @@ export class TopBarManager {
 
   private _connectBoxSignals(): void {
     const panel = Main.panel as any;
-    const boxes = [panel._leftBox, panel._centerBox, panel._rightBox];
-
-    for (const box of boxes) {
-      if (!box) continue;
-
-      const addedId = box.connect('child-added', (_container: St.Widget, child: Clutter.Actor) => {
-        if (child instanceof St.Widget) {
-          this._applyLayout();
-        }
-      });
-
-      const removedId = box.connect('child-removed', (_container: St.Widget, child: Clutter.Actor) => {
-        if (child instanceof St.Widget) {
-          const styleEntry = this._childrenStyles.find(([actor]) => actor === child);
-          if (styleEntry) child.set_style(styleEntry[1]);
-          this._childrenStyles = this._childrenStyles.filter(([actor]) => actor !== child);
-        }
-      });
-
+    for (const box of [panel._leftBox, panel._centerBox, panel._rightBox]) {
+      const addedId = box.connect('child-added', () => this._applyLayout());
+      // A removed button may be re-added elsewhere, so it gets its own styles back.
+      const removedId = box.connect('child-removed', (_box: St.Widget, child: Clutter.Actor) => this._releaseChild(child));
       this._boxSignalIds.push([box, addedId], [box, removedId]);
     }
+  }
+
+  private _releaseChild(child: Clutter.Actor): void {
+    const target = this._containerTargets.find(([container]) => container === child)?.[1];
+    for (const [actor, style] of this._childrenStyles) {
+      if (actor === child || actor === target) actor.set_style(style);
+    }
+    this._childrenStyles = this._childrenStyles.filter(([actor]) => actor !== child && actor !== target);
+    if (!target) return;
+    for (const [actor, id] of this._containerSignalIds) {
+      if (actor === child || actor === target) actor.disconnect(id);
+    }
+    this._containerSignalIds = this._containerSignalIds.filter(([actor]) => actor !== child && actor !== target);
+    this._containerTargets = this._containerTargets.filter(([container]) => container !== child);
+    this._forwardedPresses.delete(child as St.Widget);
+    child.reactive = false;
+    target.remove_style_pseudo_class('hover');
+    target.remove_style_pseudo_class('active');
   }
 
   private _disconnectBoxSignals(): void {
@@ -180,37 +179,11 @@ export class TopBarManager {
     return Object.fromEntries(SIDES.map(side => [side, this._settings.get_int(this._key(`${kind}-${side}`))])) as Insets;
   }
 
-  // Forward events from the full-height wrapper to the panel button.
-  private _targetMenu(target: St.Widget): any | null {
+  // Buttons made without a menu carry a dummy one and act on their own handlers.
+  private _targetMenu(target: St.Widget): PopupMenu.PopupMenuBase | null {
     const anyTarget = target as any;
     const menu = anyTarget.menu ?? anyTarget._delegate?.menu;
-    return menu && typeof menu.toggle === 'function' ? menu : null;
-  }
-
-  private _triggerClick(target: St.Widget, event: Clutter.Event): void {
-    if (!isActorValid(target)) return;
-
-    const isTouch = event.type() === Clutter.EventType.TOUCH_END;
-    const menu = this._targetMenu(target);
-
-    // Let a custom release/touch handler run before falling back to the menu.
-    if (menu) {
-      const signal = isTouch ? 'touch-event' : 'button-release-event';
-      // Clutter returns an event result at runtime, though GObject types this as void.
-      const handled = (target as any).emit(signal, event.copy()) as boolean;
-      if (handled === Clutter.EVENT_STOP) return;
-      menu.toggle();
-      return;
-    }
-
-    // target.event() keeps the wrapper as the source; some panel buttons reject it.
-    if (target instanceof St.Button) {
-      target.emit('clicked', event.get_button ? event.get_button() : 1);
-      return;
-    }
-
-    // Forward release to controls activated by their own release handler.
-    target.emit(isTouch ? 'touch-event' : 'button-release-event', event.copy());
+    return menu instanceof PopupMenu.PopupMenuBase ? menu : null;
   }
 
   private _eventComesFromTarget(target: St.Widget, event: Clutter.Event): boolean {
@@ -222,14 +195,13 @@ export class TopBarManager {
     return false;
   }
 
+  // A bounds test rather than a pick: this runs every frame and a pick walks the whole stage.
   private _pointerIsOverContainer(container: St.Widget): boolean {
-    const [x, y] = global.get_pointer();
-    let actor: Clutter.Actor | null = global.stage.get_actor_at_pos(Clutter.PickMode.REACTIVE, x, y);
-    while (actor) {
-      if (actor === container) return true;
-      actor = actor.get_parent();
-    }
-    return false;
+    if (!container.mapped) return false;
+    const [px, py] = global.get_pointer();
+    const [x, y] = container.get_transformed_position();
+    const [w, h] = container.get_transformed_size();
+    return px >= x && px < x + w && py >= y && py < y + h;
   }
 
   private _syncForwardedHover(): void {
@@ -238,7 +210,7 @@ export class TopBarManager {
       if (this._pointerIsOverContainer(container)) {
         target.add_style_pseudo_class('hover');
       } else {
-        // Overlays can suppress leave-event; clear synthetic state when the pointer leaves.
+        // Overlays can suppress leave-event, so the state is also cleared here.
         target.remove_style_pseudo_class('hover');
         target.remove_style_pseudo_class('active');
         this._forwardedPresses.delete(container);
@@ -246,288 +218,178 @@ export class TopBarManager {
     }
   }
 
-  private _trackNativePress(event: Clutter.Event): void {
+  private _isPress(event: Clutter.Event): boolean {
     const type = event.type();
-    const isTouch = type === Clutter.EventType.TOUCH_BEGIN;
-    if (type !== Clutter.EventType.BUTTON_PRESS && !isTouch) return;
-    if (!isTouch && event.get_button() !== 1) return;
-
-    // Layout changes can move the picked actor between press and release; track native presses.
-    for (const [container, target] of this._containerTargets) {
-      if (!this._eventComesFromTarget(target, event)) continue;
-      this._forwardedPresses.set(container, {
-        button: isTouch ? 1 : event.get_button(),
-        touch: isTouch,
-        nativePress: true,
-      });
-      return;
-    }
+    if (type === Clutter.EventType.TOUCH_BEGIN) return true;
+    return type === Clutter.EventType.BUTTON_PRESS && event.get_button() === Clutter.BUTTON_PRIMARY;
   }
 
-  private _handleTrackedRelease(event: Clutter.Event): boolean {
-    const type = event.type();
-    const isTouchEnd = type === Clutter.EventType.TOUCH_END;
-    if (type !== Clutter.EventType.BUTTON_RELEASE && !isTouchEnd) return Clutter.EVENT_PROPAGATE;
+  private _toggleOverview(): void {
+    if (Main.overview.shouldToggleByCornerOrButton()) Main.overview.toggle();
+  }
 
-    for (const [container, forwardedPress] of this._forwardedPresses) {
-      if (forwardedPress.touch !== isTouchEnd) continue;
-      if (!forwardedPress.touch && event.get_button() !== forwardedPress.button) continue;
-
-      const target = this._containerTargets.find(([candidate]) => candidate === container)?.[1];
-      this._forwardedPresses.delete(container);
-      if (!target || !isActorValid(target)) return Clutter.EVENT_STOP;
-
-      // Preserve native events when both halves reach the button; otherwise finish the wrapper press.
-      if (forwardedPress.nativePress && this._eventComesFromTarget(target, event))
-        return Clutter.EVENT_PROPAGATE;
-      // A menu may already have toggled on press; avoid toggling it twice.
-      if (forwardedPress.nativePress && this._targetMenu(target)) {
-        target.remove_style_pseudo_class('active');
-        return Clutter.EVENT_PROPAGATE;
+  // A press on the wrapper above or below the button. Menus open on press, as the panel's own
+  // buttons do, so their release needs no handling; Activities and plain buttons act on release.
+  private _onWrapperPress(container: St.Widget, target: St.Widget, event: Clutter.Event): boolean {
+    const touch = event.type() === Clutter.EventType.TOUCH_BEGIN;
+    if (target.get_name() !== 'panelActivities') {
+      const handled = target.emit(touch ? 'touch-event' : 'button-press-event', event.copy()) as unknown as boolean;
+      const menu = this._targetMenu(target);
+      if (menu) {
+        if (handled !== Clutter.EVENT_STOP) menu.toggle();
+        return Clutter.EVENT_STOP;
       }
+    }
+    target.add_style_pseudo_class('active');
+    this._forwardedPresses.set(container, { touch, native: false });
+    return Clutter.EVENT_STOP;
+  }
 
+  // The stage sees every release first, also one that ends outside the wrapper.
+  private _onStageEvent(event: Clutter.Event): boolean {
+    const type = event.type();
+    if (this._isPress(event)) {
+      // Layout changes can move the picked actor between press and release.
+      for (const [container, target] of this._containerTargets) {
+        if (!this._eventComesFromTarget(target, event)) continue;
+        if (!this._targetMenu(target))
+          this._forwardedPresses.set(container, { touch: type === Clutter.EventType.TOUCH_BEGIN, native: true });
+        break;
+      }
+      return Clutter.EVENT_PROPAGATE;
+    }
+
+    const touchEnd = type === Clutter.EventType.TOUCH_END;
+    if (!touchEnd && (type !== Clutter.EventType.BUTTON_RELEASE || event.get_button() !== Clutter.BUTTON_PRIMARY))
+      return Clutter.EVENT_PROPAGATE;
+
+    for (const [container, press] of this._forwardedPresses) {
+      if (press.touch !== touchEnd) continue;
+      this._forwardedPresses.delete(container);
+      const target = this._containerTargets.find(([candidate]) => candidate === container)?.[1];
+      if (!target || !isActorValid(target)) return Clutter.EVENT_STOP;
       target.remove_style_pseudo_class('active');
+
+      if (press.native && this._eventComesFromTarget(target, event)) return Clutter.EVENT_PROPAGATE;
       if (!this._pointerIsOverContainer(container)) return Clutter.EVENT_PROPAGATE;
 
-      if (target.get_name() === 'panelActivities') {
-        const overview = Main.overview as any;
-        if (typeof overview.shouldToggleByCornerOrButton !== 'function' || overview.shouldToggleByCornerOrButton())
-          overview.toggle();
-      } else if (forwardedPress.touch || isTouchEnd) {
-        if (this._targetMenu(target)) {
-          this._triggerClick(target, event);
-        } else if (target instanceof St.Button) {
-          target.emit('clicked', 1);
-        } else {
-          target.emit('touch-event', event.copy());
-        }
-      } else {
-        this._triggerClick(target, event);
-      }
+      if (target.get_name() === 'panelActivities')
+        this._toggleOverview();
+      else if (target instanceof St.Button)
+        target.emit('clicked', Clutter.BUTTON_PRIMARY);
+      else
+        target.emit(touchEnd ? 'touch-event' : 'button-release-event', event.copy());
       return Clutter.EVENT_STOP;
     }
     return Clutter.EVENT_PROPAGATE;
   }
 
   private _setupContainerForwarding(container: St.Widget, target: St.Widget): void {
-    if (this._containerSignalIds.some(([actor]) => actor === container)) return;
+    if (this._containerTargets.some(([actor]) => actor === container)) return;
 
+    const clearHover = () => {
+      if (!this._pointerIsOverContainer(container)) {
+        target.remove_style_pseudo_class('hover');
+        target.remove_style_pseudo_class('active');
+      }
+      return Clutter.EVENT_PROPAGATE;
+    };
     const enterId = container.connect('enter-event', () => {
-      if (isActorValid(target)) target.add_style_pseudo_class('hover');
+      target.add_style_pseudo_class('hover');
       return Clutter.EVENT_PROPAGATE;
     });
-
-    const leaveId = container.connect('leave-event', () => {
-      if (isActorValid(target) && !this._pointerIsOverContainer(container)) {
-        target.remove_style_pseudo_class('hover');
-        target.remove_style_pseudo_class('active');
-      }
-      return Clutter.EVENT_PROPAGATE;
-    });
-
-    const targetLeaveId = target.connect('leave-event', () => {
-      if (isActorValid(target) && !this._pointerIsOverContainer(container)) {
-        target.remove_style_pseudo_class('hover');
-        target.remove_style_pseudo_class('active');
-      }
-      return Clutter.EVENT_PROPAGATE;
-    });
-
+    const leaveId = container.connect('leave-event', clearHover);
+    const targetLeaveId = target.connect('leave-event', clearHover);
+    // Presses that reach the button itself keep their normal path.
     const pressId = container.connect('captured-event', (_actor, event: Clutter.Event) => {
-      const type = event.type();
-      const isTouch = type === Clutter.EventType.TOUCH_BEGIN;
-      if (type !== Clutter.EventType.BUTTON_PRESS && !isTouch) return Clutter.EVENT_PROPAGATE;
-      if (!isActorValid(target)) return Clutter.EVENT_PROPAGATE;
-
-      const isActivitiesButton = target.get_name() === 'panelActivities';
-      const hasTargetMenu = !!this._targetMenu(target);
-      // Let real-button events follow the normal path; forward only wrapper-intercepted events.
-      if (this._eventComesFromTarget(target, event)) return Clutter.EVENT_PROPAGATE;
-      if (!isTouch && event.get_button() !== 1) return Clutter.EVENT_PROPAGATE;
-
-      this._forwardedPresses.set(container, {
-        button: isTouch ? 1 : event.get_button(),
-        touch: isTouch,
-        nativePress: false,
-      });
-      target.add_style_pseudo_class('active');
-
-      if (isActivitiesButton || hasTargetMenu) {
-        // Activate menu and Activities buttons on release to avoid double toggles.
-      } else if (isTouch) {
-        // Forward touch to the widget's own handler.
-        target.emit('touch-event', event.copy());
-      } else {
-        // Preserve press/release pairing for custom release handlers.
-        target.emit('button-press-event', event.copy());
-      }
-      return Clutter.EVENT_STOP;
-    });
-
-    const releaseId = container.connect('captured-event', (_actor, event: Clutter.Event) => {
-      const type = event.type();
-      const isTouchEnd = type === Clutter.EventType.TOUCH_END;
-      if (type !== Clutter.EventType.BUTTON_RELEASE && !isTouchEnd) return Clutter.EVENT_PROPAGATE;
-
-      const forwardedPress = this._forwardedPresses.get(container);
-      const eventFromTarget = this._eventComesFromTarget(target, event);
-      // Leave native sequences alone; pair wrapper-intercepted presses here.
-      if (!forwardedPress && eventFromTarget) return Clutter.EVENT_PROPAGATE;
-      if (!forwardedPress) return Clutter.EVENT_PROPAGATE;
-      if (!isActorValid(target)) {
-        this._forwardedPresses.delete(container);
-        return Clutter.EVENT_STOP;
-      }
-      if (!forwardedPress.touch && !isTouchEnd && event.get_button() !== forwardedPress.button) {
-        return Clutter.EVENT_PROPAGATE;
-      }
-
-      this._forwardedPresses.delete(container);
-      target.remove_style_pseudo_class('active');
-      const isActivitiesButton = target.get_name() === 'panelActivities';
-
-      if (isActivitiesButton) {
-        const overview = Main.overview as any;
-        if (typeof overview.shouldToggleByCornerOrButton !== 'function' || overview.shouldToggleByCornerOrButton())
-          overview.toggle();
-      } else if (forwardedPress.touch || isTouchEnd) {
-        if (this._targetMenu(target)) {
-          this._triggerClick(target, event);
-        } else if (target instanceof St.Button) {
-          target.emit('clicked', 1);
-        } else {
-          target.emit('touch-event', event.copy());
-        }
-      } else {
-        // Use the menu when available; otherwise forward release to the widget.
-        this._triggerClick(target, event);
-      }
-
-      this._syncForwardedHover();
-      return Clutter.EVENT_STOP;
+      if (!this._isPress(event) || this._eventComesFromTarget(target, event)) return Clutter.EVENT_PROPAGATE;
+      return this._onWrapperPress(container, target, event);
     });
 
     this._containerTargets.push([container, target]);
-    this._containerSignalIds.push(
-      [container, enterId],
-      [container, leaveId],
-      [target, targetLeaveId],
-      [container, pressId],
-      [container, releaseId]
-    );
+    this._containerSignalIds.push([container, enterId], [container, leaveId], [target, targetLeaveId], [container, pressId]);
   }
 
   private _disconnectContainerSignals(): void {
-    for (const [container, id] of this._containerSignalIds) {
-      if (isActorValid(container)) container.disconnect(id);
+    // The panel's wrappers are not reactive on their own.
+    for (const [container] of this._containerTargets) {
+      if (isActorValid(container)) container.reactive = false;
+    }
+    for (const [actor, id] of this._containerSignalIds) {
+      if (isActorValid(actor)) actor.disconnect(id);
     }
     this._containerSignalIds = [];
     this._containerTargets = [];
     this._forwardedPresses.clear();
-    if (this._stagePointerSignalId) {
-      try {
-        if (isActorValid(global.stage)) global.stage.disconnect(this._stagePointerSignalId);
-      } catch (e) {
-        // The stage may already be shutting down.
-      }
-      this._stagePointerSignalId = 0;
-    }
+    if (this._stagePointerSignalId) global.stage.disconnect(this._stagePointerSignalId);
+    this._stagePointerSignalId = 0;
   }
 
+  // The bar grows by the margin and padding while each button keeps the theme's height. The
+  // wrappers around the buttons fill the whole bar, so a press at the screen edge still lands.
   private _applyLayout(): void {
+    // set_style() below emits style-changed on the panel, which calls back in here.
     if (!this._glass || this._applyingLayout) return;
     this._applyingLayout = true;
-
     try {
       const panel = Main.panel as any;
       const margin = this._margin = this._insets('margin');
       const padding = this._padding = this._insets('padding');
       const top = margin.top + padding.top;
       const bottom = margin.bottom + padding.bottom;
+      const own = (style: string | null) => style?.trim().replace(/;$/, '') || '';
+      const withOwn = (style: string | null, extra: string) => (own(style) ? `${own(style)}; ${extra}` : extra);
 
-      const panelEntry = this._savedStyles.find(([actor]) => actor === panel);
-      const originalPanelStyle = panelEntry ? panelEntry[1] : null;
-      const ownPanel = originalPanelStyle?.trim().replace(/;$/, '');
-      panel.set_style(ownPanel || '');
-
-      for (const [actor, original] of this._savedStyles) {
-        if (!actor || actor === panel) continue;
-        actor.set_style(original?.trim().replace(/;$/, '') || '');
-      }
-
-      for (const [childActor, originalChildStyle] of this._childrenStyles) {
-        if (childActor && childActor.set_style) {
-          childActor.set_style(originalChildStyle?.trim().replace(/;$/, '') || '');
-        }
-      }
-
-      const themeHeight = panel.get_theme_node ? panel.get_theme_node().get_height() : 0;
-      const [, naturalHeight] = panel.get_preferred_height(-1);
-      const baseHeight = themeHeight > 0 ? themeHeight : naturalHeight;
+      this._childrenStyles = this._childrenStyles.filter(([actor]) => isActorValid(actor));
+      // Measure the theme's height with all of our styles removed.
+      for (const [actor, original] of [...this._savedStyles, ...this._childrenStyles]) actor.set_style(own(original));
+      const themeHeight = panel.get_theme_node().get_height();
+      const baseHeight = themeHeight > 0 ? themeHeight : panel.get_preferred_height(-1)[1];
       const totalHeight = baseHeight + top + bottom;
 
-      const panelStyle = `height: ${totalHeight}px; min-height: ${totalHeight}px; padding-top: 0px; padding-bottom: 0px;`;
-      panel.set_style(ownPanel ? `${ownPanel}; ${panelStyle}` : panelStyle);
-
       for (const [actor, original] of this._savedStyles) {
-        if (!actor || actor === panel) continue;
+        if (actor === panel) {
+          actor.set_style(withOwn(original, `height: ${totalHeight}px; min-height: ${totalHeight}px; padding-top: 0px; padding-bottom: 0px;`));
+          continue;
+        }
         const leftInset = actor === panel._leftBox ? margin.left + padding.left : 0;
         const rightInset = actor === panel._rightBox ? margin.right + padding.right : 0;
-        const boxStyle = `height: ${totalHeight}px; padding: 0px ${rightInset}px 0px ${leftInset}px;`;
-        const ownActor = original?.trim().replace(/;$/, '');
-        actor.set_style(ownActor ? `${ownActor}; ${boxStyle}` : boxStyle);
+        actor.set_style(withOwn(original, `height: ${totalHeight}px; padding: 0px ${rightInset}px 0px ${leftInset}px;`));
 
-        const children = actor.get_children();
-        for (const child of children) {
-          if (!(child as St.Widget).get_style_class_name) continue;
-
-          let target: any = null;
-          const queue = [child];
-          while (queue.length > 0) {
-            const current = queue.shift();
-            if (current && (current as St.Widget).get_style_class_name && (current as St.Widget).has_style_class_name('panel-button')) {
-              target = current;
-              break;
-            }
-            if (current && current.get_children) {
-              queue.push(...current.get_children());
-            }
-          }
-          const actualTarget = target || child;
-
-          if (child !== actualTarget && child instanceof St.Widget) {
-            // Make the wrapper reactive so it can forward input from the top edge.
+        for (const child of actor.get_children()) {
+          if (!(child instanceof St.Widget)) continue;
+          const target = this._findPanelButton(child) ?? child;
+          if (target !== child) {
             child.reactive = true;
-            if (!this._childrenStyles.some(([a]) => a === child)) {
-              this._childrenStyles.push([child, child.get_style()]);
-            }
-            const childEntry = this._childrenStyles.find(([a]) => a === child);
-            const originalChildStyle = childEntry ? childEntry[1] : null;
-            const ownChild = originalChildStyle?.trim().replace(/;$/, '');
-            const binStyle = `height: ${totalHeight}px;`;
-            child.set_style(ownChild ? `${ownChild}; ${binStyle}` : binStyle);
-            this._setupContainerForwarding(child, actualTarget as St.Widget);
+            this._setChildStyle(child, `height: ${totalHeight}px;`);
+            this._setupContainerForwarding(child, target);
           }
-
-          if (!this._childrenStyles.some(([a]) => a === actualTarget)) {
-            if (actualTarget instanceof St.Widget) {
-              this._childrenStyles.push([actualTarget, actualTarget.get_style()]);
-            }
-          }
-          const targetEntry = this._childrenStyles.find(([a]) => a === actualTarget);
-          const originalTargetStyle = targetEntry ? targetEntry[1] : null;
-          const ownTarget = originalTargetStyle?.trim().replace(/;$/, '');
-
-          // Keep the button at its themed height inside the full-height wrapper.
-          const targetStyle = `height: ${baseHeight}px; margin-top: ${top}px; margin-bottom: ${bottom}px;`;
-          (actualTarget as St.Widget).set_style(ownTarget ? `${ownTarget}; ${targetStyle}` : targetStyle);
+          this._setChildStyle(target, `height: ${baseHeight}px; margin-top: ${top}px; margin-bottom: ${bottom}px;`);
         }
       }
-
-
     } finally {
       this._applyingLayout = false;
     }
+  }
+
+  private _findPanelButton(root: St.Widget): St.Widget | null {
+    const queue: Clutter.Actor[] = [root];
+    while (queue.length > 0) {
+      const current = queue.shift()!;
+      if (current instanceof St.Widget && current.has_style_class_name('panel-button')) return current;
+      queue.push(...current.get_children());
+    }
+    return null;
+  }
+
+  private _setChildStyle(actor: St.Widget, extra: string): void {
+    let entry = this._childrenStyles.find(([a]) => a === actor);
+    if (!entry) {
+      entry = [actor, actor.get_style()];
+      this._childrenStyles.push(entry);
+    }
+    const own = entry[1]?.trim().replace(/;$/, '');
+    actor.set_style(own ? `${own}; ${extra}` : extra);
   }
 
   private _syncText(): void {
@@ -650,7 +512,6 @@ export class TopBarManager {
     this._lastIslandRects = [];
     this._islandGeometryHoldFrames = 0;
     this._style = 'off';
-    this._applyingLayout = false;
   }
 
   cleanup(): void {
