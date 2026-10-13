@@ -53,6 +53,10 @@ const CORNER_SMOOTHING = 0.5;
 // A rounded rectangle with corners rounder than this share of its half size is a circle or a pill.
 const SQUARE_RADIUS = 0.62;
 const OUTSIDE_SHARE = 0.03;
+// The base of an icon is not exactly the shape fitted to it: where it sticks out by no more than this (analysis px),
+// a thin arc of its edge is outside the plate and would draw as a second rim, unless symbol lies against it inside.
+const SLIVER_WIDTH = 2.5;
+const SLIVER_INSIDE = 0.1;
 // Tone per unit of Oklab difference between siblings, along the way they differ most, and per unit of lightness
 // a part of a plate's surface differs from the plate.
 const TONE_GAIN = 2.5;
@@ -95,6 +99,25 @@ function outsideShare(pixels: IconPixels, scale: number, shape: PlateShape): num
     if (shapeDistance(shape, (i % pixels.width + 0.5) * scale, (Math.floor(i / pixels.width) + 0.5) * scale) > 1) outside += a;
   }
   return total ? outside / total : 0;
+}
+
+function dropSliver(symbol: Float32Array, pixels: IconPixels, scale: number, shape: PlateShape): void {
+  const { width: w, height: h } = pixels;
+  const reach = Math.ceil(1.5 / scale);
+  const outside = (i: number) => shapeDistance(shape, (i % w + 0.5) * scale, (Math.floor(i / w) + 0.5) * scale);
+  const drop: number[] = [];
+  for (let i = 0; i < symbol.length; i++) {
+    if (!symbol[i] || outside(i) <= 0 || outside(i) > SLIVER_WIDTH) continue;
+    const x = i % w, y = Math.floor(i / w);
+    let inside = 0;
+    for (let v = Math.max(0, y - reach); v <= Math.min(h - 1, y + reach); v++) {
+      for (let u = Math.max(0, x - reach); u <= Math.min(w - 1, x + reach); u++) {
+        if (outside(v * w + u) < 0) inside = Math.max(inside, symbol[v * w + u]);
+      }
+    }
+    if (inside < SLIVER_INSIDE) drop.push(i);
+  }
+  for (const i of drop) symbol[i] = 0;
 }
 
 // The centre and the half size (largest distance along x or y) of what is drawn, in analysis px.
@@ -165,6 +188,7 @@ export function buildStyleMap(analysis: IconAnalysis, detail: IconPixels, size =
   const level = plates.map((_, i) => depthOf(plates, i) + (own ? 0 : 1));
 
   const { symbol, intensity, surface } = symbolLayer(plates, A, detail);
+  if (own) dropSliver(symbol, detail, scale, plates[tops[0]].shape);
   const field = new Float32Array(symbol.length);
   for (let i = 0; i < field.length; i++) field[i] = symbol[i] * intensity[i];
   const sample = (x: number, y: number, values: Float32Array = field) => {
