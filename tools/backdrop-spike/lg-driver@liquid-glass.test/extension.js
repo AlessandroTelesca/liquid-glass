@@ -1753,8 +1753,8 @@ export default class LgDriver extends Extension {
     log(`launcher pins before: ${names()}`);
     // The second application result and the first of another provider, each pinned by its pin.
     const pinnable = launcher._results.map((r, i) => [r, i]).filter(([r]) => r.provider);
-    const picks = [pinnable.find(([r]) => r.provider.id === 'applications' && r !== pinnable[0][0]),
-      pinnable.find(([r]) => r.provider.id !== 'applications')].filter(Boolean);
+    const apps = pinnable.filter(([r]) => r.provider.id === 'applications');
+    const picks = [apps[1] ?? apps[0], pinnable.find(([r]) => r.provider.id !== 'applications')].filter(Boolean);
     for (const [, i] of picks) {
       const row = launcher._items[i].actor;
       const toggle = row.get_child().get_first_child();
@@ -1770,7 +1770,7 @@ export default class LgDriver extends Extension {
     await sleep(300);
     launcher.setText('set');
     await sleep(2500);
-    log(`launcher pins after: ${names()}`);
+    log(`launcher pins after: ${names()} modal=${Main.modalCount}`);
     await shot('launcher-pins-results', [m.x, m.y, m.width, m.height]);
     for (const transition of ['morph', 'tween']) {
       settings.set_string('launcher-pinned-transition', transition);
@@ -2304,6 +2304,8 @@ export default class LgDriver extends Extension {
           `workarea y ${Main.layoutManager.getWorkAreaForMonitor(Main.layoutManager.primaryIndex).y}`);
         await shot(`topbar-${style}-spacing`, [m.x, m.y, m.width, 80]);
         // A press in the margin above a button opens its menu at once, as a press on it does.
+        // The hot corner's barriers hold a pointer that starts in the corner.
+        new Gio.Settings({schema_id: 'org.gnome.desktop.interface'}).set_boolean('enable-hot-corners', false);
         const backend = SHELL_MAJOR >= 48 ? global.stage.context.get_backend() : Clutter.get_default_backend();
         const pointer = backend.get_default_seat().create_virtual_device(Clutter.InputDeviceType.POINTER_DEVICE);
         const t = () => GLib.get_monotonic_time();
