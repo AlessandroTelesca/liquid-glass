@@ -216,6 +216,21 @@ test('icon rules show their controls only while icons are redrawn somewhere, and
   assert.equal(iconRow('Size').visible, true);
 });
 
+test('the clear look offers a dark dock, and the button says when it is set', () => {
+  const f = fixture({'icon-style-dock': true});
+  const hint = f.row('Hard to see?');
+  assert.equal(hint.visible, false);
+  f.controls.write({'icon-style-mode': 'clear'});
+  assert.equal(hint.visible, true);
+  const button = f.widgets.find(widget => widget.label === 'Apply');
+  button.emit('clicked');
+  assert.deepEqual(f.writes.at(-1), {'dock-tint-color': '#000000', 'dock-tint-strength': 0.16});
+  assert.equal(button.label, 'Applied');
+  assert.equal(button.sensitive, false);
+  f.controls.write({'icon-style-mode': 'mono'});
+  assert.equal(hint.visible, false);
+});
+
 test("glass tuning opens on the current look's numbers and stores only what differs from the default", () => {
   const f = fixture({'icon-style-dock': true, 'icon-style-tint-variant': 'light'});
   assert.equal(f.row('Variant').visible, true);
@@ -235,7 +250,7 @@ test("glass tuning opens on the current look's numbers and stores only what diff
   f.controls.write({'icon-style-mode': 'clear'});
   row = open();
   assert.equal(row('Symbol: color mixed into white'), undefined);
-  assert.equal(row('Glass: white frost').value, 0.1);
+  assert.equal(row('Glass: white frost').value, 0.02);
 });
 
 test('closing disconnects manually owned settings subscriptions', () => {

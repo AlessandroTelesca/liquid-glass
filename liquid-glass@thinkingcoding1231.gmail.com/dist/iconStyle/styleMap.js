@@ -44,6 +44,9 @@ const CONTENT_REACH = 0.74;
 const SQUARE_ASPECT = 0.08;
 const SQUARE_FILL = 0.72;
 const SQUARE_EXPONENT = 3.5;
+// An icon's own rounded square gets corners that meet its sides smoothly, as the glass's do, a little: each corner
+// starts up to this much further from it than its arc did, and its middle stays where it was.
+const CORNER_SMOOTHING = 0.5;
 // A rounded rectangle with corners rounder than this share of its half size is a circle or a pill.
 const SQUARE_RADIUS = 0.62;
 const OUTSIDE_SHARE = 0.03;
@@ -51,6 +54,16 @@ const OUTSIDE_SHARE = 0.03;
 // a part of a plate's surface differs from the plate.
 const TONE_GAIN = 2.5;
 const SURFACE_GAIN = 5;
+
+function smoothCorners(shape) {
+    if (shape.kind !== 'roundrect')
+        return shape;
+    const half = Math.min(shape.rx, shape.ry);
+    const r = Math.min(shape.radius, half);
+    const k = Math.min(1 + CORNER_SMOOTHING, Math.max(half / Math.max(r, 1e-3), 1));
+    // From the midpoint condition sqrt(2) * k * (1 - 2^(-1/n)) = sqrt(2) - 1, as in glass.frag's cornerShape().
+    return { ...shape, radius: r * k, corner: -1 / Math.log2(1 - 0.29289322 / k) };
+}
 
 function isSquare(shape, width) {
     const roundEnough = shape.kind === 'roundrect' ? shape.radius <= Math.min(shape.rx, shape.ry) * SQUARE_RADIUS
@@ -128,7 +141,7 @@ export function buildStyleMap(analysis, detail, size = MAP_SIZE) {
     if (own) {
         const shape = plates[tops[0]].shape;
         k = half / Math.max(shape.rx, shape.ry);
-        outer = { ...shape, cx: centre, cy: centre, rx: shape.rx * k, ry: shape.ry * k, radius: shape.radius * k };
+        outer = smoothCorners({ ...shape, cx: centre, cy: centre, rx: shape.rx * k, ry: shape.ry * k, radius: shape.radius * k });
         fromX = shape.cx;
         fromY = shape.cy;
     }

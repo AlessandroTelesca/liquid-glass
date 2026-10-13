@@ -84,6 +84,28 @@ test('a rounded square stays the outer plate, brought to the size every outer pl
   assert.ok(field(map, 1, 64, 64) > MAP_RANGE - 1);
 });
 
+test('an icon\'s own rounded square keeps the middle of its corners and meets its sides smoothly', () => {
+  const plate = shape('roundrect', 56, { radius: 28 });
+  const map = mapOf([{ distance: of(plate), color: [30, 120, 220] }, { distance: bar(56, 30, 72, 98), color: [255, 255, 255] }]);
+  assert.equal(map.ownPlate, true);
+  // Brought to 0.46 of the icon: half 58.9 px of 128, corner radius half of that.
+  const half = 0.46 * 128, r = half / 2;
+  const circle = { ...plate, rx: half, ry: half, radius: r };
+  const along = (deg, f) => {
+    const a = deg * Math.PI / 180;
+    let lo = 0, hi = 74;
+    for (let i = 0; i < 40; i++) {
+      const m = (lo + hi) / 2;
+      if (f(64 + m * Math.cos(a), 64 + m * Math.sin(a)) < 0) lo = m; else hi = m;
+    }
+    return lo;
+  };
+  const edge = deg => along(deg, (x, y) => field(map, 0, x, y));
+  const round = deg => along(deg, of(circle));
+  assert.ok(Math.abs(edge(45) - round(45)) < 0.6, `middle of the corner ${edge(45)} ${round(45)}`);
+  assert.ok(round(30) - edge(30) > 0.2 && round(30) - edge(30) < 1.2, `where the arc meets the side ${edge(30)} ${round(30)}`);
+});
+
 test('a circle gets a rounded square around it and shrinks onto it', () => {
   const circle = shape('superellipse', 60);
   const map = mapOf([{ distance: of(circle), color: [30, 200, 90] }, { distance: bar(44, 58, 84, 70), color: [0, 0, 0] }]);

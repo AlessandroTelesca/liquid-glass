@@ -6,7 +6,7 @@ import { WorkerProcess } from '../workers/workerProcess.js';
 import { iconStyleTexture } from './iconEffect.js';
 import { LENS_SIZE, MAP_SIZE } from './styleMap.js';
 // Changes whenever the maps would come out differently, so that older ones are made again.
-const MAP_VERSION = 8;
+const MAP_VERSION = 9;
 // Workers that take icons apart side by side; one more starts only while the others are all busy.
 const MAX_WORKERS = 4;
 // Icons asked for one after another (an app grid page, a folder) make one run of work, not one each.
