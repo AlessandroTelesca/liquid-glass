@@ -22,7 +22,7 @@
 //              ($LG_DRV_WALLPAPER); LG_DRV_FEATURES picks parts (comma
 //              separated: morph, topbar, widgets, clock, launcher; default all;
 //              also morphtrace, qssub, clockshot, media, guides, launcherpointer,
-//              launchercolor, iconstyle; iconstyle needs LG_DTD_DIR)
+//              launchercolor, iconstyle, iconglass; both need LG_DTD_DIR)
 //   bench      global._lgBench.run() (run-glass.sh with LG_BENCH=1); LG_DRV_BENCH
 //              picks scenarios (comma separated, default all), LG_DRV_BENCH_SECONDS
 //              the seconds per scenario (default 3), LG_DRV_BENCH_AB=1 adds a run without UI glass
@@ -1079,6 +1079,8 @@ export default class LgDriver extends Extension {
         names.push(name);
       if (a.get_effect('liquid-glass-icon-style'))
         names.push(`icon-style:${a.icon_name ?? a.gicon?.to_string() ?? '?'}`);
+      if (a.get_effect('liquid-glass-icon-backdrop'))
+        names.push(`icon-backdrop:${a.get_name() ?? a.constructor.name}`);
       for (const c of a.get_children())
         walk(c);
     };
@@ -1607,7 +1609,7 @@ export default class LgDriver extends Extension {
     launcher.setText('keyboard');
     await sleep(1500);
     const name = launcher._results[0]?.meta.name;
-    const [rx, ry] = launcher._rows[0]?.get_transformed_position() ?? [0, 0];
+    const [rx, ry] = launcher._items[0]?.actor?.get_transformed_position() ?? [0, 0];
     await click(rx + 100, ry + 10);
     await sleep(1500);
     log(`launcher pointer: '${name}' clicked: open=${!!launcher._root} modal=${Main.modalCount}`);
@@ -1641,10 +1643,10 @@ export default class LgDriver extends Extension {
     const traceId = global.stage.connect('after-paint', () => {
       const panel = launcher._panel;
       if (!panel) return;
-      const row = launcher._rows[0];
+      const row = launcher._items[0]?.actor;
       const label = row && firstLabel(row);
       frames.push({
-        rows: launcher._rows.length,
+        rows: launcher._items.length,
         panel: hex(panel.get_theme_node().get_foreground_color()),
         entry: hex(launcher._entry.get_theme_node().get_foreground_color()),
         row: label ? hex(label.get_theme_node().get_foreground_color()) : '-',
@@ -1929,7 +1931,7 @@ export default class LgDriver extends Extension {
     launcher.open();
     launcher.setText(GLib.getenv('LG_DRV_LAUNCHER_QUERY') ?? 'set');
     await sleep(2500);
-    const rowIcons = launcher._rows.map(r => findActors(r, a => a instanceof St.Icon)[0]).filter(Boolean);
+    const rowIcons = launcher._items.map(({actor: r}) => findActors(r, a => a instanceof St.Icon && !a.get_parent()?.has_style_class_name?.('lg-launcher-pin'))[0]).filter(Boolean);
     log(`icon style launcher: ${rowIcons.filter(i => i.get_effect(EFFECT)).length}/${rowIcons.length} styled: ` +
       launcher._results.map((r, i) => `${r.meta.id}${rowIcons[i]?.get_effect(EFFECT) ? '*' : ''}`).join(' '));
     await shot('icon-style-launcher', [m.x, m.y, m.width, m.height]);
@@ -1994,6 +1996,152 @@ export default class LgDriver extends Extension {
     await sleep(1500);
     report('on again (from the cache)');
     settings.reset('output-logs');
+  }
+
+  // Clear icons' glass: read from one backdrop per dock, app grid, folder and launcher, copied again whenever what is
+  // behind changes and not while nothing does.
+  async _iconGlass(settings, m) {
+    const EFFECT = 'liquid-glass-icon-style';
+    const BACKDROP = 'liquid-glass-icon-backdrop';
+    const dock = findActor(Main.layoutManager.uiGroup, 'dashtodockDashContainer');
+    if (!dock) {
+      log('icon glass: no dock (LG_DTD_DIR?)');
+      return;
+    }
+    const styledIn = root => findActors(root, a => a instanceof St.Icon && a.mapped && a.get_effect(EFFECT));
+    // The actor the backdrop of `root`'s icons is on: `root`, or above an ancestor's cached offscreen.
+    const hostOf = root => {
+      for (let a = root; a; a = a.get_parent()) {
+        if (a.get_effect(BACKDROP)) return a;
+      }
+      return root;
+    };
+    // How many of `root`'s styled icons read a backdrop that holds them now.
+    const ready = (root, host) => {
+      host = hostOf(host);
+      const backdrop = host.get_effect(BACKDROP);
+      const r = backdrop?.current()?.rect;
+      const icons = styledIn(root);
+      const inside = icons.filter(i => {
+        const e = i.get_transformed_extents();
+        return r && e.get_x() >= r[0] - 1 && e.get_y() >= r[1] - 1 && e.get_x() + e.get_width() <= r[2] + 1 &&
+          e.get_y() + e.get_height() <= r[3] + 1 && i.get_effect(EFFECT)._backdrop === backdrop;
+      });
+      const c = backdrop?._copier;
+      return `${inside.length}/${icons.length} rect=${r ? r.map(v => Math.round(v)).join(',') : '-'} ` +
+        `copies=${c?.copyCount} reuses=${c?.reuseCount} misses=${c?.missCount} offStage=${c?.offStageCount} loaded=${backdrop?._loaded} ` +
+        `extents=${JSON.stringify(backdrop?._rect()?.map(v => Math.round(v)))}`;
+    };
+    const copies = host => hostOf(host).get_effect(BACKDROP)?._copier.copyCount ?? -1;
+    settings.set_string('icon-style-mode', 'clear');
+    settings.set_boolean('icon-style-dock', true);
+    for (let i = 0; i < 60 && !(styledIn(dock).length && hostOf(dock).get_effect(BACKDROP)?.current()); i++) await sleep(500);
+    await sleep(1000);
+    log(`icon glass dock: ready=${ready(dock, dock)} holders=${findActors(Main.layoutManager.uiGroup,
+      a => a.get_name() === 'liquid-glass-relay-holder').length}`);
+    const [dx, dy] = dock.get_transformed_position();
+    const [dw, dh] = dock.get_transformed_size();
+    const dockRect = [Math.max(m.x, Math.floor(dx) - 20), Math.max(m.y, Math.floor(dy) - 20), Math.ceil(dw) + 40, Math.ceil(dh) + 40];
+    await shot('icon-glass-dock', dockRect);
+
+    const dockGlass = () => lg()?.glassObjects().find(g => g._owner === 'dock')?.stats.copies ?? -1;
+    const glassBefore = dockGlass();
+    let before = copies(dock);
+    const idleFrames = [0];
+    const idleId = global.stage.connect('after-paint', () => idleFrames[0]++);
+    await sleep(2000);
+    global.stage.disconnect(idleId);
+    log(`icon glass idle: copies in 2 s=${copies(dock) - before} frames=${idleFrames[0]} dock glass copies=${dockGlass() - glassBefore}`);
+
+    // Something behind the dock that keeps changing, as a video would.
+    const behind = new St.Widget({ x: dx - 40, y: dy - 40, width: dw + 80, height: dh + 80, style: 'background-color: rgb(255,0,0);' });
+    global.window_group.add_child(behind);
+    before = copies(dock);
+    const frames = [0, 0];
+    const frameId = global.stage.connect('after-paint', () => frames[0]++);
+    for (let i = 0; i < 20; i++) {
+      const t = i / 19;
+      behind.set_style(`background-color: rgb(${Math.round(255 * (1 - t))},40,${Math.round(255 * t)});`);
+      await sleep(50);
+    }
+    global.stage.disconnect(frameId);
+    log(`icon glass changing backdrop: copies=${copies(dock) - before} frames=${frames[0]}`);
+    await shot('icon-glass-dock-blue', dockRect);
+    behind.destroy();
+    await sleep(500);
+
+    settings.set_boolean('icon-style-app-grid', true);
+    Main.overview.showApps();
+    const grid = Main.overview._overview.controls._appDisplay;
+    for (let i = 0; i < 90 && !(styledIn(grid).length && grid.get_effect(BACKDROP)?.current()); i++) await sleep(1000);
+    await sleep(2000);
+    log(`icon glass app grid: ready=${ready(grid, grid)}`);
+    await shot('icon-glass-app-grid', [m.x, m.y, m.width, m.height]);
+    before = copies(grid);
+    await sleep(2000);
+    log(`icon glass app grid idle: copies in 2 s=${copies(grid) - before}`);
+    // Paint time (ms a frame) while the grid pages back and forth, against the tinted look.
+    const paging = async () => {
+      let start = 0, total = 0, frames = 0;
+      const ids = [global.stage.connect('before-paint', () => { start = GLib.get_monotonic_time(); }),
+        global.stage.connect('after-paint', () => { total += GLib.get_monotonic_time() - start; frames++; })];
+      const c0 = copies(grid);
+      globalThis._lgT = {};
+      for (const page of [1, 0, 1, 0]) {
+        grid.goToPage(page);
+        await sleep(700);
+      }
+      ids.forEach(id => global.stage.disconnect(id));
+      const t = Object.entries(globalThis._lgT ?? {}).map(([k, v]) => `${k}=${(v / Math.max(frames, 1) / 1000).toFixed(2)}`).join(' ');
+      return `frames=${frames} paint=${(total / Math.max(frames, 1) / 1000).toFixed(2)} ms copies=${copies(grid) - c0} js/frame: ${t}`;
+    };
+    log(`icon glass app grid paging clear: ${await paging()}`);
+    if (GLib.getenv('LG_DRV_NOGLASS')) {
+      globalThis._lgNoGlass = true;
+      log(`icon glass app grid paging clear, fallback shader: ${await paging()}`);
+      globalThis._lgNoGlass = false;
+    }
+    settings.set_string('icon-style-mode', 'tinted');
+    await sleep(1500);
+    log(`icon glass app grid paging tinted: ${await paging()}`);
+    settings.set_string('icon-style-mode', 'clear');
+    await sleep(1500);
+    const folder = findActors(grid, a => a.view instanceof Clutter.Actor && typeof a.open === 'function')[0];
+    if (folder) {
+      folder.open();
+      for (let i = 0; i < 60 && !folder.view.get_effect(BACKDROP)?.current(); i++) await sleep(500);
+      await sleep(1500);
+      log(`icon glass folder: ready=${ready(folder.view, folder.view)}`);
+      await shot('icon-glass-folder', [m.x, m.y, m.width, m.height]);
+      folder._dialog.popdown();
+      await sleep(800);
+    }
+    Main.overview.hide();
+    await sleep(1500);
+    log(`icon glass overview hidden: grid backdrop=${!!grid.get_effect(BACKDROP)} holders shown=${findActors(Main.layoutManager.uiGroup,
+      a => a.get_name() === 'liquid-glass-relay-holder' && a.visible).length}`);
+
+    settings.set_boolean('enable-launcher', true);
+    settings.set_boolean('icon-style-launcher', true);
+    await sleep(500);
+    const {Launcher} = await this._lgModule('launcher/launcher.js');
+    const launcher = Launcher.instance;
+    launcher.open();
+    launcher.setText(GLib.getenv('LG_DRV_LAUNCHER_QUERY') ?? 'set');
+    for (let i = 0; i < 20 && !launcher._panel?.get_effect(BACKDROP)?.current(); i++) await sleep(250);
+    await sleep(1500);
+    log(`icon glass launcher: ready=${launcher._panel ? ready(launcher._panel, launcher._panel) : '-'}`);
+    await shot('icon-glass-launcher', [m.x, m.y, m.width, m.height]);
+    launcher.close();
+    await sleep(800);
+
+    settings.set_string('icon-style-mode', 'tinted');
+    await sleep(1000);
+    log(`icon glass tinted: dock backdrop=${hostOf(dock) !== dock} holders=${findActors(Main.layoutManager.uiGroup,
+      a => a.get_name() === 'liquid-glass-relay-holder').length}`);
+    settings.set_string('icon-style-mode', 'clear');
+    await sleep(1500);
+    log(`icon glass clear again: ready=${ready(dock, dock)}`);
   }
 
   async _featuresScenario() {
@@ -2382,6 +2530,8 @@ export default class LgDriver extends Extension {
       await this._launcherColor(settings, m);
     if (parts.includes('iconstyle'))
       await this._iconStyle(settings, m);
+    if (parts.includes('iconglass'))
+      await this._iconGlass(settings, m);
     // Everything switched on, the launcher open: disabling has to leave nothing.
     (await this._lgModule('launcher/launcher.js')).Launcher.instance?.open();
     await sleep(500);
