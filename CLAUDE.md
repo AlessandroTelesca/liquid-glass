@@ -110,7 +110,7 @@ extensions.gnome.org (EGO) のレビューでは「AI 生成らしさ」が却�
   監査は背面の追従しか見ないので、レイアウトの崩れは `shots/*.png` を版どうし・変更前後で見比べて確かめる。ホスト（50）では `distrobox enter` なしで同じスクリプトを回す。
 - 200 % 表示の確認: `LG_DRV_SCENARIO=features LG_DRV_FEATURES=scale LG_SPIKE_MONITOR=2256x1504 LG_MONITORS_XML=$PWD/tools/backdrop-spike/monitors-200.xml` を足して回す
   （論理 1128x752 の画面）。メニューが画面に収まるか・ランチャーがデスクトップウィジェットと重ならないかが `[drv] scale:` の行に出る。
-  `LG_DRV_LIGHT=1` で明るいテーマ。UI のサイズや余白に触れた変更は、このシナリオも回して `shots/*.png` を見る。
+  `LG_DRV_LIGHT=1` で明るいシェルテーマ、`LG_DRV_LIGHT=default` で GNOME 設定の「デフォルト」（シェルは暗いまま）。ランチャーのピン留めページと検索結果の収まりは `LG_DRV_FEATURES=launcherlayout`（`LG_SPIKE_MONITOR=1920x1080 LG_MONITORS_XML=$PWD/tools/backdrop-spike/monitors-200-small.xml` で論理 960x540 の画面）。UI のサイズや余白に触れた変更は、このシナリオも回して `shots/*.png` を見る。
 - 目で見る確認（入れ子のシェル）: `tools/gnome-versions/run.sh NN`（alias `gnome46` など。`--pack` で zip を作り直してから起動）。ログは `~/gnomeNN-home/gNN.log`。
 - シェルが落ちたら `coredumpctl` で core を取り、ボックスの中の gdb ＋ debuginfod でバックトレースを見る（Fedora のボックス）。
 - 調べた版の違いと地雷は memo.md の追記40・追記41 にある。
