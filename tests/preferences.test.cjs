@@ -123,7 +123,7 @@ function fixture(overrides = {}, dbusResponses = [], blurMyShell = null) {
 test('preferences expose four pages and eight shared appearance controls', () => {
   const f = fixture();
   assert.deepEqual(f.window.children.map(page => page.title), ['Appearance', 'Effects', 'Desktop', 'Rendering']);
-  assert.equal(f.window.children[0].children.filter(group => group.title !== 'Settings' && group.visible !== false).flatMap(group => group.children).length, 8);
+  assert.equal(f.window.children[0].children.filter(group => !['Settings', 'Backup'].includes(group.title) && group.visible !== false).flatMap(group => group.children).length, 8);
   assert.equal(f.widgets.filter(widget => /Spring|Sample Interval|X Offset|Y Offset/.test(widget.title ?? '')).length, 0);
   assert.equal(f.window.search_enabled, true);
 });
@@ -216,6 +216,21 @@ test('icon rules show their controls only while icons are redrawn somewhere, and
   assert.equal(iconRow('Size').visible, true);
 });
 
+test('the clear look offers a dark dock, and the button says when it is set', () => {
+  const f = fixture({'icon-style-dock': true});
+  const hint = f.row('Hard to see?');
+  assert.equal(hint.visible, false);
+  f.controls.write({'icon-style-mode': 'clear'});
+  assert.equal(hint.visible, true);
+  const button = f.widgets.find(widget => widget.label === 'Apply');
+  button.emit('clicked');
+  assert.deepEqual(f.writes.at(-1), {'dock-tint-color': '#000000', 'dock-tint-strength': 0.16});
+  assert.equal(button.label, 'Applied');
+  assert.equal(button.sensitive, false);
+  f.controls.write({'icon-style-mode': 'mono'});
+  assert.equal(hint.visible, false);
+});
+
 test("glass tuning opens on the current look's numbers and stores only what differs from the default", () => {
   const f = fixture({'icon-style-dock': true, 'icon-style-tint-variant': 'light'});
   assert.equal(f.row('Variant').visible, true);
@@ -227,7 +242,7 @@ test("glass tuning opens on the current look's numbers and stores only what diff
   };
   let row = open();
   assert.ok(row('Symbol: color mixed into white'));
-  assert.equal(row('Glass: white over the backdrop'), undefined);
+  assert.equal(row('Glass: white frost'), undefined);
   f.writes.length = 0;
   row('Symbol: color mixed into white').value = 0.3;
   assert.deepEqual(f.writes.at(-1), {'icon-style-tuning': {lightSymbolTint: 0.3}});
@@ -235,7 +250,7 @@ test("glass tuning opens on the current look's numbers and stores only what diff
   f.controls.write({'icon-style-mode': 'clear'});
   row = open();
   assert.equal(row('Symbol: color mixed into white'), undefined);
-  assert.equal(row('Glass: white over the backdrop').value, 0.18);
+  assert.equal(row('Glass: white frost').value, 0.02);
 });
 
 test('closing disconnects manually owned settings subscriptions', () => {
@@ -285,7 +300,10 @@ test('advanced top bar group owns its style and shows spacing only for pills', (
   const f = fixture({'preferences-advanced': true});
   const effects = f.window.children.find(page => page.title === 'Effects').children
     .find(group => group.title === 'Individual effects');
-  assert.ok(!effects.children.some(row => row.title === 'Top bar'));
+  const effectsStyle = effects.children.find(row => row.title === 'Top bar');
+  effectsStyle.selected = 2;
+  assert.deepEqual(f.writes.at(-1), {'top-bar-style': 'islands'});
+  effectsStyle.selected = 0;
   f.row('Surface').selected = 8;
   const group = f.window.children[0].children.find(group => group.title === 'Top bar');
   const style = group.children.find(row => row.title === 'Style');
@@ -302,6 +320,17 @@ test('advanced top bar group owns its style and shows spacing only for pills', (
   assert.equal(margin.visible, true);
   style.selected = 0;
   assert.equal(padding.visible, false);
+});
+
+test('quick settings glass is chosen with the quick settings surface, and under Show glass on in the simple view', () => {
+  const advanced = fixture({'preferences-advanced': true});
+  advanced.row('Surface').selected = 4;
+  const group = advanced.window.children[0].children.find(group => group.title === 'Quick settings');
+  group.children.find(row => row.title === 'Apply glass to').selected = 1;
+  assert.deepEqual(advanced.writes.at(-1), {'quick-settings-apply-to': 1});
+  const simple = fixture();
+  simple.row('Apply quick settings glass to').selected = 1;
+  assert.deepEqual(simple.writes.at(-1), {'quick-settings-apply-to': 1});
 });
 
 test('advanced animation intervals stay within their schema ranges on every animated surface', () => {
@@ -338,7 +367,7 @@ test('advanced groups sit above the always-visible groups on each page', () => {
     .filter(group => group.visible !== false).map(group => group.title);
   const effects = titles('Effects'), rendering = titles('Rendering');
   assert.ok(effects.indexOf('Individual effects') < effects.indexOf('Application windows'), effects.join(' | '));
-  assert.ok(rendering.indexOf('Blur') < rendering.indexOf('Compatibility'), rendering.join(' | '));
+  assert.ok(!rendering.includes('Compatibility'), rendering.join(' | '));
   assert.ok(rendering.indexOf('Shadows') < rendering.indexOf('Troubleshooting'), rendering.join(' | '));
 });
 
@@ -399,4 +428,27 @@ test('the warning offers no button when Blur my Shell\'s settings cannot be foun
   const f = fixture();
   assert.ok(f.row('Blur my Shell is blurring popups'));
   assert.equal(f.widgets.find(widget => widget.label === 'Turn Off'), undefined);
+});
+
+test('exported settings are a dconf dump, and an import keeps only valid values of known keys', () => {
+  const values = {'dock-blur-radius': '12', 'enable-dock-glass': 'true', 'launcher-width': '680'};
+  const types = {'dock-blur-radius': 'i', 'enable-dock-glass': 'b', 'launcher-width': 'i'};
+  const GLib = {
+    VariantType: class { constructor(type) { this.type = type; } },
+    Variant: {parse(type, text) {
+      if (type.type === 'i' && !/^-?\d+$/.test(text)) throw new Error('not a number');
+      return {type: type.type, text};
+    }},
+  };
+  const settings = {
+    settings_schema: {list_keys: () => Object.keys(values), has_key: key => key in values,
+      get_key: key => ({range_check: variant => key !== 'launcher-width' || Number(variant.text) <= 1400})},
+    get_value: key => ({print: () => values[key], get_type_string: () => types[key]}),
+    is_writable: key => key !== 'enable-dock-glass',
+  };
+  const {dumpSettings, parseSettings} = createModuleLoader({Adw: {}, Gio: {}, Gtk: {}, GLib})(path.join(root, 'preferences/backup.js'));
+  assert.equal(dumpSettings(settings), '[/]\ndock-blur-radius=12\nenable-dock-glass=true\nlaunch' + 'er-width=680\n');
+  const result = parseSettings(settings, '[/]\ndock-blur-radius=9\nlauncher-width=5000\nenable-dock-glass=false\nmissing=1\nlauncher-width=abc\n');
+  assert.deepEqual(result.changes, [['dock-blur-radius', {type: 'i', text: '9'}]]);
+  assert.equal(result.skipped, 4);
 });

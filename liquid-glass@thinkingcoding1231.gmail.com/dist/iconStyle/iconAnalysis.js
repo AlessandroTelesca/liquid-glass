@@ -85,6 +85,9 @@ const GROUND_NEAR = 0.1;
 const GROUND_BREADTH = 3;
 // An area with EDGE_INSIDE of its pixels within EDGE_BAND of its plate's half size from its outline is the icon's own
 // rim, which the glass's rim takes the place of.
+// A pixel outside every plate that is this transparent and this dark is a drop shadow, not symbol.
+const SHADOW_ALPHA = 0.6;
+const SHADOW_LIGHTNESS = 0.3;
 const EDGE_BAND = 0.09;
 const EDGE_INSIDE = 0.8;
 // So is a line running along the outline at an even depth within twice that, as long as the plate is wide.
@@ -158,7 +161,7 @@ export function shapeDistance(shape, x, y) {
     if (shape.kind === 'roundrect') {
         const r = Math.min(shape.radius, shape.rx, shape.ry);
         const qx = Math.abs(dx) - shape.rx + r, qy = Math.abs(dy) - shape.ry + r;
-        d = Math.min(Math.max(qx, qy), 0) + Math.hypot(Math.max(qx, 0), Math.max(qy, 0)) - r;
+        d = Math.min(Math.max(qx, qy), 0) + cornerLength(Math.max(qx, 0), Math.max(qy, 0), r, shape.corner ?? 2) - r;
     }
     else {
         const n = shape.exponent;
@@ -173,6 +176,20 @@ export function shapeDistance(shape, x, y) {
         return d;
     const base = len - d;
     return len - base * rippleFactor(shape.ripple, Math.atan2(dy, dx));
+}
+
+// The distance into a corner of radius r at (px, py) from its centre, for a superellipse corner of exponent n: its
+// norm over the length of its gradient, which fades in from the centre, where the gradient has no direction.
+function cornerLength(px, py, r, n) {
+    if (n === 2)
+        return Math.hypot(px, py);
+    const m = Math.max(px, py);
+    if (m <= 0)
+        return 0;
+    const len = m * ((px / m) ** n + (py / m) ** n) ** (1 / n);
+    const grad = Math.hypot((px / len) ** (n - 1), (py / len) ** (n - 1));
+    const gradLen = 1 + (grad - 1) * Math.min(len / Math.max(r, 1e-3), 1);
+    return r + (len - r) / Math.max(gradLen, 0.5);
 }
 
 function rippleFactor(ripple, angle) {
@@ -830,8 +847,10 @@ export function analyzeIcon(icon) {
             // Grain breaks a plate into specks; then the fit starts from all of it.
             const share = own.length ? most / own.length : 0;
             const fit = fitColor(c.shape, share >= MIN_SURFACE ? own.filter(i => labels[i] === main) : own, lab, w);
-            const plate = { shape: c.shape, color: fit.color, plain: false, parent: parents[k], surface: 0, error: fit.rms,
-                share, noise: fit.noise, pieces: piecesOf(own, counts, most, labels, lab) };
+            const plate = {
+                shape: c.shape, color: fit.color, plain: false, parent: parents[k], surface: 0, error: fit.rms,
+                share, noise: fit.noise, pieces: piecesOf(own, counts, most, labels, lab)
+            };
             let surface = 0;
             const at = [0, 0, 0];
             const near = Math.max(SYMBOL_LOW, fit.noise * 3);
@@ -1281,7 +1300,8 @@ export function symbolLayer(plates, analysisWidth, pixels) {
     for (let i = 0; i < n; i++) {
         const d = raw[i];
         if (d === Infinity) {
-            cover[i] = 1;
+            // The drop shadow an icon casts outside its base would draw as a light halo round the glass.
+            cover[i] = owner[i] < 0 && alpha[i] < SHADOW_ALPHA && lab[i * 3] < SHADOW_LIGHTNESS ? 0 : 1;
             continue;
         }
         const r = region[i] >= 0 ? list[region[i]] : null;
@@ -1551,8 +1571,10 @@ function regionsOf(lab, opaque, owner, depth, w, h, s) {
         if (j === undefined) {
             j = list.length;
             keys.set(key, j);
-            list.push({ owner: owner[i], count: 0, interior: 0, color: [0, 0, 0], band: 0, ground: false, strength: 0, contrast: 0,
-                decided: false, fades: false, edge: false });
+            list.push({
+                owner: owner[i], count: 0, interior: 0, color: [0, 0, 0], band: 0, ground: false, strength: 0, contrast: 0,
+                decided: false, fades: false, edge: false
+            });
         }
         region[i] = j;
     }
@@ -1668,8 +1690,10 @@ function symbolTone(parts, edges) {
     const pairs = [...meet].map(([key, length]) => {
         const p = Math.floor(key / TONE_GROUPS), q = key % TONE_GROUPS;
         const apart = distance(kept[p].color, kept[q].color);
-        return { p, q, weight: Math.sqrt(length), want: TONE_SEEN * Math.min(apart / TONE_FULL, 1),
-            lighter: Math.sign(kept[p].color[0] - kept[q].color[0]) };
+        return {
+            p, q, weight: Math.sqrt(length), want: TONE_SEEN * Math.min(apart / TONE_FULL, 1),
+            lighter: Math.sign(kept[p].color[0] - kept[q].color[0])
+        };
     });
     if (!pairs.length)
         return null;

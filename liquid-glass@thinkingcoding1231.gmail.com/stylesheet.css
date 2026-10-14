@@ -94,13 +94,69 @@
     background-color: rgba(65, 65, 65, 0.8) !important;
 }
 
-/* Quick Settings sliders sit on a translucent card. */
-.liquid-glass-qs-root .quick-slider {
-    background-color: rgba(255, 255, 255, 0.15) !important;
-    border-radius: 20px !important;
-    padding: 24px 24px !important;
-    margin-bottom: 8px !important;
-    box-shadow: none !important;
+/* The cards' text is set here, as the adaptive colours do not reach it: they follow what is behind the glass,
+   and a card has its own background. */
+.liquid-glass-menu-root .events-button,
+.liquid-glass-menu-root .world-clocks-button,
+.liquid-glass-menu-root .message,
+.liquid-glass-menu-root .world-clocks-header.no-world-clocks,
+.liquid-glass-menu-root .message-expand-button,
+.liquid-glass-menu-root .message-close-button,
+.liquid-glass-menu-root .message-media-control {
+    color: rgba(255, 255, 255, 0.95) !important;
+}
+
+.liquid-glass-menu-root .events-title,
+.liquid-glass-menu-root .event-time,
+.liquid-glass-menu-root .event-placeholder,
+.liquid-glass-menu-root .world-clocks-header,
+.liquid-glass-menu-root .world-clocks-timezone,
+.liquid-glass-menu-root .message-header {
+    color: rgba(255, 255, 255, 0.7) !important;
+}
+
+/* The same cards when the colour scheme is not dark: pale, under dark text. The text colours are set here
+   because the shell theme stays dark for the default scheme. */
+.liquid-glass-menu-root.liquid-glass-light StButton:hover {
+    background-color: rgba(0, 0, 0, 0.08) !important;
+}
+
+.liquid-glass-menu-root.liquid-glass-light StButton:active,
+.liquid-glass-menu-root.liquid-glass-light StButton:checked,
+.liquid-glass-menu-root.liquid-glass-light StButton:focus {
+    background-color: rgba(0, 0, 0, 0.14) !important;
+}
+
+.liquid-glass-menu-root.liquid-glass-light .events-button,
+.liquid-glass-menu-root.liquid-glass-light .world-clocks-button,
+.liquid-glass-menu-root.liquid-glass-light .message {
+    background-color: rgba(255, 255, 255, 0.6) !important;
+    color: rgba(0, 0, 0, 0.87) !important;
+}
+
+.liquid-glass-menu-root.liquid-glass-light .message:hover,
+.liquid-glass-menu-root.liquid-glass-light .message:focus,
+.liquid-glass-menu-root.liquid-glass-light .events-button:hover,
+.liquid-glass-menu-root.liquid-glass-light .events-button:focus,
+.liquid-glass-menu-root.liquid-glass-light .world-clocks-button:hover,
+.liquid-glass-menu-root.liquid-glass-light .world-clocks-button:focus {
+    background-color: rgba(255, 255, 255, 0.75) !important;
+}
+
+.liquid-glass-menu-root.liquid-glass-light .events-title,
+.liquid-glass-menu-root.liquid-glass-light .event-time,
+.liquid-glass-menu-root.liquid-glass-light .event-placeholder,
+.liquid-glass-menu-root.liquid-glass-light .world-clocks-header,
+.liquid-glass-menu-root.liquid-glass-light .world-clocks-timezone,
+.liquid-glass-menu-root.liquid-glass-light .message-header {
+    color: rgba(0, 0, 0, 0.6) !important;
+}
+
+.liquid-glass-menu-root.liquid-glass-light .world-clocks-header.no-world-clocks,
+.liquid-glass-menu-root.liquid-glass-light .message-expand-button,
+.liquid-glass-menu-root.liquid-glass-light .message-close-button,
+.liquid-glass-menu-root.liquid-glass-light .message-media-control {
+    color: rgba(0, 0, 0, 0.87) !important;
 }
 
 /* Desktop widgets. The card's glass is drawn behind it; the colours here are
@@ -203,7 +259,6 @@
 /* The launcher: a search field and its results on one sheet of glass. */
 .liquid-glass-launcher {
     padding: 10px;
-    spacing: 6px;
     color: #ffffff;
 }
 
@@ -247,6 +302,14 @@
     spacing: 12px;
 }
 
+.liquid-glass-launcher .lg-launcher-badge {
+    font-size: 9pt;
+    font-weight: bold;
+    padding: 2px 10px;
+    border-radius: 99px;
+    background-color: rgba(255, 255, 255, 0.2);
+}
+
 .liquid-glass-launcher .lg-launcher-name {
     font-size: 12pt;
     font-weight: bold;
@@ -254,4 +317,73 @@
 
 .liquid-glass-launcher .lg-launcher-detail {
     font-size: 9.5pt;
+}
+
+.liquid-glass-launcher .lg-launcher-page {
+    spacing: 6px;
+}
+
+.liquid-glass-launcher .lg-launcher-pin {
+    color: inherit;
+    padding: 2px;
+    border-radius: 6px;
+}
+
+.liquid-glass-launcher .lg-launcher-pin:hover {
+    background-color: rgba(255, 255, 255, 0.18);
+}
+
+.liquid-glass-launcher .lg-launcher-header {
+    spacing: 10px;
+    padding: 4px 4px 6px;
+}
+
+.liquid-glass-launcher .lg-launcher-back {
+    color: inherit;
+    padding: 8px;
+    border-radius: 99px;
+    background-color: rgba(255, 255, 255, 0.12);
+}
+
+.liquid-glass-launcher .lg-launcher-back:hover {
+    background-color: rgba(255, 255, 255, 0.24);
+}
+
+.liquid-glass-launcher .lg-launcher-title {
+    font-size: 15pt;
+    font-weight: bold;
+}
+
+.liquid-glass-launcher .lg-launcher-section {
+    font-size: 10pt;
+    font-weight: bold;
+    padding: 6px 12px 2px;
+}
+
+.liquid-glass-launcher .lg-launcher-grid-row {
+    spacing: 8px;
+}
+
+.liquid-glass-launcher .lg-launcher-tile {
+    padding: 8px;
+    border-radius: 22px;
+    color: inherit;
+    background-color: transparent;
+}
+
+.liquid-glass-launcher .lg-launcher-tile:selected {
+    background-color: rgba(255, 255, 255, 0.2);
+}
+
+.liquid-glass-launcher .lg-launcher-tile-box {
+    spacing: 8px;
+}
+
+.liquid-glass-launcher .lg-launcher-tile-name {
+    font-size: 10pt;
+}
+
+.liquid-glass-launcher .lg-launcher-empty {
+    font-size: 11pt;
+    padding: 24px;
 }

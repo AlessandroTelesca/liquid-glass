@@ -35,6 +35,8 @@ const CONTENT_LENS = 'liquid-glass-content-lens';
 const SOFT_REFRACTION = 0.3;
 const SOFT_BLUR_RADIUS = 0;
 const MENU_MEASURE_FRAMES = 30;
+// The calendar menu's cards (stylesheet.css).
+const CARD_CLASSES = ['events-button', 'world-clocks-button', 'message'];
 const MENU_MEASURE_STABLE_FRAMES = 3;
 // Quick Settings' open height, measured once for every menu that matches it,
 // and the callbacks waiting for a measurement in progress.
@@ -627,6 +629,9 @@ export class UIManager {
         this.targetActor.add_style_class_name('liquid-glass-transparent');
         this.animActor.add_style_class_name('liquid-glass-transparent');
         this.animActor.add_style_class_name('liquid-glass-menu-root');
+        this._syncStyleVariant();
+        const settings = St.Settings.get();
+        this._signals.push({ target: settings, id: settings.connect('notify::color-scheme', () => this._syncStyleVariant()) });
         this._menuXoffset = this._settings.get_int(this._key('x-offset'));
         this._menuYoffset = this._settings.get_int(this._key('y-offset'));
         this.animActor.translation_x = this._menuXoffset;
@@ -862,8 +867,16 @@ export class UIManager {
         return this._findAllTextActors(this.menu?.actor);
     }
 
+    // The calendar menu's cards get their text colour from the stylesheet, not from what is behind the glass.
+    _isCard(actor) {
+        return CARD_CLASSES.some(name => this._hasStyleClass(actor, name)) &&
+            !!this.animActor?.has_style_class_name('liquid-glass-menu-root');
+    }
+
     _findAllTextActors(actor, foundActors = []) {
         if (!actor)
+            return foundActors;
+        if (this._isCard(actor))
             return foundActors;
         if (actor instanceof St.Label || actor instanceof Clutter.Text || actor instanceof St.Button || actor instanceof St.Icon) {
             if (actor.visible) {
@@ -1491,12 +1504,21 @@ export class UIManager {
         }
     }
 
+    // The shell stays dark for the default scheme too, but that scheme asks for light apps, so the cards follow it.
+    _syncStyleVariant() {
+        if (St.Settings.get().color_scheme !== St.SystemColorScheme.PREFER_DARK)
+            this.animActor.add_style_class_name('liquid-glass-light');
+        else
+            this.animActor.remove_style_class_name('liquid-glass-light');
+    }
+
     _restoreMenuActors() {
         if (!this._actorDestroyed)
             this.targetActor.remove_style_class_name('liquid-glass-transparent');
         if (!this._actorDestroyed && this.animActor) {
             this.animActor.remove_style_class_name('liquid-glass-transparent');
             this.animActor.remove_style_class_name('liquid-glass-menu-root');
+            this.animActor.remove_style_class_name('liquid-glass-light');
             this.animActor.translation_x = 0;
             this.animActor.translation_y = 0;
             this.animActor.set_scale(1.0, 1.0);

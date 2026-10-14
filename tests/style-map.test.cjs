@@ -5,7 +5,7 @@ const { loadModule } = require('./helpers/load-module.cjs');
 const { dist } = require('./helpers/gpu.cjs');
 
 const { analyzeIcon, shapeDistance } = loadModule(path.join(dist, 'iconStyle/iconAnalysis.js'), {});
-const { buildStyleMap, MAP_SIZE, MAP_RANGE } = loadModule(path.join(dist, 'iconStyle/styleMap.js'), {});
+const { buildStyleMap, MAP_SIZE, MAP_RANGE, LENS_SIZE, LENS_RANGE } = loadModule(path.join(dist, 'iconStyle/styleMap.js'), {});
 
 // An icon of `size` px drawn from layers of a distance (in units of a 128 px icon) and a colour.
 function draw(size, layers) {
@@ -42,6 +42,37 @@ function field(map, channel, x, y) {
   return (0.5 - v) * 2 * MAP_RANGE;
 }
 
+// The lens map's distance (map px) in a plate slot (0: outer, 1: on it, 2: deeper) at a point in 128 px icon units,
+// and the half width stored for slots 1 and 2.
+function lensAt(map, slot, x, y) {
+  const s = LENS_SIZE / 128;
+  const row = Math.floor(y * s) + (slot === 2 ? LENS_SIZE : 0);
+  const at = (row * LENS_SIZE + Math.floor(x * s)) * 4 + (slot === 1 ? 2 : 0);
+  return ((map.lens[at] * 256 + map.lens[at + 1]) / 65535) * 2 * LENS_RANGE - LENS_RANGE;
+}
+
+function lensHalf(map, slot, x, y) {
+  const s = LENS_SIZE / 128;
+  return map.lens[((Math.floor(y * s) + LENS_SIZE) * LENS_SIZE + Math.floor(x * s)) * 4 + 1 + slot] / 255 * LENS_RANGE;
+}
+
+test('the lens map holds the plates\' distances deep inside them, where the style map stops', () => {
+  const circle = shape('superellipse', 60);
+  const map = mapOf([{ distance: of(circle), color: [30, 200, 90] }, { distance: bar(44, 58, 84, 70), color: [0, 0, 0] }]);
+  assert.equal(map.lens.length, LENS_SIZE * LENS_SIZE * 2 * 4);
+  // The outer plate fills 0.46 of the icon each way from the middle: 118 map px deep there.
+  assert.ok(Math.abs(lensAt(map, 0, 64.5, 64.5) + 0.46 * MAP_SIZE) < 4, `${lensAt(map, 0, 64.5, 64.5)}`);
+  // Near the edges it agrees with the style map.
+  for (const [x, y] of [[64, 6], [7, 64], [64, 124]])
+    assert.ok(Math.abs(lensAt(map, 0, x, y) - field(map, 0, x, y)) < 2.5, `${x},${y}: ${lensAt(map, 0, x, y)} ${field(map, 0, x, y)}`);
+  // The circle on it is a plate of its own, with its half width beside it.
+  const inner = lensAt(map, 1, 64.5, 64.5);
+  assert.ok(inner < -MAP_RANGE, `${inner}`);
+  assert.ok(Math.abs(lensHalf(map, 1, 64.5, 64.5) + inner) < 6, `${lensHalf(map, 1, 64.5, 64.5)} ${inner}`);
+  // Nothing is deeper.
+  assert.ok(lensAt(map, 2, 64, 64) > LENS_RANGE - 1);
+});
+
 test('a rounded square stays the outer plate, brought to the size every outer plate has', () => {
   const plate = shape('roundrect', 56, { radius: 14 });
   const map = mapOf([{ distance: of(plate), color: [30, 120, 220] }, { distance: bar(56, 30, 72, 98), color: [255, 255, 255] }]);
@@ -51,6 +82,28 @@ test('a rounded square stays the outer plate, brought to the size every outer pl
   assert.ok(Math.abs(field(map, 0, 64, 5.1)) < 2, `edge ${field(map, 0, 64, 5.1)}`);
   // Nothing else is a plate.
   assert.ok(field(map, 1, 64, 64) > MAP_RANGE - 1);
+});
+
+test('an icon\'s own rounded square keeps the middle of its corners and meets its sides smoothly', () => {
+  const plate = shape('roundrect', 56, { radius: 28 });
+  const map = mapOf([{ distance: of(plate), color: [30, 120, 220] }, { distance: bar(56, 30, 72, 98), color: [255, 255, 255] }]);
+  assert.equal(map.ownPlate, true);
+  // Brought to 0.46 of the icon: half 58.9 px of 128, corner radius half of that.
+  const half = 0.46 * 128, r = half / 2;
+  const circle = { ...plate, rx: half, ry: half, radius: r };
+  const along = (deg, f) => {
+    const a = deg * Math.PI / 180;
+    let lo = 0, hi = 74;
+    for (let i = 0; i < 40; i++) {
+      const m = (lo + hi) / 2;
+      if (f(64 + m * Math.cos(a), 64 + m * Math.sin(a)) < 0) lo = m; else hi = m;
+    }
+    return lo;
+  };
+  const edge = deg => along(deg, (x, y) => field(map, 0, x, y));
+  const round = deg => along(deg, of(circle));
+  assert.ok(Math.abs(edge(45) - round(45)) < 0.6, `middle of the corner ${edge(45)} ${round(45)}`);
+  assert.ok(round(30) - edge(30) > 0.2 && round(30) - edge(30) < 1.2, `where the arc meets the side ${edge(30)} ${round(30)}`);
 });
 
 test('a circle gets a rounded square around it and shrinks onto it', () => {

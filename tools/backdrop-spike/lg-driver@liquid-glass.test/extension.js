@@ -22,7 +22,12 @@
 //              ($LG_DRV_WALLPAPER); LG_DRV_FEATURES picks parts (comma
 //              separated: morph, topbar, widgets, clock, launcher; default all;
 //              also morphtrace, qssub, clockshot, media, guides, launcherpointer,
-//              launchercolor, iconstyle; iconstyle needs LG_DTD_DIR)
+//              launchercolor, iconstyle, iconglass; both need LG_DTD_DIR);
+//              also scale (the calendar, Quick Settings in both modes and the launcher
+//              on a small logical screen: run-glass.sh with LG_SPIKE_MONITOR=2256x1504 and
+//              LG_MONITORS_XML=tools/backdrop-spike/monitors-200.xml; LG_DRV_LIGHT=1 for the
+//              light shell theme) and widgetcolors (the weather card's text colours after rebuilds);
+//              $LG_DRV_SETTINGS_DUMP (a dconf dump) and $LG_DRV_ICON_THEME set up the session first
 //   bench      global._lgBench.run() (run-glass.sh with LG_BENCH=1); LG_DRV_BENCH
 //              picks scenarios (comma separated, default all), LG_DRV_BENCH_SECONDS
 //              the seconds per scenario (default 3), LG_DRV_BENCH_AB=1 adds a run without UI glass
@@ -44,6 +49,7 @@ import * as Config from 'resource:///org/gnome/shell/misc/config.js';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import * as PanelMenu from 'resource:///org/gnome/shell/ui/panelMenu.js';
 import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
+import * as QuickSettings from 'resource:///org/gnome/shell/ui/quickSettings.js';
 import {Extension} from 'resource:///org/gnome/shell/extensions/extension.js';
 
 const OUT_DIR = GLib.getenv('LG_SPIKE_OUT') ?? GLib.get_tmp_dir();
@@ -1079,6 +1085,8 @@ export default class LgDriver extends Extension {
         names.push(name);
       if (a.get_effect('liquid-glass-icon-style'))
         names.push(`icon-style:${a.icon_name ?? a.gicon?.to_string() ?? '?'}`);
+      if (a.get_effect('liquid-glass-icon-backdrop'))
+        names.push(`icon-backdrop:${a.get_name() ?? a.constructor.name}`);
       for (const c of a.get_children())
         walk(c);
     };
@@ -1488,11 +1496,11 @@ export default class LgDriver extends Extension {
     const {Launcher} = await this._lgModule('launcher/launcher.js');
     const launcher = Launcher.instance;
     const activated = [];
-    launcher._activate = i => {
-      activated.push(i);
+    launcher._activateResult = result => {
+      activated.push(launcher._results.indexOf(result));
       launcher.close();
     };
-    const rows = () => launcher._rows ?? [];
+    const rows = () => (launcher._items ?? []).map(item => item.actor);
     const hovered = () => rows().map(r => (r.hover ? 1 : 0)).join('');
     // LG_DRV_LAUNCHER_QUERY: what to search for (default "set").
     const query = GLib.getenv('LG_DRV_LAUNCHER_QUERY') ?? 'set';
@@ -1567,7 +1575,7 @@ export default class LgDriver extends Extension {
         await sleep(1500);
       }
     }
-    delete launcher._activate;
+    delete launcher._activateResult;
     launcher._shape._durationMs = 220;
     settings.reset('launcher-enable-adaptive-text-color');
     // One more letter with the same number of results: the glass keeps its height.
@@ -1607,7 +1615,7 @@ export default class LgDriver extends Extension {
     launcher.setText('keyboard');
     await sleep(1500);
     const name = launcher._results[0]?.meta.name;
-    const [rx, ry] = launcher._rows[0]?.get_transformed_position() ?? [0, 0];
+    const [rx, ry] = launcher._items[0]?.actor?.get_transformed_position() ?? [0, 0];
     await click(rx + 100, ry + 10);
     await sleep(1500);
     log(`launcher pointer: '${name}' clicked: open=${!!launcher._root} modal=${Main.modalCount}`);
@@ -1641,10 +1649,10 @@ export default class LgDriver extends Extension {
     const traceId = global.stage.connect('after-paint', () => {
       const panel = launcher._panel;
       if (!panel) return;
-      const row = launcher._rows[0];
+      const row = launcher._items[0]?.actor;
       const label = row && firstLabel(row);
       frames.push({
-        rows: launcher._rows.length,
+        rows: launcher._items.length,
         panel: hex(panel.get_theme_node().get_foreground_color()),
         entry: hex(launcher._entry.get_theme_node().get_foreground_color()),
         row: label ? hex(label.get_theme_node().get_foreground_color()) : '-',
@@ -1708,6 +1716,99 @@ export default class LgDriver extends Extension {
     dark.destroy();
     white.destroy();
     await sleep(500);
+  }
+
+  // The launcher's calculations and pinned items: a calculation comes first, a result is pinned and unpinned
+  // with a click on its pin, a pinned result comes before the others, and Ctrl+P and the back button change
+  // page, in both transitions.
+  async _launcherPins(settings, m, launcher) {
+    const backend = SHELL_MAJOR >= 48 ? global.stage.context.get_backend() : Clutter.get_default_backend();
+    const seat = backend.get_default_seat();
+    // The hot corner's barriers hold a pointer that starts in the corner.
+    new Gio.Settings({schema_id: 'org.gnome.desktop.interface'}).set_boolean('enable-hot-corners', false);
+    const pointer = seat.create_virtual_device(Clutter.InputDeviceType.POINTER_DEVICE);
+    const keyboard = seat.create_virtual_device(Clutter.InputDeviceType.KEYBOARD_DEVICE);
+    await sleep(300);
+    const t = () => GLib.get_monotonic_time();
+    const click = async actor => {
+      const [x, y] = actor.get_transformed_position();
+      const [w, h] = actor.get_transformed_size();
+      pointer.notify_absolute_motion(t(), x + w / 2, y + h / 2);
+      await sleep(250);
+      pointer.notify_button(t(), Clutter.BUTTON_PRIMARY, Clutter.ButtonState.PRESSED);
+      await sleep(60);
+      pointer.notify_button(t(), Clutter.BUTTON_PRIMARY, Clutter.ButtonState.RELEASED);
+      await sleep(250);
+    };
+    const ctrlP = async () => {
+      keyboard.notify_keyval(t(), Clutter.KEY_Control_L, Clutter.KeyState.PRESSED);
+      keyboard.notify_keyval(t(), Clutter.KEY_p, Clutter.KeyState.PRESSED);
+      keyboard.notify_keyval(t(), Clutter.KEY_p, Clutter.KeyState.RELEASED);
+      keyboard.notify_keyval(t(), Clutter.KEY_Control_L, Clutter.KeyState.RELEASED);
+    };
+    const names = () => launcher._results.map(r => `${r.meta.name}${launcher._isPinned(r) ? '*' : ''}`).join(' | ');
+    const panelRect = () => [...launcher._panel.get_transformed_position(), ...launcher._panel.get_transformed_size()].map(Math.round);
+    settings.reset('launcher-pinned');
+    launcher.open();
+    await sleep(800);
+    for (const query of ['3*8=', '1-5', '2^10 / 4', '(1+2']) {
+      launcher.setText(query);
+      await sleep(900);
+      log(`launcher calc "${query}": ${launcher._results[0]?.provider ? 'no calculation' : launcher._results[0]?.meta.name} first of ${launcher._results.length}`);
+    }
+    launcher.setText('set');
+    await sleep(2500);
+    log(`launcher pins before: ${names()}`);
+    // The second application result and the first of another provider, each pinned by its pin.
+    const pinnable = launcher._results.map((r, i) => [r, i]).filter(([r]) => r.provider);
+    const apps = pinnable.filter(([r]) => r.provider.id === 'applications');
+    const picks = [apps[1] ?? apps[0], pinnable.find(([r]) => r.provider.id !== 'applications')].filter(Boolean);
+    for (const [, i] of picks) {
+      const row = launcher._items[i].actor;
+      const toggle = row.get_child().get_first_child();
+      const [tx, ty] = toggle.get_transformed_position();
+      const [tw, th] = toggle.get_transformed_size();
+      const under = global.stage.get_actor_at_pos(Clutter.PickMode.REACTIVE, tx + tw / 2, ty + th / 2);
+      log(`launcher pin toggle row ${i}: ${[tx, ty, tw, th].map(Math.round)} class=${toggle.style_class} under=${under?.constructor.name}.${under?.style_class ?? under?.name}`);
+      await click(toggle);
+      log(`launcher pin click row ${i}: open=${!!launcher._root} pins=${launcher._pins.all().map(p => `${p.provider}:${p.id}`).join(',')} ` +
+        `toggle opacity=${toggle.opacity}`);
+    }
+    launcher.setText('se');
+    await sleep(300);
+    launcher.setText('set');
+    await sleep(2500);
+    log(`launcher pins after: ${names()} modal=${Main.modalCount}`);
+    await shot('launcher-pins-results', [m.x, m.y, m.width, m.height]);
+    for (const transition of ['morph', 'tween']) {
+      settings.set_string('launcher-pinned-transition', transition);
+      const before = panelRect();
+      await ctrlP();
+      await sleep(200);
+      await shot(`launcher-pinned-${transition}-mid`, [m.x, m.y, m.width, m.height]);
+      await sleep(1200);
+      log(`launcher pinned ${transition}: view=${launcher._view} panel ${before} -> ${panelRect()} clip=${launcher._panel.get_clip().map(Math.round)} ` +
+        `items=${launcher._items.length} tiles=${launcher._tileCount} lens=${!!launcher._lens} opacity=${launcher._panel.opacity}`);
+      await shot(`launcher-pinned-${transition}`, [m.x, m.y, m.width, m.height]);
+      const back = findActors(launcher._panel, a => a.has_style_class_name?.('lg-launcher-back'))[0];
+      await click(back);
+      await sleep(1200);
+      log(`launcher back ${transition}: view=${launcher._view} panel=${panelRect()} focus=${global.stage.key_focus === launcher._entry.clutter_text}`);
+    }
+    // Unpinned on the pinned page, from the tile's corner.
+    launcher.showView('pinned');
+    await sleep(1200);
+    const tile = launcher._items[0]?.actor;
+    if (tile) {
+      const toggle = findActors(tile, a => a.has_style_class_name?.('lg-launcher-pin'))[0];
+      await click(toggle);
+      await sleep(500);
+      log(`launcher unpin from tile: pins=${launcher._pins.all().length} items=${launcher._items.length} tiles=${launcher._tileCount}`);
+    }
+    launcher.close();
+    settings.reset('launcher-pinned');
+    settings.reset('launcher-pinned-transition');
+    await sleep(800);
   }
 
   // Application icons redrawn as glass plates under a symbol: in the dock
@@ -1836,7 +1937,7 @@ export default class LgDriver extends Extension {
     launcher.open();
     launcher.setText(GLib.getenv('LG_DRV_LAUNCHER_QUERY') ?? 'set');
     await sleep(2500);
-    const rowIcons = launcher._rows.map(r => findActors(r, a => a instanceof St.Icon)[0]).filter(Boolean);
+    const rowIcons = launcher._items.map(({actor: r}) => findActors(r, a => a instanceof St.Icon && !a.get_parent()?.has_style_class_name?.('lg-launcher-pin'))[0]).filter(Boolean);
     log(`icon style launcher: ${rowIcons.filter(i => i.get_effect(EFFECT)).length}/${rowIcons.length} styled: ` +
       launcher._results.map((r, i) => `${r.meta.id}${rowIcons[i]?.get_effect(EFFECT) ? '*' : ''}`).join(' '));
     await shot('icon-style-launcher', [m.x, m.y, m.width, m.height]);
@@ -1903,9 +2004,169 @@ export default class LgDriver extends Extension {
     settings.reset('output-logs');
   }
 
+  // Clear icons' glass: read from one backdrop per dock, app grid, folder and launcher, copied again whenever what is
+  // behind changes and not while nothing does.
+  async _iconGlass(settings, m) {
+    const EFFECT = 'liquid-glass-icon-style';
+    const BACKDROP = 'liquid-glass-icon-backdrop';
+    const dock = findActor(Main.layoutManager.uiGroup, 'dashtodockDashContainer');
+    if (!dock) {
+      log('icon glass: no dock (LG_DTD_DIR?)');
+      return;
+    }
+    const styledIn = root => findActors(root, a => a instanceof St.Icon && a.mapped && a.get_effect(EFFECT));
+    // The actor the backdrop of `root`'s icons is on: `root`, or above an ancestor's cached offscreen.
+    const hostOf = root => {
+      for (let a = root; a; a = a.get_parent()) {
+        if (a.get_effect(BACKDROP)) return a;
+      }
+      return root;
+    };
+    // How many of `root`'s styled icons read a backdrop that holds them now.
+    const ready = (root, host) => {
+      host = hostOf(host);
+      const backdrop = host.get_effect(BACKDROP);
+      const r = backdrop?.current()?.rect;
+      const icons = styledIn(root);
+      const inside = icons.filter(i => {
+        const e = i.get_transformed_extents();
+        return r && e.get_x() >= r[0] - 1 && e.get_y() >= r[1] - 1 && e.get_x() + e.get_width() <= r[2] + 1 &&
+          e.get_y() + e.get_height() <= r[3] + 1 && i.get_effect(EFFECT)._backdrop === backdrop;
+      });
+      const c = backdrop?._copier;
+      return `${inside.length}/${icons.length} rect=${r ? r.map(v => Math.round(v)).join(',') : '-'} ` +
+        `copies=${c?.copyCount} reuses=${c?.reuseCount} misses=${c?.missCount} offStage=${c?.offStageCount} loaded=${backdrop?._loaded} ` +
+        `extents=${JSON.stringify(backdrop?._rect()?.map(v => Math.round(v)))}`;
+    };
+    const copies = host => hostOf(host).get_effect(BACKDROP)?._copier.copyCount ?? -1;
+    settings.set_string('icon-style-mode', 'clear');
+    settings.set_boolean('icon-style-dock', true);
+    for (let i = 0; i < 60 && !(styledIn(dock).length && hostOf(dock).get_effect(BACKDROP)?.current()); i++) await sleep(500);
+    await sleep(1000);
+    log(`icon glass dock: ready=${ready(dock, dock)} holders=${findActors(Main.layoutManager.uiGroup,
+      a => a.get_name() === 'liquid-glass-relay-holder').length}`);
+    const [dx, dy] = dock.get_transformed_position();
+    const [dw, dh] = dock.get_transformed_size();
+    const dockRect = [Math.max(m.x, Math.floor(dx) - 20), Math.max(m.y, Math.floor(dy) - 20), Math.ceil(dw) + 40, Math.ceil(dh) + 40];
+    await shot('icon-glass-dock', dockRect);
+
+    const dockGlass = () => lg()?.glassObjects().find(g => g._owner === 'dock')?.stats.copies ?? -1;
+    const glassBefore = dockGlass();
+    let before = copies(dock);
+    const idleFrames = [0];
+    const idleId = global.stage.connect('after-paint', () => idleFrames[0]++);
+    await sleep(2000);
+    global.stage.disconnect(idleId);
+    log(`icon glass idle: copies in 2 s=${copies(dock) - before} frames=${idleFrames[0]} dock glass copies=${dockGlass() - glassBefore}`);
+
+    // Something behind the dock that keeps changing, as a video would.
+    const behind = new St.Widget({ x: dx - 40, y: dy - 40, width: dw + 80, height: dh + 80, style: 'background-color: rgb(255,0,0);' });
+    global.window_group.add_child(behind);
+    before = copies(dock);
+    const frames = [0, 0];
+    const frameId = global.stage.connect('after-paint', () => frames[0]++);
+    for (let i = 0; i < 20; i++) {
+      const t = i / 19;
+      behind.set_style(`background-color: rgb(${Math.round(255 * (1 - t))},40,${Math.round(255 * t)});`);
+      await sleep(50);
+    }
+    global.stage.disconnect(frameId);
+    log(`icon glass changing backdrop: copies=${copies(dock) - before} frames=${frames[0]}`);
+    await shot('icon-glass-dock-blue', dockRect);
+    behind.destroy();
+    await sleep(500);
+
+    settings.set_boolean('icon-style-app-grid', true);
+    Main.overview.showApps();
+    const grid = Main.overview._overview.controls._appDisplay;
+    for (let i = 0; i < 90 && !(styledIn(grid).length && grid.get_effect(BACKDROP)?.current()); i++) await sleep(1000);
+    await sleep(2000);
+    log(`icon glass app grid: ready=${ready(grid, grid)}`);
+    await shot('icon-glass-app-grid', [m.x, m.y, m.width, m.height]);
+    before = copies(grid);
+    await sleep(2000);
+    log(`icon glass app grid idle: copies in 2 s=${copies(grid) - before}`);
+    // Paint time (ms a frame) while the grid pages back and forth, against the tinted look.
+    const paging = async () => {
+      let start = 0, total = 0, frames = 0;
+      const ids = [global.stage.connect('before-paint', () => { start = GLib.get_monotonic_time(); }),
+        global.stage.connect('after-paint', () => { total += GLib.get_monotonic_time() - start; frames++; })];
+      const c0 = copies(grid);
+      globalThis._lgT = {};
+      for (const page of [1, 0, 1, 0]) {
+        grid.goToPage(page);
+        await sleep(700);
+      }
+      ids.forEach(id => global.stage.disconnect(id));
+      const t = Object.entries(globalThis._lgT ?? {}).map(([k, v]) => `${k}=${(v / Math.max(frames, 1) / 1000).toFixed(2)}`).join(' ');
+      return `frames=${frames} paint=${(total / Math.max(frames, 1) / 1000).toFixed(2)} ms copies=${copies(grid) - c0} js/frame: ${t}`;
+    };
+    log(`icon glass app grid paging clear: ${await paging()}`);
+    if (GLib.getenv('LG_DRV_NOGLASS')) {
+      globalThis._lgNoGlass = true;
+      log(`icon glass app grid paging clear, fallback shader: ${await paging()}`);
+      globalThis._lgNoGlass = false;
+    }
+    settings.set_string('icon-style-mode', 'tinted');
+    await sleep(1500);
+    log(`icon glass app grid paging tinted: ${await paging()}`);
+    settings.set_string('icon-style-mode', 'clear');
+    await sleep(1500);
+    const folder = findActors(grid, a => a.view instanceof Clutter.Actor && typeof a.open === 'function')[0];
+    if (folder) {
+      folder.open();
+      for (let i = 0; i < 60 && !folder.view.get_effect(BACKDROP)?.current(); i++) await sleep(500);
+      await sleep(1500);
+      log(`icon glass folder: ready=${ready(folder.view, folder.view)}`);
+      await shot('icon-glass-folder', [m.x, m.y, m.width, m.height]);
+      folder._dialog.popdown();
+      await sleep(800);
+    }
+    Main.overview.hide();
+    await sleep(1500);
+    log(`icon glass overview hidden: grid backdrop=${!!grid.get_effect(BACKDROP)} holders shown=${findActors(Main.layoutManager.uiGroup,
+      a => a.get_name() === 'liquid-glass-relay-holder' && a.visible).length}`);
+
+    settings.set_boolean('enable-launcher', true);
+    settings.set_boolean('icon-style-launcher', true);
+    await sleep(500);
+    const {Launcher} = await this._lgModule('launcher/launcher.js');
+    const launcher = Launcher.instance;
+    launcher.open();
+    launcher.setText(GLib.getenv('LG_DRV_LAUNCHER_QUERY') ?? 'set');
+    for (let i = 0; i < 20 && !launcher._panel?.get_effect(BACKDROP)?.current(); i++) await sleep(250);
+    await sleep(1500);
+    log(`icon glass launcher: ready=${launcher._panel ? ready(launcher._panel, launcher._panel) : '-'}`);
+    await shot('icon-glass-launcher', [m.x, m.y, m.width, m.height]);
+    launcher.close();
+    await sleep(800);
+
+    settings.set_string('icon-style-mode', 'tinted');
+    await sleep(1000);
+    log(`icon glass tinted: dock backdrop=${hostOf(dock) !== dock} holders=${findActors(Main.layoutManager.uiGroup,
+      a => a.get_name() === 'liquid-glass-relay-holder').length}`);
+    settings.set_string('icon-style-mode', 'clear');
+    await sleep(1500);
+    log(`icon glass clear again: ready=${ready(dock, dock)}`);
+  }
+
   async _featuresScenario() {
     const parts = (GLib.getenv('LG_DRV_FEATURES') ?? 'morph,topbar,widgets,clock,launcher').split(',');
     const settings = this._lgSettings();
+    // A `dconf dump` of the extension's settings to start from, and an icon theme.
+    const dump = GLib.getenv('LG_DRV_SETTINGS_DUMP');
+    if (dump) {
+      const text = new TextDecoder().decode(GLib.file_get_contents(dump)[1]);
+      for (const line of text.split('\n')) {
+        const at = line.indexOf('=');
+        const key = line.slice(0, at);
+        if (at < 0 || !settings.settings_schema.has_key(key)) continue;
+        const type = new GLib.VariantType(settings.get_value(key).get_type_string());
+        settings.set_value(key, GLib.Variant.parse(type, line.slice(at + 1), null, null));
+      }
+    }
+    const iconTheme = GLib.getenv('LG_DRV_ICON_THEME');
+    if (iconTheme) new Gio.Settings({schema_id: 'org.gnome.desktop.interface'}).set_string('icon-theme', iconTheme);
     const wallpaper = GLib.getenv('LG_DRV_WALLPAPER');
     if (wallpaper) {
       const bg = new Gio.Settings({schema_id: 'org.gnome.desktop.background'});
@@ -2210,6 +2471,31 @@ export default class LgDriver extends Extension {
           `first button ${boxes[0].get_first_child()?.get_allocation_box().y1}..${boxes[0].get_first_child()?.get_allocation_box().y2}, ` +
           `workarea y ${Main.layoutManager.getWorkAreaForMonitor(Main.layoutManager.primaryIndex).y}`);
         await shot(`topbar-${style}-spacing`, [m.x, m.y, m.width, 80]);
+        // A press in the margin above a button opens its menu at once, as a press on it does.
+        // The hot corner's barriers hold a pointer that starts in the corner.
+        new Gio.Settings({schema_id: 'org.gnome.desktop.interface'}).set_boolean('enable-hot-corners', false);
+        const backend = SHELL_MAJOR >= 48 ? global.stage.context.get_backend() : Clutter.get_default_backend();
+        const pointer = backend.get_default_seat().create_virtual_device(Clutter.InputDeviceType.POINTER_DEVICE);
+        const t = () => GLib.get_monotonic_time();
+        const dateButton = Main.panel.statusArea.dateMenu;
+        const [bx, by] = dateButton.get_transformed_position();
+        const [bw, bh] = dateButton.get_transformed_size();
+        const presses = [];
+        for (const [label, y] of [['edge', m.y + 2], ['button', by + bh / 2]]) {
+          pointer.notify_absolute_motion(t(), bx + bw / 2, y);
+          await sleep(200);
+          pointer.notify_button(t(), Clutter.BUTTON_PRIMARY, Clutter.ButtonState.PRESSED);
+          await sleep(80);
+          const onPress = dateMenu.isOpen;
+          pointer.notify_button(t(), Clutter.BUTTON_PRIMARY, Clutter.ButtonState.RELEASED);
+          await sleep(300);
+          presses.push(`${label} press=${onPress} release=${dateMenu.isOpen}`);
+          dateMenu.close(false);
+          await sleep(300);
+        }
+        log(`topbar ${style} press: ${presses.join(', ')}`);
+        pointer.notify_absolute_motion(t(), m.x + m.width / 2, m.y + 400);
+        await sleep(200);
         for (const side of sides) {
           settings.reset(`top-bar-margin-${side}`);
           settings.reset(`top-bar-padding-${side}`);
@@ -2243,6 +2529,94 @@ export default class LgDriver extends Extension {
     }
     if (parts.includes('guides'))
       await this._editGuides(settings, m);
+    if (parts.includes('widgetcolors')) {
+      // The text colours of the weather card after its content was rebuilt
+      // again and again: every label should have the same colour.
+      settings.set_boolean('output-logs', true);
+      settings.set_value('weather-place', new GLib.Variant('(sdd)', ['Hua Hin', 12.57, 99.96]));
+      settings.set_boolean('enable-desktop-widgets', true);
+      await sleep(7000);
+      const weather = findActor(global.window_group, 'liquid-glass-desktop-weather');
+      const colours = () => [...new Set(findActors(weather, a => a instanceof St.Label || a instanceof St.Icon)
+        .map(a => a.get_theme_node().get_foreground_color().to_string()))].join(' ');
+      log(`widgetcolors: first ${colours()}`);
+      for (let i = 0; i < Number(GLib.getenv('LG_DRV_ROUNDS') ?? 10); i++) {
+        settings.set_string('weather-temperature-unit', i % 2 ? 'celsius' : 'fahrenheit');
+        await sleep(2500 + (i * 137) % 700);
+        log(`widgetcolors: round ${i} ${colours()}`);
+      }
+      await shot('widgetcolors', [m.x, m.y, m.width, m.height]);
+    }
+    if (parts.includes('scale')) {
+      // The calendar and Quick Settings on a small logical screen (a laptop at
+      // 200 %, with run-glass.sh's LG_MONITORS_XML): do they fit, and how do
+      // the slider rows and the cards look. The headless shell has no audio or
+      // brightness device, so the three slider rows and some toggles are added.
+      settings.set_boolean('output-logs', true);
+      // LG_DRV_LIGHT=1: the light shell theme; =default: the default colour scheme, under which the shell stays dark.
+      const light = GLib.getenv('LG_DRV_LIGHT');
+      if (light) {
+        new Gio.Settings({schema_id: 'org.gnome.desktop.interface'}).set_string('color-scheme', light === '1' ? 'prefer-light' : light);
+        await sleep(2000);
+      }
+      // LG_DRV_QS_BASE: how much of each toggle's own colour the glass keeps.
+      if (GLib.getenv('LG_DRV_QS_BASE')) settings.set_double('quick-settings-toggle-tint-strength', Number(GLib.getenv('LG_DRV_QS_BASE')));
+      this._cameraAway = true;
+      const dateMenu = Main.panel.statusArea.dateMenu.menu;
+      const qs = Main.panel.statusArea.quickSettings.menu;
+      const sliders = ['audio-volume-high-symbolic', 'audio-input-microphone-symbolic', 'display-brightness-symbolic']
+        .map(iconName => new QuickSettings.QuickSlider({iconName}));
+      const toggles = ['Wired', 'Bluetooth', 'Power Mode', 'Night Light', 'Keyboard', 'Airplane Mode', 'Caffeine', 'Auto Brightness']
+        .map((title, i) => new QuickSettings.QuickToggle({title, iconName: 'network-wired-symbolic', checked: i % 2 === 0}));
+      for (const slider of sliders) qs.addItem(slider, 2);
+      for (const toggle of toggles) qs.addItem(toggle);
+      const sliderRows = () => sliders.map(a => `${Math.round(a.get_height())}`).join(' ');
+      for (let i = 0; i < 3; i++)
+        Main.notify(`Driver ${i}`, 'A notification for the calendar menu');
+      await sleep(1500);
+      dateMenu.open(false);
+      await sleep(2500);
+      await this._shots('scale-calendar', [m.x, m.y, m.width, m.height], 'menu');
+      dateMenu.close(false);
+      await sleep(800);
+      for (const mode of [0, 1]) {
+        settings.set_int('quick-settings-apply-to', mode);
+        await sleep(1500);
+        qs.open(false);
+        await sleep(2500);
+        const [bx, by] = qs.box.get_transformed_position();
+        const [bw, bh] = qs.box.get_transformed_size();
+        log(`scale: quick settings mode=${mode} box=${[bx, by, bw, bh].map(Math.round)} ` +
+          `monitor=${m.width}x${m.height} bottom overflow=${Math.round(by + bh - m.height)} slider heights=${sliderRows()}`);
+        qs.close(false);
+        await sleep(800);
+        await this._menuShot(`scale-qs-${mode}`, qs, mode === 0 ? 'quick-settings' : 'quick-settings-toggles');
+      }
+      settings.set_int('quick-settings-apply-to', 0);
+      this._cameraAway = false;
+      await sleep(1000);
+      // The launcher against the desktop widgets (LG_DRV_LAUNCHER_WIDTH sets its width).
+      if (GLib.getenv('LG_DRV_LAUNCHER_WIDTH')) settings.set_int('launcher-width', Number(GLib.getenv('LG_DRV_LAUNCHER_WIDTH')));
+      settings.set_boolean('enable-launcher', true);
+      settings.set_boolean('enable-desktop-widgets', true);
+      await sleep(5000);
+      const {Launcher} = await this._lgModule('launcher/launcher.js');
+      Launcher.instance?.open();
+      await sleep(1500);
+      const rect = a => a.get_transformed_extents();
+      const panel = findActors(global.stage, a => a.has_style_class_name?.('liquid-glass-launcher'))[0];
+      const cards = findActors(global.window_group, a => (a.get_name() ?? '').startsWith('liquid-glass-desktop-') && a.mapped);
+      const overlaps = cards.filter(c => {
+        const [p, q] = [rect(panel), rect(c)];
+        return p.origin.x < q.origin.x + q.size.width && q.origin.x < p.origin.x + p.size.width &&
+          p.origin.y < q.origin.y + q.size.height && q.origin.y < p.origin.y + p.size.height;
+      }).map(c => c.get_name());
+      log(`scale: launcher at ${[panel.x, panel.y, panel.width, panel.height].map(Math.round)} on ${m.width}x${m.height}, ` +
+        `overlapping widgets: ${overlaps.join(',') || 'none'}`);
+      await this._shots('scale-launcher', [m.x, m.y, m.width, m.height], 'launcher');
+      Launcher.instance?.close();
+      await sleep(800);
+    }
     if (parts.includes('launcher')) {
       settings.set_boolean('enable-launcher', true);
       await sleep(1000);
@@ -2256,13 +2630,18 @@ export default class LgDriver extends Extension {
       await shot('launcher-results', [m.x, m.y, m.width, m.height]);
       launcher?.close();
       await sleep(1000);
+      await this._launcherPins(settings, m, launcher);
     }
+    if (parts.includes('launcherlayout'))
+      await this._launcherLayout(settings, m);
     if (parts.includes('launcherpointer'))
       await this._launcherPointer(settings, m);
     if (parts.includes('launchercolor'))
       await this._launcherColor(settings, m);
     if (parts.includes('iconstyle'))
       await this._iconStyle(settings, m);
+    if (parts.includes('iconglass'))
+      await this._iconGlass(settings, m);
     // Everything switched on, the launcher open: disabling has to leave nothing.
     (await this._lgModule('launcher/launcher.js')).Launcher.instance?.open();
     await sleep(500);
@@ -2273,6 +2652,96 @@ export default class LgDriver extends Extension {
     Main.extensionManager.enableExtension(LG_UUID);
     await sleep(4000);
     log(`features enabled again: glasses=${lg()?.glassObjects().map(g => g._owner).join(',')}`);
+  }
+
+  // The pinned page at several widths and icon sizes (no tile may be crowded: the pin clear of the icon, the name
+  // inside the tile), and a search taller than the screen (the results scroll, and the panel stays on it), with a
+  // stand-in for GNOME Software's provider that finds one application that is installed and one that is not.
+  async _launcherLayout(settings, m) {
+    const {Launcher} = await this._lgModule('launcher/launcher.js');
+    settings.set_boolean('enable-launcher', true);
+    await sleep(1000);
+    const launcher = Launcher.instance;
+    const apps = Shell.AppSystem.get_default().get_installed().filter(a => a.should_show()).slice(0, 14);
+    settings.reset('launcher-pinned');
+    launcher.open();
+    await sleep(500);
+    for (const info of apps) {
+      launcher._pins.toggle({provider: 'applications', id: info.get_id(), name: info.get_name(), description: '',
+        icon: info.get_icon()?.to_string() ?? ''});
+    }
+    launcher.close();
+    await sleep(500);
+    const within = (a, b) => a.origin.x >= b.origin.x - 0.5 && a.origin.y >= b.origin.y - 0.5 &&
+      a.origin.x + a.size.width <= b.origin.x + b.size.width + 0.5 && a.origin.y + a.size.height <= b.origin.y + b.size.height + 0.5;
+    const apart = (a, b) => a.origin.x + a.size.width <= b.origin.x + 0.5 || b.origin.x + b.size.width <= a.origin.x + 0.5 ||
+      a.origin.y + a.size.height <= b.origin.y + 0.5 || b.origin.y + b.size.height <= a.origin.y + 0.5;
+    for (const width of [320, 680]) {
+      for (const size of [32, 56, 96]) {
+        settings.set_int('launcher-width', width);
+        settings.set_int('launcher-pinned-icon-size', size);
+        launcher.open();
+        await sleep(800);
+        launcher.showView('pinned');
+        await sleep(1500);
+        const tiles = findActors(launcher._panel, a => a.has_style_class_name?.('lg-launcher-tile'));
+        let crowded = 0, rows = new Set(), outside = 0;
+        for (const tile of tiles) {
+          const t = tile.get_transformed_extents();
+          rows.add(Math.round(t.origin.y));
+          const pin = findActors(tile, a => a.has_style_class_name?.('lg-launcher-pin'))[0];
+          const icon = findActors(tile, a => a instanceof St.Icon && !pin.contains(a))[0];
+          const name = findActors(tile, a => a.has_style_class_name?.('lg-launcher-tile-name'))[0];
+          if (!apart(pin.get_transformed_extents(), icon.get_transformed_extents())) crowded++;
+          if (!within(name.get_transformed_extents(), t) || !within(icon.get_transformed_extents(), t)) outside++;
+        }
+        const [pw] = launcher._panel.get_transformed_size();
+        log(`launcher layout: width=${width} icon=${size} panel=${Math.round(pw)} columns=${launcher._columns} tiles=${tiles.length} ` +
+          `tile=${Math.round(tiles[0].width)}x${Math.round(tiles[0].height)} rows=${rows.size} pin over icon=${crowded} content outside tile=${outside}`);
+        await shot(`launcher-layout-${width}-${size}`, [m.x, m.y, m.width, m.height]);
+        launcher.close();
+        await sleep(500);
+      }
+    }
+    settings.reset('launcher-pinned-icon-size');
+    const stand = {
+      id: 'org.gnome.Software.desktop', isRemoteProvider: true, appInfo: {get_name: () => 'Software', get_icon: () => null},
+      getInitialResultSet: async () => ['system/flatpak/flathub/com.example.NotThere/stable', 'system/flatpak/flathub/org.gnome.Settings/stable'],
+      filterResults: ids => ids,
+      getResultMetas: async ids => ids.map(id => ({id, name: id.split('/')[3], description: 'The browser built to be yours',
+        createIcon: size => new St.Icon({icon_name: 'application-x-executable-symbolic', icon_size: size})})),
+      activateResult() {},
+    };
+    const providers = Main.overview.searchController._searchResults._providers;
+    providers.push(stand);
+    for (const width of [680]) {
+      settings.set_int('launcher-width', width);
+      launcher.open();
+      await sleep(800);
+      for (const query of ['a', 'set', 'zzq']) {
+        launcher.setText(query);
+        await sleep(2500);
+        const box = launcher._resultsBox;
+        const [px, py] = launcher._panel.get_transformed_position();
+        const [pw, ph] = launcher._panel.get_transformed_size();
+        const badges = findActors(launcher._panel, a => a.has_style_class_name?.('lg-launcher-badge')).length;
+        log(`launcher search "${query}": results=${launcher._items.length} panel=${[px, py, pw, ph].map(Math.round)} ` +
+          `bottom gap=${Math.round(m.height - py - ph)} scrolls=${box.get_vadjustment().upper > box.get_vadjustment().page_size + 0.5} badges=${badges}`);
+        await shot(`launcher-search-${query}`, [m.x, m.y, m.width, m.height]);
+      }
+      launcher.setText('a');
+      await sleep(2000);
+      const last = launcher._items.length - 1;
+      for (let i = 0; i < last; i++) launcher._select(i + 1);
+      await sleep(500);
+      log(`launcher search last row selected: scrolled to ${Math.round(launcher._resultsBox.get_vadjustment().value)}`);
+      await shot('launcher-search-last', [m.x, m.y, m.width, m.height]);
+      launcher.close();
+      await sleep(500);
+    }
+    providers.splice(providers.indexOf(stand), 1);
+    settings.reset('launcher-width');
+    settings.reset('launcher-pinned');
   }
 
   _finish() {

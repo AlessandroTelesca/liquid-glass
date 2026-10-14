@@ -51,6 +51,14 @@ export const TOP_BAR = [
   {title: 'Three pills', patch: {'top-bar-style': 'islands'}},
 ];
 
+export const QUICK_SETTINGS_GLASS = [
+  {title: 'Whole menu', patch: {'quick-settings-apply-to': 0}},
+  {title: 'Individual buttons', patch: {'quick-settings-apply-to': 1}},
+];
+
+export const QUICK_SETTINGS_GLASS_HINT = 'Whole menu: one pane of glass behind the entire menu. ' +
+  'Individual buttons: only the toggle buttons become glass, on the theme\'s own menu background';
+
 export const booleanChoices = keys => [
   {title: 'Off', patch: uniformPatch(keys, false)},
   {title: 'On', patch: uniformPatch(keys, true)},

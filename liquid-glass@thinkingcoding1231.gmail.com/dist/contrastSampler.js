@@ -185,7 +185,8 @@ function _captureViaStage(rect) {
     const y = Math.floor(rect.y);
     const width = Math.max(1, Math.floor(rect.width));
     const height = Math.max(1, Math.floor(rect.height));
-    const scale = Math.min(1, SAMPLE_MAX_EDGE / Math.max(width, height));
+    // The short side is kept at a pixel at least, or a long thin rect would be painted at no height.
+    const scale = Math.min(1, Math.max(SAMPLE_MAX_EDGE / Math.max(width, height), 1 / Math.min(width, height)));
     let content;
     // Painting into an offscreen throws a GError when it cannot be allocated.
     try {
@@ -401,9 +402,13 @@ export class StageContrastSampler {
     _unchangedKey = '';
     // Advanced by chooseColorFor(), so that a merged decision measured meanwhile is dropped.
     _epoch = 0;
+    // Advanced by invalidate(), so that a measurement still running does not freeze what it measured
+    // before the content changed.
+    _generation = 0;
 
     // The next call always samples.
     invalidate() {
+        this._generation++;
         this._unchangedSignature = null;
         this._unchangedKey = '';
     }
@@ -613,6 +618,7 @@ export class StageContrastSampler {
         const sampledRects = config.samplePerElement ? rects : mergedRects;
         const key = _skipKey(config.samplePerElement ? rects : [...sampledRects, ...rects], config);
         const before = _readSignature(paintSignature);
+        const generation = this._generation;
         if (before !== null && before === this._unchangedSignature && key === this._unchangedKey)
             return new Map();
         // Only a converged decision may be frozen: the merged path smooths over
@@ -621,7 +627,8 @@ export class StageContrastSampler {
         // screen changed meanwhile.
         const settle = (stable) => {
             const after = _readSignature(paintSignature);
-            if (stable && before !== null && after !== null && after - before <= sampledRects.length) {
+            if (stable && generation === this._generation && before !== null && after !== null &&
+                after - before <= sampledRects.length) {
                 this._unchangedSignature = after;
                 this._unchangedKey = key;
             }

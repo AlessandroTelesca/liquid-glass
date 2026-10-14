@@ -66,6 +66,16 @@ export class AdaptiveTextColor {
         this._sampler.invalidate();
     }
 
+    // True while any of this surface's text actors are being recoloured. Layouts
+    // that derive geometry from those actors can hold their last stable bounds.
+    isAnimating() {
+        for (const actor of this._styled.keys()) {
+            if (adaptiveColorTweener.isAnimating(actor))
+                return true;
+        }
+        return false;
+    }
+
     update() {
         if (this._inFlight || this._pending > 0 || this._options.held?.())
             return;
@@ -124,7 +134,9 @@ export class AdaptiveTextColor {
             });
             this._styled.set(actor, entry);
         }
-        if (entry.color === color && !skip)
+        // A style that went back to the actor's own was reset by someone else; the colour is put on again.
+        const reset = entry.color !== '' && (actor.get_style() ?? '') === entry.style && !adaptiveColorTweener.isAnimating(actor);
+        if (entry.color === color && !skip && !reset)
             return;
         entry.color = color;
         const own = entry.style.trim();

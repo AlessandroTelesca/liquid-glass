@@ -37,6 +37,8 @@ export interface PlateShape {
   ripple: Ripple | null;
   // How well the shape covers the plate (intersection over union).
   fit: number;
+  // A rounded rectangle's corners as superellipses of this exponent; circular arcs (2) when not given.
+  corner?: number;
 }
 
 export interface Plate {
@@ -147,6 +149,9 @@ const GROUND_NEAR = 0.1;
 const GROUND_BREADTH = 3;
 // An area with EDGE_INSIDE of its pixels within EDGE_BAND of its plate's half size from its outline is the icon's own
 // rim, which the glass's rim takes the place of.
+// A pixel outside every plate that is this transparent and this dark is a drop shadow, not symbol.
+const SHADOW_ALPHA = 0.6;
+const SHADOW_LIGHTNESS = 0.3;
 const EDGE_BAND = 0.09;
 const EDGE_INSIDE = 0.8;
 // So is a line running along the outline at an even depth within twice that, as long as the plate is wide.
@@ -201,8 +206,8 @@ export function oklabToSrgb(L: number, a: number, b: number): [number, number, n
   const m = (L - 0.1055613458 * a - 0.0638541728 * b) ** 3;
   const s = (L - 0.0894841775 * a - 1.291485548 * b) ** 3;
   const lin = [4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s,
-    -1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s,
-    -0.0041960863 * l - 0.7034186147 * m + 1.707614701 * s];
+  -1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s,
+  -0.0041960863 * l - 0.7034186147 * m + 1.707614701 * s];
   return lin.map(c => {
     const v = c <= 0.0031308 ? 12.92 * c : 1.055 * Math.max(c, 0) ** (1 / 2.4) - 0.055;
     return Math.round(Math.min(Math.max(v, 0), 1) * 255);
@@ -221,7 +226,7 @@ export function shapeDistance(shape: PlateShape, x: number, y: number): number {
   if (shape.kind === 'roundrect') {
     const r = Math.min(shape.radius, shape.rx, shape.ry);
     const qx = Math.abs(dx) - shape.rx + r, qy = Math.abs(dy) - shape.ry + r;
-    d = Math.min(Math.max(qx, qy), 0) + Math.hypot(Math.max(qx, 0), Math.max(qy, 0)) - r;
+    d = Math.min(Math.max(qx, qy), 0) + cornerLength(Math.max(qx, 0), Math.max(qy, 0), r, shape.corner ?? 2) - r;
   } else {
     const n = shape.exponent;
     const f = (Math.abs(dx / shape.rx) ** n + Math.abs(dy / shape.ry) ** n) ** (1 / n);
@@ -233,6 +238,18 @@ export function shapeDistance(shape: PlateShape, x: number, y: number): number {
   if (len < 1e-6) return d;
   const base = len - d;
   return len - base * rippleFactor(shape.ripple, Math.atan2(dy, dx));
+}
+
+// The distance into a corner of radius r at (px, py) from its centre, for a superellipse corner of exponent n: its
+// norm over the length of its gradient, which fades in from the centre, where the gradient has no direction.
+function cornerLength(px: number, py: number, r: number, n: number): number {
+  if (n === 2) return Math.hypot(px, py);
+  const m = Math.max(px, py);
+  if (m <= 0) return 0;
+  const len = m * ((px / m) ** n + (py / m) ** n) ** (1 / n);
+  const grad = Math.hypot((px / len) ** (n - 1), (py / len) ** (n - 1));
+  const gradLen = 1 + (grad - 1) * Math.min(len / Math.max(r, 1e-3), 1);
+  return r + (len - r) / Math.max(gradLen, 0.5);
 }
 
 function rippleFactor(ripple: Ripple, angle: number): number {
@@ -328,7 +345,7 @@ function fitBasic(mask: Mask, w: number, h: number, refine = false, exponents = 
 function refined(shape: PlateShape, mask: Mask, w: number, h: number): PlateShape {
   let best = shape;
   const moves = [[1, 0, 0, 0], [-1, 0, 0, 0], [0, 1, 0, 0], [0, -1, 0, 0], [0, 0, 1, 0], [0, 0, -1, 0], [0, 0, 0, 1],
-    [0, 0, 0, -1]];
+  [0, 0, 0, -1]];
   for (let round = 0; round < REFINE_ROUNDS; round++) {
     let next = best;
     for (const [dx, dy, drx, dry] of moves) {
@@ -588,8 +605,7 @@ function solve(a: Float64Array, b: Float64Array, n: number): Float64Array | null
 
 // A least-squares quadratic colour over the pixels, refitted twice without the
 // ones far from it (a symbol over the rim, the plate's own highlights).
-function fitColor(shape: PlateShape, pixels: number[], lab: Float32Array, w: number):
-  { color: number[][], rms: number, kept: number, noise: number } {
+function fitColor(shape: PlateShape, pixels: number[], lab: Float32Array, w: number): { color: number[][], rms: number, kept: number, noise: number } {
   // Start from the pixels near the median colour, so that a symbol that runs
   // into the plate through soft edges does not pull the first fit.
   const median = [0, 1, 2].map(ch => {
@@ -670,7 +686,6 @@ function dilated(mask: Uint8Array, w: number, h: number, steps: number): Uint8Ar
 function sameShape(a: PlateShape, b: PlateShape): boolean {
   return [a.cx - b.cx, a.cy - b.cy, a.rx - b.rx, a.ry - b.ry].every(d => Math.abs(d) <= 1.5);
 }
-
 // How much of the mask's edge lies on the shape's outline.
 function alongOutline(mask: Mask, shape: PlateShape, w: number, h: number): number {
   let edge = 0, on = 0;
@@ -845,8 +860,10 @@ export function analyzeIcon(icon: IconPixels): IconAnalysis {
       // Grain breaks a plate into specks; then the fit starts from all of it.
       const share = own.length ? most / own.length : 0;
       const fit = fitColor(c.shape, share >= MIN_SURFACE ? own.filter(i => labels[i] === main) : own, lab, w);
-      const plate: Plate = { shape: c.shape, color: fit.color, plain: false, parent: parents[k], surface: 0, error: fit.rms,
-        share, noise: fit.noise, pieces: piecesOf(own, counts, most, labels, lab) };
+      const plate: Plate = {
+        shape: c.shape, color: fit.color, plain: false, parent: parents[k], surface: 0, error: fit.rms,
+        share, noise: fit.noise, pieces: piecesOf(own, counts, most, labels, lab)
+      };
       let surface = 0;
       const at = [0, 0, 0];
       const near = Math.max(SYMBOL_LOW, fit.noise * 3);
@@ -954,8 +971,7 @@ interface Region {
  * soft shadow) are measured pixel by pixel: a pixel's distance from the surface grows with how much of it the symbol
  * covers, up to the symbol's full colour, taken from the strongest pixel next to it that differs the same way.
  */
-export function symbolLayer(plates: Plate[], analysisWidth: number, pixels: IconPixels):
-  { symbol: Float32Array, intensity: Float32Array, surface: Float32Array } {
+export function symbolLayer(plates: Plate[], analysisWidth: number, pixels: IconPixels): { symbol: Float32Array, intensity: Float32Array, surface: Float32Array } {
   const { width: w, height: h, data } = pixels;
   const n = w * h;
   // Analysis px per pixel.
@@ -1279,7 +1295,8 @@ export function symbolLayer(plates: Plate[], analysisWidth: number, pixels: Icon
   for (let i = 0; i < n; i++) {
     const d = raw[i];
     if (d === Infinity) {
-      cover[i] = 1;
+      // The drop shadow an icon casts outside its base would draw as a light halo round the glass.
+      cover[i] = owner[i] < 0 && alpha[i] < SHADOW_ALPHA && lab[i * 3] < SHADOW_LIGHTNESS ? 0 : 1;
       continue;
     }
     const r = region[i] >= 0 ? list[region[i]] : null;
@@ -1518,8 +1535,10 @@ function regionsOf(lab: Float32Array, opaque: Uint8Array, owner: Int32Array, dep
     if (j === undefined) {
       j = list.length;
       keys.set(key, j);
-      list.push({ owner: owner[i], count: 0, interior: 0, color: [0, 0, 0], band: 0, ground: false, strength: 0, contrast: 0,
-        decided: false, fades: false, edge: false });
+      list.push({
+        owner: owner[i], count: 0, interior: 0, color: [0, 0, 0], band: 0, ground: false, strength: 0, contrast: 0,
+        decided: false, fades: false, edge: false
+      });
     }
     region[i] = j;
   }
@@ -1626,8 +1645,10 @@ function symbolTone(parts: Region[], edges: [number[], number[], number][]): ((c
   const pairs = [...meet].map(([key, length]) => {
     const p = Math.floor(key / TONE_GROUPS), q = key % TONE_GROUPS;
     const apart = distance(kept[p].color, kept[q].color);
-    return { p, q, weight: Math.sqrt(length), want: TONE_SEEN * Math.min(apart / TONE_FULL, 1),
-      lighter: Math.sign(kept[p].color[0] - kept[q].color[0]) };
+    return {
+      p, q, weight: Math.sqrt(length), want: TONE_SEEN * Math.min(apart / TONE_FULL, 1),
+      lighter: Math.sign(kept[p].color[0] - kept[q].color[0])
+    };
   });
   if (!pairs.length) return null;
   const levels = Array.from({ length: TONE_LEVELS }, (_, k) => 1 - DETAIL_DIM * k / (TONE_LEVELS - 1));
