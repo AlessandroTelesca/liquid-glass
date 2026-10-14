@@ -233,10 +233,15 @@ export class TopBarManager {
   private _onWrapperPress(container: St.Widget, target: St.Widget, event: Clutter.Event): boolean {
     const touch = event.type() === Clutter.EventType.TOUCH_BEGIN;
     if (target.get_name() !== 'panelActivities') {
-      const handled = target.emit(touch ? 'touch-event' : 'button-press-event', event.copy()) as unknown as boolean;
       const menu = this._targetMenu(target);
+      const wasOpen = menu?.isOpen;
+      const handled = target.emit(touch ? 'touch-event' : 'button-press-event', event.copy()) as unknown as boolean;
       if (menu) {
-        if (handled !== Clutter.EVENT_STOP) menu.toggle();
+        // AppIndicator buttons toggle their menu in the press handler, at once or after the
+        // double-click wait, and still propagate; a second toggle here closes it mid-animation.
+        const selfToggled = menu.isOpen !== wasOpen
+          || Boolean((target as St.Widget & { _waitDoubleClickPromise?: unknown })._waitDoubleClickPromise);
+        if (handled !== Clutter.EVENT_STOP && !selfToggled) menu.toggle();
         return Clutter.EVENT_STOP;
       }
     }
