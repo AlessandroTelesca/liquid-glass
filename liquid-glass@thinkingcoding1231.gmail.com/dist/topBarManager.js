@@ -239,10 +239,15 @@ export class TopBarManager {
     _onWrapperPress(container, target, event) {
         const touch = event.type() === Clutter.EventType.TOUCH_BEGIN;
         if (target.get_name() !== 'panelActivities') {
-            const handled = target.emit(touch ? 'touch-event' : 'button-press-event', event.copy());
             const menu = this._targetMenu(target);
+            const wasOpen = menu?.isOpen;
+            const handled = target.emit(touch ? 'touch-event' : 'button-press-event', event.copy());
             if (menu) {
-                if (handled !== Clutter.EVENT_STOP)
+                // AppIndicator buttons toggle their menu in the press handler, at once or after the
+                // double-click wait, and still propagate; a second toggle here closes it mid-animation.
+                const selfToggled = menu.isOpen !== wasOpen
+                    || Boolean(target._waitDoubleClickPromise);
+                if (handled !== Clutter.EVENT_STOP && !selfToggled)
                     menu.toggle();
                 return Clutter.EVENT_STOP;
             }
