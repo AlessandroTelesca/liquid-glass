@@ -115,7 +115,7 @@ export class GlassGeometry {
   }
 
   private _samplingReachPx(resW: number, resH: number): number {
-    // The colour separation moves blue further along the refraction, by up
+    // The color separation moves blue further along the refraction, by up
     // to this fraction of it.
     const chroma = Math.min(Math.max(this._uniforms.get('chroma_strength') ?? 0, 0), 1);
     const minRes = Math.max(Math.min(resW, resH), 1);

@@ -70,7 +70,7 @@ export function balanceDockBounds(bounds: DockBounds, reference: DockBounds, edg
       baseH -= diff;
     }
   } else {
-    // Vertical dock. Only the gap facing the screen centre is trimmed: for a
+    // Vertical dock. Only the gap facing the screen center is trimmed: for a
     // left dock that is the right gap, and the start is never moved right.
     const diff = Math.abs(rightGap - leftGap);
     if (diff > 0 && diff < baseW / 2 &&

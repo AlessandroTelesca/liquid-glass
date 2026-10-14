@@ -23,7 +23,7 @@ export const UnpickableActor = GObject.registerClass(
 
 /**
  * An St.Widget for the cases that need St styling. Giving it another widget's
- * style class makes St paint that widget's theme background (colour, border,
+ * style class makes St paint that widget's theme background (color, border,
  * radius) without cloning the widget and its children. Only selectors that
  * match the class itself apply, not descendant selectors.
  */

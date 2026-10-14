@@ -2,6 +2,10 @@
 // cut to its rounded outline and, when they are deep in it, refracted by its
 // rim the way the glass refracts what is behind it. At no depth it only cuts
 // round corners (the media card's cover art).
+//
+// Note: this implementation is inspired by and adapted from:
+// https://github.com/AndrewPrifer/liquid-dom
+// Big thanks to the original author (@AndrewPrifer) for the elegant solution.
 import Clutter from 'gi://Clutter';
 import Cogl from 'gi://Cogl';
 import GObject from 'gi://GObject';
@@ -36,16 +40,15 @@ vec2 slope = vec2(lensHeight(p + vec2(0.5, 0.0)) - lensHeight(p - vec2(0.5, 0.0)
                   lensHeight(p + vec2(0.0, 0.5)) - lensHeight(p - vec2(0.0, 0.5)));
 vec3 ray = refract(vec3(0.0, 0.0, -1.0), normalize(vec3(-slope, 1.0)), 1.0 / max(lens_ior, 1.001));
 vec2 shift = ray.xy / max(-ray.z, 0.15) * lens_depth;
-vec4 colour = texture2D(cogl_sampler0, clamp(uv + shift / lens_px, lens_box.xy, lens_box.zw));
+vec4 color = texture2D(cogl_sampler0, clamp(uv + shift / lens_px, lens_box.xy, lens_box.zw));
 float inside = 1.0 - smoothstep(-0.5, 0.5, lensBox(p));
-cogl_color_out = colour * (lens_opacity * inside);
+cogl_color_out = color * (lens_opacity * inside);
 `;
 // liquid-dom's showcase menu: content 80 px deep in glass of index 1.5 under a
 // 70 px rim.
 const DEPTH = 80;
 const IOR = 1.5;
 const BAND = 70;
-
 /**
  * Where `rect` [x, y, w, h] (the actor's own px) is in an offscreen effect's
  * texture, as texture coordinates [x0, y0, x1, y1], and the size of what the
@@ -63,7 +66,6 @@ export function rectInOffscreen(actor, rect) {
     const [cx, cy, cw, ch] = rect;
     return { box: [(cx - x0) / w, (cy - y0) / h, (cx + cw - x0) / w, (cy + ch - y0) / h], width: w, height: h };
 }
-
 /** Put on the actor that holds the items, clipped to the glass's box. */
 export const ContentLens = GObject.registerClass(class ContentLens extends Clutter.OffscreenEffect {
     _init() {
@@ -73,7 +75,6 @@ export const ContentLens = GObject.registerClass(class ContentLens extends Clutt
         this._clip = [0, 0, 1, 1];
         this._scale = 1;
     }
-
     // Draws the offscreen as ClutterOffscreenEffect does, through the lens.
     vfunc_paint_target(node, _paintContext) {
         const texture = this.get_texture();
@@ -95,7 +96,6 @@ export const ContentLens = GObject.registerClass(class ContentLens extends Clutt
         node.add_child(drawNode);
         drawNode.add_rectangle(new Clutter.ActorBox({ x1: 0, y1: 0, x2: texture.get_width(), y2: texture.get_height() }));
     }
-
     /**
      * The glass is `clip` [x, y, w, h] in the actor's own px, which are
      * `scale` px on screen, with corners of `radius` (on screen). `depth` (0
@@ -113,7 +113,6 @@ export const ContentLens = GObject.registerClass(class ContentLens extends Clutt
         this._apply();
         this.queue_repaint();
     }
-
     _locate() {
         const box = rectInOffscreen(this.get_actor(), this._clip);
         if (!box)
@@ -123,7 +122,6 @@ export const ContentLens = GObject.registerClass(class ContentLens extends Clutt
         u.px = [box.width * this._scale, box.height * this._scale];
         this._apply();
     }
-
     _apply() {
         const p = this._pipeline;
         if (!p)

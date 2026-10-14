@@ -9,7 +9,7 @@ import { placeBeside, resizeRect } from './placement.js';
 // Room between the item and its frame, px.
 const FRAME_GAP = 8;
 const HANDLE_SIZE = 14;
-// How far (px) from a handle's centre a press still takes it.
+// How far (px) from a handle's center a press still takes it.
 const HANDLE_REACH = 12;
 // The smallest the frame can be resized to, px.
 const MIN_SIZE = 48;
@@ -23,7 +23,6 @@ const HANDLES = [
     [-1, -1, 'nw'], [0, -1, 'n'], [1, -1, 'ne'], [1, 0, 'e'],
     [1, 1, 'se'], [0, 1, 's'], [-1, 1, 'sw'], [-1, 0, 'w'],
 ];
-
 /**
  * A blue frame round a desktop item, over everything else, that moves the
  * item when dragged and resizes it by its handles (when `resized` is given).
@@ -44,7 +43,6 @@ export class EditFrame {
     // Drawn guides, reused from one move to the next, and what each one shows.
     _guideActors = [];
     _guides = [];
-
     constructor(item, _callbacks) {
         this.item = item;
         this._callbacks = _callbacks;
@@ -79,42 +77,36 @@ export class EditFrame {
             return Clutter.EVENT_STOP;
         });
     }
-
     get dragging() {
         return this._drag !== null;
     }
-
     start() {
         Main.layoutManager.uiGroup.add_child(this._layer);
         this._grab = Main.pushModal(this._layer, { actionMode: Shell.ActionMode.POPUP });
         this.sync();
     }
-
     // The frame round the item, or round the size it is being resized to.
     _frameRect() {
         const r = this._resizing ?? itemRect(this.item);
         const g = FRAME_GAP;
         return { x: r.x - g, y: r.y - g, width: r.width + g * 2, height: r.height + g * 2 };
     }
-
-    _handleCentre(f, hx, hy) {
+    _handleCenter(f, hx, hy) {
         return [f.x + (hx + 1) / 2 * f.width, f.y + (hy + 1) / 2 * f.height];
     }
-
     sync() {
         const f = this._frameRect();
         this._frame.set_position(Math.round(f.x), Math.round(f.y));
         this._frame.set_size(Math.round(f.width), Math.round(f.height));
         const half = HANDLE_SIZE / 2;
         HANDLES.forEach(([hx, hy], i) => {
-            const [cx, cy] = this._handleCentre(f, hx, hy);
+            const [cx, cy] = this._handleCenter(f, hx, hy);
             this._handles[i]?.set_position(Math.round(cx - half), Math.round(cy - half));
         });
         const [, doneW] = this._done.get_preferred_width(-1);
         const [, doneH] = this._done.get_preferred_height(doneW);
         this._done.set_position(...placeBeside(f, [doneW, doneH], HANDLE_SIZE, this._workArea(f), this._docks()));
     }
-
     _showGuides(guides) {
         this._guides = guides;
         while (this._guideActors.length < guides.length) {
@@ -142,7 +134,6 @@ export class EditFrame {
             actor.queue_repaint();
         });
     }
-
     // A dotted line along the guide; a gap also gets a tick across each end.
     _drawGuide(actor, g) {
         if (!g)
@@ -173,15 +164,13 @@ export class EditFrame {
         cr.stroke();
         cr.$dispose();
     }
-
-    // The work area of the monitor the frame's centre is on.
+    // The work area of the monitor the frame's center is on.
     _workArea(f) {
         const cx = f.x + f.width / 2, cy = f.y + f.height / 2;
         const layout = Main.layoutManager;
         const monitor = layout.monitors.find(m => cx >= m.x && cx < m.x + m.width && cy >= m.y && cy < m.y + m.height);
         return layout.getWorkAreaForMonitor(monitor?.index ?? layout.primaryIndex);
     }
-
     // Dash to Dock's docks. One that hides itself leaves the work area as it is
     // but still covers the Done button when it slides in.
     _docks() {
@@ -193,19 +182,17 @@ export class EditFrame {
             return { x, y, width, height };
         });
     }
-
     // What a press at (x, y) takes: the handle there [hx, hy], the frame
     // [0, 0], or nothing.
     _hit(x, y) {
         const f = this._frameRect();
         for (let i = 0; i < this._handles.length; i++) {
-            const [cx, cy] = this._handleCentre(f, HANDLES[i][0], HANDLES[i][1]);
+            const [cx, cy] = this._handleCenter(f, HANDLES[i][0], HANDLES[i][1]);
             if (Math.abs(x - cx) <= HANDLE_REACH && Math.abs(y - cy) <= HANDLE_REACH)
                 return [HANDLES[i][0], HANDLES[i][1]];
         }
         return x >= f.x && x < f.x + f.width && y >= f.y && y < f.y + f.height ? [0, 0] : null;
     }
-
     _press(event) {
         if (event.get_button() !== Clutter.BUTTON_PRIMARY)
             return Clutter.EVENT_STOP;
@@ -218,7 +205,6 @@ export class EditFrame {
         this._drag = { start: [x, y], origin: itemOrigin(this.item), rect: itemRect(this.item), hx: hit[0], hy: hit[1] };
         return Clutter.EVENT_STOP;
     }
-
     _motion(event) {
         const drag = this._drag;
         if (!drag)
@@ -238,7 +224,6 @@ export class EditFrame {
         this.sync();
         return Clutter.EVENT_STOP;
     }
-
     _release(event) {
         const drag = this._drag;
         if (!drag || event.get_button() !== Clutter.BUTTON_PRIMARY)
@@ -254,7 +239,6 @@ export class EditFrame {
         this.sync();
         return Clutter.EVENT_STOP;
     }
-
     /** Takes the frame away. */
     end() {
         if (this._grab) {
@@ -267,14 +251,12 @@ export class EditFrame {
         this._callbacks.ended();
     }
 }
-
 // An item's top left corner, stage coordinates. Its x and y, not its
 // allocation, which lags a frame behind a new position.
 function itemOrigin(item) {
     const [px, py] = item.actor.get_parent().get_transformed_position();
     return [px + item.actor.x, py + item.actor.y];
 }
-
 /** An item's shown part, stage coordinates. */
 export function itemRect(item) {
     const [x, y] = itemOrigin(item);

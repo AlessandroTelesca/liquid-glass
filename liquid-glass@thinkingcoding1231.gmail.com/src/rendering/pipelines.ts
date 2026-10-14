@@ -32,7 +32,7 @@ export class ShaderPipelines {
 
   // A plain one-fetch copy with a UV remap, for the Gaussian's half-res
   // pre-pass. No snippet: Cogl's default combine modulates the
-  // texture by the pipeline colour, which is opaque white.
+  // texture by the pipeline color, which is opaque white.
   public passthrough: Cogl.Pipeline | null = null;
 
   // A 4x4 box filter, the first pass when glass-blur-downscale is 4.

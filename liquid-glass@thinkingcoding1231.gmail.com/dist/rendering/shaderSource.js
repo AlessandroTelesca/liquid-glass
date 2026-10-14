@@ -25,10 +25,9 @@ export function splitShader(src, warn) {
     }
     return { decl, body: rest.substring(0, bodyEnd) };
 }
-
 /**
  * A linear-sampling Gaussian kernel for `sigma` (half-res texels) with
- * `fetchPairs` merged tap pairs: the centre stays a single sample, and each
+ * `fetchPairs` merged tap pairs: the center stays a single sample, and each
  * (i, i+1) pair becomes one fetch at the weighted mean offset. The shader's
  * structure depends only on fetchPairs, so a sigma change within it only
  * updates the kernel_scale uniform.
@@ -59,7 +58,6 @@ export function computeGaussianKernel(sigma, fetchPairs) {
     }
     return { offsets, weights };
 }
-
 /**
  * An unrolled GLSL snippet for `kernel`. Offsets and weights are constants;
  * kernel_scale scales the offsets at runtime.

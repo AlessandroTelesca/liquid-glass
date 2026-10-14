@@ -17,7 +17,7 @@ const SHADER_PADDING = 20;
 const SHADOW_MARGIN = 40;
 // A press that moves further than this (px) before it is let go is no click.
 const CLICK_SLOP = 6;
-// The text on the desktop stays in the preferred colour down to this contrast
+// The text on the desktop stays in the preferred color down to this contrast
 // ratio (WCAG's for large text), so a busy wallpaper does not keep flipping it.
 export const PREFERRED_MIN_CONTRAST = 3;
 
@@ -153,7 +153,7 @@ export abstract class GlassCard implements DesktopItem {
       sanitizeColorPreference(s.get_string('desktop-widget-adaptive-text-preference')), PREFERRED_MIN_CONTRAST);
   }
 
-  // The content changed; measure the text colour again.
+  // The content changed; measure the text color again.
   protected contentChanged(): void {
     this._text.invalidate();
     this.env.relayout();

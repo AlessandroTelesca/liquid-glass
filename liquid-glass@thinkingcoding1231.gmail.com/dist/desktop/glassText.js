@@ -15,7 +15,6 @@ import { decodePng } from '../imaging/png.js';
 // Glyphs are drawn this many times larger and their fields scaled down, for
 // sub-pixel accurate edges.
 const SUPERSAMPLE = 2;
-
 /** The coverage (alpha, 0-255) of every pixel of a PNG. */
 export function decodePngAlpha(png) {
     const { width, height, channels, data } = decodePng(png);
@@ -24,11 +23,9 @@ export function decodePngAlpha(png) {
         alpha[i] = channels === 4 ? data[i * 4 + 3] : channels === 2 ? data[i * 2 + 1] : data[i * channels];
     return { alpha, width, height };
 }
-
 // Distance transform
 const INF = 1e20;
-
-// How far (px) the edge is from a pixel's centre, positive when the centre is
+// How far (px) the edge is from a pixel's center, positive when the center is
 // outside, from its coverage `a` (0 to 1) and the coverage's gradient: the
 // edge is taken to be straight across the pixel (Gustavson's anti-aliased
 // distance transform).
@@ -46,14 +43,13 @@ function edgeOffset(gx, gy, a) {
         return (0.5 - a) * x;
     return -0.5 * (x + y) + Math.sqrt(2 * x * y * (1 - a));
 }
-
 // Signed distances (px, negative inside) from coverage (0-255), the piece of
 // edge each pixel is nearest (the index of the pixel it crosses, or -1), and
 // each piece's normal (into the glyph). Every pixel the outline crosses gets
 // the short piece of edge that crosses it, placed to a fraction of a pixel
 // from its coverage; every other
 // pixel takes the nearest of those pieces from its neighbours. Distances to
-// pixel centres instead would follow the pixels' staircase, which the glass
+// pixel centers instead would follow the pixels' staircase, which the glass
 // shows as facets along a curve.
 function edgeField(alpha, w, h) {
     const n = w * h;
@@ -151,12 +147,10 @@ function edgeField(alpha, w, h) {
         signed[i] = (alpha[i] >= 128 ? -1 : 1) * Math.sqrt(dist2[i]);
     return { signed, nearest, nx, ny };
 }
-
 /** Signed distances (px, negative inside) from coverage (0-255); see edgeField(). */
 export function signedDistances(alpha, w, h) {
     return edgeField(alpha, w, h).signed;
 }
-
 // The box widths for three box blurs that together approximate a Gaussian of `sigma`.
 function boxRadii(sigma) {
     const ideal = Math.sqrt(4 * sigma * sigma + 1);
@@ -167,7 +161,6 @@ function boxRadii(sigma) {
     const m = Math.round((12 * sigma * sigma - 3 * lower * lower - 12 * lower - 9) / (-4 * lower - 4));
     return [0, 1, 2].map(i => ((i < m ? lower : upper) - 1) / 2);
 }
-
 // One box blur of radius r along rows (step 1) or columns (step w), edges extended.
 function boxBlur(src, dst, w, h, r, alongRows) {
     const [n, lines, step, lineStep] = alongRows ? [w, h, 1, w] : [h, w, w, 1];
@@ -186,7 +179,6 @@ function boxBlur(src, dst, w, h, r, alongRows) {
         }
     }
 }
-
 // The passes of a blur of about a Gaussian of `sigma` px over `a` (`w` x
 // `h`), which holds the result after the last; `b` is room for the passes.
 function blurPasses(a, b, w, h, sigma) {
@@ -197,7 +189,6 @@ function blurPasses(a, b, w, h, sigma) {
         () => boxBlur(b, a, w, h, r, false),
     ]);
 }
-
 /** `field` blurred by about a Gaussian of `sigma` px. */
 export function softened(field, sigma) {
     const { width: w, height: h } = field;
@@ -206,7 +197,6 @@ export function softened(field, sigma) {
         pass();
     return { data: a, width: w, height: h };
 }
-
 /** softened(), awaiting `pause` before each pass. */
 export async function softenedInSteps(field, sigma, pause) {
     const { width: w, height: h } = field;
@@ -217,7 +207,6 @@ export async function softenedInSteps(field, sigma, pause) {
     }
     return { data: a, width: w, height: h };
 }
-
 // Taller glyphs
 //
 // A glyph is made taller by drawing it that much taller, evenly, which also
@@ -239,7 +228,6 @@ const CORNER_SIZE = 0.3;
 // A corner whose moved lines meet further out than this many times the move
 // is too sharp to keep; it is cut off between them instead.
 const MITER_LIMIT = 6;
-
 // The mean of the middle half of `values`: one side of a stroke may reach
 // its middle and the other not, and joins and ends are far off either way.
 function middleMean(values) {
@@ -247,7 +235,6 @@ function middleMean(values) {
     const middle = values.slice(values.length >> 2, values.length - (values.length >> 2));
     return middle.length ? middle.reduce((sum, v) => sum + v, 0) / middle.length : 0;
 }
-
 /**
  * How thick the strokes of coverage `alpha` (`w` x `h`) are, px: across
  * the upright ones and across the flat ones. A stroke is as thick as the
@@ -265,7 +252,7 @@ export function strokeWidths(alpha, w, h) {
     for (let e = 0; e < w * h; e++) {
         if (nearest[e] !== e || deepest[e] === 0)
             continue;
-        // The pixel centres on the two sides of a stroke stop short of its
+        // The pixel centers on the two sides of a stroke stop short of its
         // middle by a pixel between them.
         const width = 2 * deepest[e] + 1;
         if (Math.abs(nx[e]) > SIDE_NORMAL)
@@ -276,7 +263,6 @@ export function strokeWidths(alpha, w, h) {
     const across = middleMean(upright) || middleMean(flat) || 1;
     return [across, middleMean(flat) || across];
 }
-
 /**
  * How wide and how tall the widest and tallest runs of ink in coverage
  * `alpha` (`w` x `h`) are, px: a dot's size.
@@ -299,7 +285,6 @@ export function dotSize(alpha, w, h) {
     }
     return [wide, tall];
 }
-
 /**
  * Where coverage `alpha` (`w` x `h`) crosses half, as closed loops of
  * points [x0, y0, x1, y1, ...], pixel (x, y) covering x to x + 1, each loop
@@ -307,7 +292,7 @@ export function dotSize(alpha, w, h) {
  */
 export function traceOutlines(alpha, w, h) {
     const inside = (i) => alpha[i] >= 128;
-    // Edges between neighbouring pixel centres: 2i to the right of pixel i, 2i + 1 below it.
+    // Edges between neighbouring pixel centers: 2i to the right of pixel i, 2i + 1 below it.
     const points = new Map();
     const next = new Map();
     const cross = (edge, i, j, x, y, dx, dy) => {
@@ -365,7 +350,6 @@ export function traceOutlines(alpha, w, h) {
     }
     return loops;
 }
-
 // Keeps the points of a closed loop that it cannot do without to stay
 // within `tolerance` px (Douglas-Peucker).
 function simplify(loop, tolerance) {
@@ -408,7 +392,6 @@ function simplify(loop, tolerance) {
             out.push(loop[2 * i], loop[2 * i + 1]);
     return out;
 }
-
 // A corner that is rounded off a little (by the font, or by anti-aliasing)
 // would have its few short pieces moved by amounts between those of the two
 // sides, and come out as a bevel. Short pieces adding up to less than
@@ -416,7 +399,6 @@ function simplify(loop, tolerance) {
 // CORNER_TURN, are put back to the corner where the long ones' lines cross,
 // when that is about where the short ones are.
 const CORNER_TURN = 0.5;
-
 function sharpenCorners(loop, limit) {
     const n = loop.length / 2;
     if (n < 4)
@@ -470,7 +452,6 @@ function sharpenCorners(loop, limit) {
     }
     return out;
 }
-
 /**
  * `loop` (ink on its left) with every piece moved into the ink by
  * `move(nx, ny, x, y)` px, its normal into the ink being (nx, ny) and its
@@ -543,7 +524,6 @@ export function moveOutline(loop, move) {
     } while (k !== first);
     return out;
 }
-
 /**
  * Coverage (0-255, `w` x `h`) of the area inside `loops` (as
  * traceOutlines() gives them), anti-aliased by the exact area each pixel
@@ -613,7 +593,6 @@ export function fillOutlines(loops, w, h) {
     }
     return out;
 }
-
 /**
  * The outlines `loops` of a glyph drawn taller by `stretch`, each stroke
  * pulled back to the thickness a pen `pen` px across (upright strokes) and
@@ -629,12 +608,10 @@ export function restroke(loops, pen, stretch) {
     return loops.map(loop => moveOutline(sharpenCorners(simplify(loop, TRACE_TOLERANCE), corner), move))
         .filter(loop => loop.length);
 }
-
 /** Coverage `alpha` (`w` x `h`) of a glyph drawn `stretch` times as tall, its strokes as thick as `pen` draws them. */
 export function keepStrokeWidths(alpha, w, h, pen, stretch) {
     return fillOutlines(restroke(traceOutlines(alpha, w, h), pen, () => stretch), w, h);
 }
-
 // Taller along the upright strokes
 //
 // The other way to grow a glyph taller spaces its rows further apart, more in
@@ -680,7 +657,6 @@ const SLOPE_TIE = 0.03;
 const BEND_TIE = 0.03;
 // The Gaussian the rows' shares are smoothed by, in strokes.
 const SHARE_SMOOTHING = 0.5;
-
 // Where the outline crosses row y of coverage `alpha` (`w` wide): x to a
 // fraction of a pixel, positive where the row enters the glyph and negative
 // where it leaves (the sign is the direction, the magnitude x + 1).
@@ -697,13 +673,11 @@ function rowEdges(alpha, w, y) {
     }
     return edges;
 }
-
 // The usual width of the strokes: the median of the rows' longest runs.
 function medianStroke(longest) {
     const stroked = Array.from(longest).filter(v => v > 0).sort((a, b) => a - b);
     return stroked.length ? stroked[stroked.length >> 1] : 1;
 }
-
 // Follows each edge from row to row, nearest matches first, so strokes that
 // start or end beside it do not break it.
 function bandRows(alpha, w, top, bottom) {
@@ -772,7 +746,6 @@ function bandRows(alpha, w, top, bottom) {
     }
     return { edges, slopes, bends, ends, next, longest, inked, stroke };
 }
-
 // Solves the tridiagonal system with `diag` on the diagonal, -off[i] between
 // i and i + 1, and `rhs` on the right.
 function solveTridiagonal(diag, off, rhs) {
@@ -789,7 +762,6 @@ function solveTridiagonal(diag, off, rhs) {
         d[i] -= c[i] * d[i + 1];
     return d;
 }
-
 function bandShares(rows) {
     const n = rows.edges.length - 1;
     // The room above and below the glyph grows as the band does, so the glyph
@@ -885,7 +857,6 @@ function bandShares(rows) {
     const total = smooth.reduce((a, b) => a + b, 0);
     return smooth.map(v => v / total);
 }
-
 /**
  * How much of a glyph's added height each row of coverage `alpha` (0-255,
  * `w` wide) takes, rows `top` to `bottom` (see the top of this section). The
@@ -894,7 +865,6 @@ function bandShares(rows) {
 export function rowShares(alpha, w, top, bottom) {
     return bandShares(bandRows(alpha, w, top, bottom));
 }
-
 /**
  * Where each row boundary of a glyph `h` rows tall lands when rows `top` to
  * `bottom` take `extra` more by `shares`: the rows above stay, the rows below
@@ -908,7 +878,6 @@ export function rowLandings(h, top, shares, extra) {
     }
     return lands;
 }
-
 /**
  * The outlines `loops` of a glyph with its rows landed at `lands` (see
  * rowLandings()), and how many times as tall the glyph is drawn around each
@@ -951,7 +920,6 @@ export function spaceRows(loops, lands) {
     };
     return { loops: loops.map(loop => loop.map((v, i) => i % 2 ? land(v) : v)), stretch };
 }
-
 /**
  * Coverage `alpha` (`w` x `h`) made `extra` rows taller between rows `top`
  * and `bottom` by rowShares(), its strokes as thick as `pen` draws them;
@@ -964,7 +932,6 @@ export function growUpright(alpha, w, h, top, bottom, extra, pen) {
     const { loops, stretch } = spaceRows(traceOutlines(alpha, w, h), lands);
     return fillOutlines(restroke(loops, pen, stretch), w, h + extra);
 }
-
 // Averages `factor` x `factor` blocks and scales the distances to match.
 function downsample(field, factor) {
     const width = Math.floor(field.width / factor);
@@ -984,14 +951,12 @@ function downsample(field, factor) {
     }
     return { data, width, height };
 }
-
 function layoutFor(cr, font, text) {
     const layout = PangoCairo.create_layout(cr);
     layout.set_font_description(font);
     layout.set_text(text, -1);
     return layout;
 }
-
 // Runs `fn` with a Cairo context that draws nowhere, for measuring.
 function measuring(fn) {
     const probe = new Cairo.ImageSurface(Cairo.Format.ARGB32, 1, 1);
@@ -1001,7 +966,6 @@ function measuring(fn) {
     probe.finish();
     return result;
 }
-
 /** An installed font, through Pango: a description such as "Cantarell Bold" at `size` px. */
 export function pangoFace(description, size) {
     const fontAt = (scale) => {
@@ -1039,7 +1003,6 @@ export function pangoFace(description, size) {
         draw: (cr, text, scale) => PangoCairo.show_layout(cr, layoutFor(cr, fontAt(scale), text)),
     };
 }
-
 /** A font file the extension ships with, at `size` px. */
 export function fileFace(font, size) {
     const unit = size / font.unitsPerEm;
@@ -1082,22 +1045,19 @@ export function fileFace(font, size) {
         },
     };
 }
-
 function tallY(tall, y) {
     if (!tall)
         return y;
     if (tall.even)
-        return tall.centre + tall.scale * (y - tall.centre);
+        return tall.center + tall.scale * (y - tall.center);
     return y <= tall.top ? y : y >= tall.bottom ? y + tall.extra : y + tall.extra * (y - tall.top) / (tall.bottom - tall.top);
 }
-
 // `tall` at `k` times the size.
 function scaledTall(tall, k, pen) {
     const scaledPen = pen.map(v => v * k);
-    return tall.even ? { ...tall, centre: tall.centre * k, pen: scaledPen }
+    return tall.even ? { ...tall, center: tall.center * k, pen: scaledPen }
         : { ...tall, top: tall.top * k, bottom: tall.bottom * k, extra: tall.extra * k, pen: scaledPen };
 }
-
 // Draws `text` at `scale` times the size, stretched `stretch` times as wide
 // and, made evenly taller by `tall` (in px at that scale), into a temporary
 // PNG and reads its coverage back, with `margin` px of room around it. The
@@ -1118,9 +1078,9 @@ async function rasterize(face, text, scale, stretch, tall, margin, cancellable) 
     cr.setSourceRGBA(1, 1, 1, 1);
     cr.translate(-ax, -ay);
     if (tall?.even) {
-        cr.translate(0, tall.centre);
+        cr.translate(0, tall.center);
         cr.scale(stretch, tall.scale);
-        cr.translate(0, -tall.centre);
+        cr.translate(0, -tall.center);
     }
     else {
         cr.scale(stretch, 1);
@@ -1157,10 +1117,8 @@ async function rasterize(face, text, scale, stretch, tall, margin, cancellable) 
         });
     }
 }
-
 // The digits are measured for their pen this many px tall.
 const MEASURE_HEIGHT = 240;
-
 /**
  * Distance fields of single glyphs of `face`, stretched `stretch` times as
  * wide and made `height` times as tall in `style`, built on first use.
@@ -1184,7 +1142,6 @@ export class GlyphFields {
     _tall = null;
     // The pauses waiting for the main loop, and how to give each up.
     _pauses = new Map();
-
     constructor(_face, range, stretch = 1, height = 1, style = 'even') {
         this._face = _face;
         this.range = range;
@@ -1201,7 +1158,6 @@ export class GlyphFields {
             this._pauses.clear();
         });
     }
-
     /**
      * Lets the main loop run before the next step of work. Rejects with a
      * GError once the fields are no longer wanted.
@@ -1216,7 +1172,6 @@ export class GlyphFields {
             this._pauses.set(id, reject);
         });
     }
-
     // How the glyphs are made taller, in px at the font's size. Evenly, each
     // end of the digits loses half of what the stretch added to a flat stroke,
     // so they are stretched that much more, about the middle of their top
@@ -1231,7 +1186,7 @@ export class GlyphFields {
             const h = this.digitHeight;
             const [top, baseline] = this._band;
             const flat = Math.min(pen[1], h / 3);
-            const even = { even: true, scale: (this.height * h - flat) / (h - flat), centre: top + flat / 2, pen };
+            const even = { even: true, scale: (this.height * h - flat) / (h - flat), center: top + flat / 2, pen };
             const digits = this.style === 'upright'
                 ? { even: false, top, bottom: baseline, extra: Math.round((this.height - 1) * h), pen } : even;
             return { digits, colon: even };
@@ -1242,7 +1197,6 @@ export class GlyphFields {
         });
         return this._tall;
     }
-
     // How thick the strokes of `text` are, px at the font's size (see
     // strokeWidths()), or for dots how big the dots are.
     async _pen(text, dots = false) {
@@ -1251,7 +1205,6 @@ export class GlyphFields {
         const [across, tall] = (dots ? dotSize : strokeWidths)(big.alpha, big.width, big.height);
         return [across / scale, tall / scale];
     }
-
     _glyph(ch) {
         let glyph = this._glyphs.get(ch);
         if (!glyph) {
@@ -1262,7 +1215,6 @@ export class GlyphFields {
         }
         return glyph;
     }
-
     async _buildGlyph(ch) {
         const both = await this._tallness();
         const t = both && (ch === ':' ? both.colon : both.digits);
@@ -1294,7 +1246,6 @@ export class GlyphFields {
         const field = downsample({ data: signed, width, height }, SUPERSAMPLE);
         return { ...field, originX: big.originX / SUPERSAMPLE, originY: big.originY / SUPERSAMPLE };
     }
-
     /**
      * The field of `text` laid out on one line: each glyph's field placed where
      * the line puts it, merged by taking the nearest outline. Rejects with a
@@ -1342,7 +1293,6 @@ export class GlyphFields {
         return { data, width, height };
     }
 }
-
 /** The deepest point of `field`, px. */
 export function maxDepth(field) {
     let depth = 0;
@@ -1350,7 +1300,6 @@ export function maxDepth(field) {
         depth = Math.max(depth, -field.data[i]);
     return depth;
 }
-
 /**
  * The pixels (RGBA) of a texture for glass.frag's LG_SHAPE_TEXTURE: `outline`
  * above `lens`, two fields of the same size, distances from -range to +range

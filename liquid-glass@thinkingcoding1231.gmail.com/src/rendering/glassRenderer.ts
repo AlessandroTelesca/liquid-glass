@@ -100,7 +100,7 @@ export class GlassRenderer {
 
   /**
    * Queues glass.frag over `drawRect` [x1, y1, x2, y2]. glass.frag multiplies
-   * its premultiplied output by the pipeline colour, so fading means scaling
+   * its premultiplied output by the pipeline color, so fading means scaling
    * all four channels by the paint opacity (which already includes the
    * ancestors'); scaling alpha alone would wash the glass out.
    */

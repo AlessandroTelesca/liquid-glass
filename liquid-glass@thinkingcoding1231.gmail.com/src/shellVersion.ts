@@ -23,8 +23,8 @@ export function coglContext(): Cogl.Context {
   return backend.get_cogl_context() as Cogl.Context;
 }
 
-// A RootNode that draws into `framebuffer` and does not clear it. The colour
-// state argument came with GNOME 48; before, the clear colour was a Cogl.Color
+// A RootNode that draws into `framebuffer` and does not clear it. The color
+// state argument came with GNOME 48; before, the clear color was a Cogl.Color
 // (47) or a Clutter.Color (46). `colorState` is unused before 48.
 export function newRootNode(framebuffer: Cogl.Framebuffer, colorState: Clutter.ColorState | undefined): Clutter.PaintNode {
   if (SHELL_MAJOR >= 48)
@@ -34,7 +34,7 @@ export function newRootNode(framebuffer: Cogl.Framebuffer, colorState: Clutter.C
 }
 
 // A snapshot of the stage rect `rect` at `scale`, without the cursor. GNOME 50
-// added the colour state to paint in, which is the stage's when null.
+// added the color state to paint in, which is the stage's when null.
 export function paintStageToContent(rect: Mtk.Rectangle, scale: number): Clutter.Content {
   if (SHELL_MAJOR >= 50)
     return global.stage.paint_to_content(rect, scale, null, Clutter.PaintFlag.NO_CURSORS);
@@ -48,14 +48,14 @@ export function offscreenFormat(framebuffer: Cogl.Offscreen): Cogl.PixelFormat |
   return SHELL_MAJOR >= 47 ? framebuffer.get_texture().get_format() : null;
 }
 
-// The accent colour and its foreground, or null where St has none (GNOME 46).
+// The accent color and its foreground, or null where St has none (GNOME 46).
 export function accentColors(): [Cogl.Color, Cogl.Color] | null {
   if (SHELL_MAJOR < 47) return null;
   const [accent, accentFg] = St.ThemeContext.get_for_stage(global.stage).get_accent_color();
   return accent && accentFg ? [accent, accentFg] : null;
 }
 
-// Calls `callback` whenever the accent colour changes; returns what stops that. GNOME 46 has none.
+// Calls `callback` whenever the accent color changes; returns what stops that. GNOME 46 has none.
 export function watchAccentColor(callback: () => void): () => void {
   if (SHELL_MAJOR < 47) return () => {};
   const context = St.ThemeContext.get_for_stage(global.stage);

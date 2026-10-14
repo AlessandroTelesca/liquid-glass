@@ -176,7 +176,7 @@ export class MaterialSettings {
       settings.get_double('glass-displacement-scale') * scale);
     this._uniforms.set('max_z',
       settings.get_double('glass-max-z') * scale);
-    // The colour separation is a fraction of the displacement, so it already
+    // The color separation is a fraction of the displacement, so it already
     // scales with it.
     return true;
   }

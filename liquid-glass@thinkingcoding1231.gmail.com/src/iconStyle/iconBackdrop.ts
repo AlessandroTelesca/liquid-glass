@@ -28,7 +28,7 @@ export interface IconBackdropParams {
   extensionPath: string;
   settings: Gio.Settings;
   logger: Logger;
-  // The surface whose blur and colour adjustments the glass takes ('dock' or 'launcher').
+  // The surface whose blur and color adjustments the glass takes ('dock' or 'launcher').
   prefix: string;
   // The stage rect [x0, y0, x1, y1] the icons cover, or null while none is shown.
   rect: () => number[] | null;
@@ -207,7 +207,7 @@ export const IconBackdrop = GObject.registerClass(
       return { texture: blur.passCount > 0 && blur.result ? blur.result : copy.texture, rect: copy.rect };
     }
 
-    /** The glass settings and this surface's colour adjustments, by glass.frag's uniform names. */
+    /** The glass settings and this surface's color adjustments, by glass.frag's uniform names. */
     material(): ReadonlyMap<string, number> {
       return this._renderer.uniforms.values;
     }

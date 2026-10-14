@@ -44,7 +44,7 @@ export function createTarget(width: number, height: number, format: Cogl.PixelFo
 
 // Queues a blit of `rect` [x, y, w, h] of `source` to the origin of `target`.
 // A RootNode makes the target the blit's destination and, with no clear
-// flags, leaves it alone otherwise. Its colour state must be the source's.
+// flags, leaves it alone otherwise. Its color state must be the source's.
 export function addBlit(root: Clutter.PaintNode, source: Cogl.Framebuffer, target: Cogl.Framebuffer,
   colorState: Clutter.ColorState | undefined, rect: number[]): void {
   const node = newRootNode(target, colorState);

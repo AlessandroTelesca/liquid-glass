@@ -1,9 +1,9 @@
-// The colours icon-style.frag draws a style map in, per look, after macOS 26's
+// The colors icon-style.frag draws a style map in, per look, after macOS 26's
 // tinted, white and clear icons. Pure, so that the contact sheet and the
 // preferences can use it too.
 
 export type IconStyleMode = 'tinted' | 'mono' | 'clear';
-// Tinted icons on dark glass under a symbol in the colour, or on glass in the colour under a white symbol.
+// Tinted icons on dark glass under a symbol in the color, or on glass in the color under a white symbol.
 export type IconStyleVariant = 'dark' | 'light';
 
 type Rgba = [number, number, number, number];
@@ -20,10 +20,10 @@ export interface IconStyleColors {
   rimWidth: number;
   rimBase: number;
   sheen: number;
-  // How far the plates' tones take their colour towards white or black.
+  // How far the plates' tones take their color towards white or black.
   toneSpread: number;
-  // How much of the plates' colour is added to what is behind instead of laid over it: added light keeps the
-  // backdrop's colours, where white laid over washes them out.
+  // How much of the plates' color is added to what is behind instead of laid over it: added light keeps the
+  // backdrop's colors, where white laid over washes them out.
   additive: number;
   // How much a band inside each plate's rim darkens what is behind, so that the outline holds on light backdrops.
   edgeShade: number;
@@ -32,7 +32,7 @@ export interface IconStyleColors {
   // The clear look's glass rim, as a multiple of the glass's rim width: an icon is much smaller than the glass it
   // sits on, and the same width looks thinner on it.
   rimScale: number;
-  // The launch animation's colour, which the icon's lightness runs across.
+  // The launch animation's color, which the icon's lightness runs across.
   tint: [number, number, number];
 }
 
@@ -108,7 +108,7 @@ function glass(lightness: number): [number, number, number] {
 }
 
 /**
- * @param tint The accent or chosen colour, 0 to 1 a channel.
+ * @param tint The accent or chosen color, 0 to 1 a channel.
  * @param strength How much of the tint the outer plate of a dark tinted icon takes, 0 (the dark glass alone) to 1.
  * @param symbolOpacity How strongly the symbol shows, 0 to 1.
  * @param tuning Values that replace ICON_TUNING's, by key.
@@ -118,7 +118,7 @@ export function iconStyleColors(mode: IconStyleMode, tint: number[], strength: n
   const v = (key: string) => tuning[key] ?? ICON_TUNING.find(p => p.key === key)!.value;
   if (mode === 'clear') {
     // Barely frosted, so that the white symbol stands apart from the plates. The frost is light added, which keeps
-    // the colours of what is behind.
+    // the colors of what is behind.
     return { ...CLEAR_WITHOUT_BACKDROP, toneSpread: v('clearToneSpread'), additive: 1, symbolShadow: v('clearSymbolShadow'),
       rimScale: v('clearRimScale'),
       plate: [1, 1, 1, v('clearGlassAlpha')], inner: [1, 1, 1, v('clearInnerAlpha')],
@@ -139,7 +139,7 @@ export function iconStyleColors(mode: IconStyleMode, tint: number[], strength: n
       inner: [1, 1, 1, v('lightInnerAlpha')], symbol, symbolInner: symbol, rim: v('lightRim'), tint: [t[0], t[1], t[2]] };
   }
   const dark = glass(v('darkGlass'));
-  // On a plate in a light colour the symbol is dark, as the cut-outs in it would be; on a dark one, light.
+  // On a plate in a light color the symbol is dark, as the cut-outs in it would be; on a dark one, light.
   const light = 0.2126 * t[0] + 0.7152 * t[1] + 0.0722 * t[2] > v('darkLightTint');
   return { ...shared, plate: [...mix(dark, t.map(c => c * v('darkTintReach')), strength), v('darkGlassAlpha')],
     inner: [...mix(t, WHITE, v('darkInnerWhite')), v('darkInnerAlpha')],

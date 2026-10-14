@@ -61,11 +61,9 @@ const ENTRY_HEIGHT = 56;
 // Between the field and the results: .lg-launcher-page in stylesheet.css.
 const PAGE_SPACING = 6;
 const MIN_RESULTS_HEIGHT = 240;
-
 function isCancelled(e) {
     return e instanceof GLib.Error && e.matches(Gio.IOErrorEnum, Gio.IOErrorEnum.CANCELLED);
 }
-
 /**
  * A search field on glass in the middle of the screen, like Spotlight, that
  * opens with a shortcut and asks the same search providers as the overview
@@ -118,27 +116,24 @@ export class Launcher {
     _selected = 0;
     _terms = [];
     _text;
-    // The panel's top and height its text colour was last chosen for.
+    // The panel's top and height its text color was last chosen for.
     _coloredFor = '';
-
     constructor(_path, _settings, _logger, _icons) {
         this._path = _path;
         this._settings = _settings;
         this._logger = _logger;
         this._icons = _icons;
-        // One colour for the field and the results, set on the panel. Rows that come in take it at once, and the
-        // colour for the panel's new size is chosen as they come, while the glass is still growing to it.
+        // One color for the field and the results, set on the panel. Rows that come in take it at once, and the
+        // color for the panel's new size is chosen as they come, while the glass is still growing to it.
         this._text = new AdaptiveTextColor(() => (this._panel ? [this._panel] : []), () => (this._glass ? [this._glass] : []), _logger, 'launcher', { ownColor: true, held: () => this._shapeRemaining(GLib.get_monotonic_time()) > 0 });
         this._pins = new PinStore(_settings);
     }
-
     setup() {
         Launcher.instance = this;
         const watch = (key, fn) => this._settingsIds.push(this._settings.connect(`changed::${key}`, fn));
         watch('enable-launcher', () => this._syncKeybinding());
         this._syncKeybinding();
     }
-
     _syncKeybinding() {
         const wanted = this._settings.get_boolean('enable-launcher');
         if (wanted && !this._keybinding) {
@@ -151,22 +146,22 @@ export class Launcher {
             this.close();
         }
     }
-
     toggle() {
         if (this._root)
             this.close();
         else
             this.open();
     }
-
     open() {
         if (this._root)
             return;
         const monitor = Main.layoutManager.primaryMonitor;
         if (!monitor)
             return;
-        const root = new St.Widget({ name: 'liquid-glass-launcher', reactive: true,
-            x: monitor.x, y: monitor.y, width: monitor.width, height: monitor.height, opacity: 0 });
+        const root = new St.Widget({
+            name: 'liquid-glass-launcher', reactive: true,
+            x: monitor.x, y: monitor.y, width: monitor.width, height: monitor.height, opacity: 0
+        });
         const glass = new BackdropGlass({
             extensionPath: this._path, settings: this._settings, logger: this._logger, owner: 'launcher',
         });
@@ -175,8 +170,10 @@ export class Launcher {
         glass.setShadowMaxRadius(SHADOW_MARGIN - 10);
         root.add_child(glass);
         const width = this._panelWidth(false, monitor.width);
-        const panel = new St.BoxLayout({ style_class: 'liquid-glass-launcher', reactive: true, can_focus: true, width,
-            x: Math.round((monitor.width - width) / 2), y: this._panelTop(monitor.height), ...verticalBoxParams() });
+        const panel = new St.BoxLayout({
+            style_class: 'liquid-glass-launcher', reactive: true, can_focus: true, width,
+            x: Math.round((monitor.width - width) / 2), y: this._panelTop(monitor.height), ...verticalBoxParams()
+        });
         // Keys on the pinned page, where the panel has the focus.
         panel.connect('key-press-event', (_actor, event) => this._onPinnedKey(event));
         // A click outside the field closes it. Presses inside must not be stopped: from GNOME 49 a button clicks
@@ -199,23 +196,29 @@ export class Launcher {
             ticker.set_duration(TICK_MS);
             ticker.start();
         });
-        const entry = new St.Entry({ style_class: 'lg-launcher-entry', hint_text: 'Search', can_focus: true, x_expand: true,
-            primary_icon: new St.Icon({ icon_name: 'edit-find-symbolic', style_class: 'lg-launcher-entry-icon' }) });
-        // The hint takes the panel's colour too, dimmed the way the theme dims it.
+        const entry = new St.Entry({
+            style_class: 'lg-launcher-entry', hint_text: 'Search', can_focus: true, x_expand: true,
+            primary_icon: new St.Icon({ icon_name: 'edit-find-symbolic', style_class: 'lg-launcher-entry-icon' })
+        });
+        // The hint takes the panel's color too, dimmed the way the theme dims it.
         entry.hint_actor.opacity = HINT_OPACITY;
         const list = new St.BoxLayout({ style_class: 'lg-launcher-list', x_expand: true, ...verticalBoxParams() });
         // Hidden while empty, so the panel's spacing does not add room below the field. Its height is limited in
         // _limitResults(), as St.BoxLayout ignores max-height.
-        const resultsBox = new St.ScrollView({ style_class: 'lg-launcher-results', x_expand: true, visible: false,
-            hscrollbar_policy: St.PolicyType.NEVER, vscrollbar_policy: St.PolicyType.AUTOMATIC, overlay_scrollbars: true });
+        const resultsBox = new St.ScrollView({
+            style_class: 'lg-launcher-results', x_expand: true, visible: false,
+            hscrollbar_policy: St.PolicyType.NEVER, vscrollbar_policy: St.PolicyType.AUTOMATIC, overlay_scrollbars: true
+        });
         resultsBox.set_child(list);
         const searchBox = new St.BoxLayout({ style_class: 'lg-launcher-page', x_expand: true, ...verticalBoxParams() });
         searchBox.add_child(entry);
         searchBox.add_child(resultsBox);
-        const pinnedBox = new St.ScrollView({ style_class: 'lg-launcher-pinned', x_expand: true, visible: false,
+        const pinnedBox = new St.ScrollView({
+            style_class: 'lg-launcher-pinned', x_expand: true, visible: false,
             hscrollbar_policy: St.PolicyType.NEVER, vscrollbar_policy: St.PolicyType.AUTOMATIC, overlay_scrollbars: true,
             // On the scroll view, as St.BoxLayout ignores min-height; inside the panel's padding.
-            style: this._pinnedStyle(monitor.height) });
+            style: this._pinnedStyle(monitor.height)
+        });
         panel.add_child(searchBox);
         panel.add_child(pinnedBox);
         root.add_child(panel);
@@ -259,7 +262,6 @@ export class Launcher {
         }
         this._colorText();
     }
-
     close() {
         const root = this._root;
         if (!root)
@@ -297,18 +299,16 @@ export class Launcher {
         if (isActorValid(root))
             root.destroy();
     }
-
     /** Types `text` into the field, for the test driver. */
     setText(text) {
         if (this._entry)
             this._entry.text = text;
     }
-
     /** The pinned items' page, or the search again. */
     showView(view) {
         if (!this._root || view === (this._switch?.view ?? this._view))
             return;
-        const morph = this._settings.get_string('launcher-pinned-transition') !== 'tween';
+        const morph = this._settings.get_string('launcher-pinned-transition') === 'morph';
         const sw = this._switch;
         if (sw) {
             // Turned back midway: the content goes again from as far as it had come, or comes back from as far as
@@ -329,38 +329,32 @@ export class Launcher {
         }
         this._keepTicking();
     }
-
     // The search's width is a setting; the pinned page is wider. Neither outgrows a small screen.
     _panelWidth(pinned, monitorWidth) {
         const width = this._settings.get_int('launcher-width') + (pinned ? PINNED_EXTRA_WIDTH : 0);
         return Math.min(width, monitorWidth - SIDE_MARGIN * 2);
     }
-
     _pinnedStyle(monitorHeight) {
         const max = Math.round(monitorHeight * PINNED_MAX_HEIGHT);
         const min = Math.min(this._settings.get_int('launcher-pinned-height') - PANEL_PADDING * 2, max);
         return `min-height: ${min}px; max-height: ${max}px;`;
     }
-
     // The field sits at TOP of the screen's height, and higher on a screen too short to leave MIN_RESULTS_HEIGHT below it.
     _panelTop(monitorHeight) {
         const lowest = monitorHeight - SIDE_MARGIN - PANEL_PADDING * 2 - PAGE_SPACING - ENTRY_HEIGHT - MIN_RESULTS_HEIGHT;
         return Math.max(SIDE_MARGIN, Math.min(Math.round(monitorHeight * TOP), lowest));
     }
-
     // The results scroll past what is left of the screen below the field, so that they never run off it.
     _limitResults() {
         const panel = this._panel;
         const room = this._root.height - panel.y - SIDE_MARGIN - PANEL_PADDING * 2 - PAGE_SPACING - this._entry.get_preferred_height(-1)[1];
         this._resultsBox.set_style(`max-height: ${Math.max(Math.floor(room), 0)}px;`);
     }
-
     _applySize() {
         this._pinnedBox.set_style(this._pinnedStyle(this._root.height));
         this._setView(this._view);
         this._coloredFor = '';
     }
-
     _applyMaterial() {
         const glass = this._glass;
         if (!glass)
@@ -374,7 +368,6 @@ export class Launcher {
         glass.setContrast(s.get_double('launcher-contrast'));
         glass.setSaturation(s.get_double('launcher-saturation'));
     }
-
     // Every frame: the glass eases to the field and its results, which are cut
     // off where the glass ends.
     _sync() {
@@ -412,7 +405,6 @@ export class Launcher {
         ensureGlassAllocated(glass);
         glass.syncSources();
     }
-
     _shapeRemaining(nowUs) {
         if (this._switch)
             return TICK_MS;
@@ -420,7 +412,6 @@ export class Launcher {
             return this._spring.settled() ? 0 : TICK_MS;
         return this._shape.remaining(nowUs);
     }
-
     _keepTicking() {
         const ticker = this._ticker;
         const left = this._shapeRemaining(GLib.get_monotonic_time());
@@ -429,7 +420,6 @@ export class Launcher {
         ticker.set_duration(Math.ceil(left) + TICK_MS);
         ticker.start();
     }
-
     // Changing page: the content goes (in a morph, sinking deep into the glass), the page is swapped, the glass
     // takes the new page's shape, and the new content comes up.
     _stepSwitch(now, rect, clip) {
@@ -475,7 +465,6 @@ export class Launcher {
         panel.opacity = Math.round(255 * shown);
         this._lens?.shape(clip, 1, this._settings.get_double('launcher-corner-radius'), 1 - shown);
     }
-
     _setView(view) {
         const panel = this._panel;
         const root = this._root;
@@ -495,16 +484,13 @@ export class Launcher {
             global.stage.set_key_focus(this._entry.clutter_text);
         }
     }
-
     _isPinnedShortcut(event) {
         const key = event.get_key_symbol();
         return (event.get_state() & Clutter.ModifierType.CONTROL_MASK) !== 0 && (key === Clutter.KEY_p || key === Clutter.KEY_P);
     }
-
     _isEnter(key) {
         return key === Clutter.KEY_Return || key === Clutter.KEY_KP_Enter || key === Clutter.KEY_ISO_Enter;
     }
-
     _onKey(event) {
         const key = event.get_key_symbol();
         if (key === Clutter.KEY_Escape) {
@@ -527,7 +513,6 @@ export class Launcher {
         }
         return Clutter.EVENT_PROPAGATE;
     }
-
     // The tiles are moved between as a grid, then the list below them row by row.
     _onPinnedKey(event) {
         if (this._view !== 'pinned')
@@ -564,7 +549,6 @@ export class Launcher {
             this._select(next);
         return Clutter.EVENT_STOP;
     }
-
     // Scrolls to the item only when the keys moved to it; with the pointer, the rows would move under it.
     _select(index, reveal = true) {
         this._items[this._selected]?.actor.remove_style_pseudo_class('selected');
@@ -576,7 +560,6 @@ export class Launcher {
         if (reveal)
             this._scrollTo(item.actor);
     }
-
     _scrollTo(actor) {
         const view = this._view === 'pinned' ? this._pinnedBox : this._resultsBox;
         const page = view.get_child();
@@ -589,7 +572,6 @@ export class Launcher {
         else if (y2 > adjustment.value + adjustment.page_size)
             adjustment.value = y2 - adjustment.page_size;
     }
-
     _activateResult(result) {
         const { provider, meta } = result;
         const terms = this._terms;
@@ -608,7 +590,6 @@ export class Launcher {
             SystemActions.getDefault().activateAction(meta.id);
         }
     }
-
     _activatePin(pin) {
         this.close();
         if (pin.provider === 'applications') {
@@ -624,7 +605,6 @@ export class Launcher {
         else
             this._logger.log(`[Liquid Glass] No search provider ${pin.provider} for pinned ${pin.id}`);
     }
-
     _cancelSearch() {
         if (this._searchId)
             GLib.Source.remove(this._searchId);
@@ -635,7 +615,6 @@ export class Launcher {
         this._cancellable?.cancel();
         this._cancellable = null;
     }
-
     _queueSearch() {
         this._cancelSearch();
         this._searchId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, SEARCH_DELAY_MS, () => {
@@ -644,12 +623,10 @@ export class Launcher {
             return GLib.SOURCE_REMOVE;
         });
     }
-
     // The overview's providers, applications first.
     _providers() {
         return Main.overview.searchController._searchResults._providers;
     }
-
     // The previous results stay up until every provider has answered, or SETTLE_MS have passed, so that the glass
     // does not shrink and grow back on each keystroke. Answers after the deadline are shown as they come.
     _search() {
@@ -676,7 +653,6 @@ export class Launcher {
         });
         providers.forEach((provider, order) => this._ask(provider, order, cancellable));
     }
-
     async _ask(provider, order, cancellable) {
         const terms = this._terms;
         let metas = [];
@@ -704,26 +680,24 @@ export class Launcher {
         if (this._waiting === 0 || !this._settleId)
             this._commit();
     }
-
     _isInstalled(softwareId) {
         const desktopId = softwareDesktopId(softwareId);
         return !!desktopId && !!Shell.AppSystem.get_default().lookup_app(desktopId);
     }
-
     // The calculation, first of all results, with the value as its name.
     _calculation(text, value) {
         const formatted = formatNumber(value);
-        return { provider: null, order: -1, meta: {
+        return {
+            provider: null, order: -1, meta: {
                 id: 'liquid-glass-calculation', name: formatted, value: formatted,
                 description: `${text.replace(/=\s*$/, '').trim()} = ${formatted} · Enter copies the result`,
                 createIcon: (size) => new St.Icon({ icon_name: 'accessories-calculator-symbolic', icon_size: size }),
-            } };
+            }
+        };
     }
-
     _isPinned(result) {
         return !!result.provider && this._pins.has(result.provider.id, result.meta.id);
     }
-
     _commit() {
         if (this._settleId)
             GLib.Source.remove(this._settleId);
@@ -734,7 +708,6 @@ export class Launcher {
         if (this._view === 'search' && !this._switch)
             this._showResults();
     }
-
     _showResults() {
         const list = this._list;
         if (!list)
@@ -756,7 +729,6 @@ export class Launcher {
         this._text.invalidate();
         this._colorText();
     }
-
     _resultIcon(result, size) {
         // A remote provider's result may come without an icon; its application's icon stands in.
         const gicon = result.provider?.appInfo?.get_icon();
@@ -765,23 +737,25 @@ export class Launcher {
             this._icons.styleLauncherIcon(icon, result.meta.id, this._panel);
         return icon;
     }
-
     // What a result is kept as when pinned, or null when it cannot be.
     _pinOf(result, icon) {
         const { provider, meta } = result;
         if (!provider || UNPINNABLE.has(provider.id))
             return null;
         const gicon = (icon instanceof St.Icon ? icon.gicon : null) ?? provider.appInfo?.get_icon() ?? null;
-        return { provider: provider.id, id: meta.id, name: meta.name ?? '', description: meta.description ?? '',
-            icon: gicon?.to_string() ?? '' };
+        return {
+            provider: provider.id, id: meta.id, name: meta.name ?? '', description: meta.description ?? '',
+            icon: gicon?.to_string() ?? ''
+        };
     }
-
     // The pin to the left of a row or in a tile's corner: an outline while not pinned, shown on hover, and filled
     // while pinned, shown all the time. A click on it flips it; a click on the rest of the owner activates that.
     _pinToggle(owner, pin, activate, onChange) {
         const icon = new St.Icon({ icon_size: PIN_ICON_SIZE });
-        const toggle = new St.Bin({ style_class: 'lg-launcher-pin', reactive: true, track_hover: true, child: icon,
-            y_align: Clutter.ActorAlign.CENTER });
+        const toggle = new St.Bin({
+            style_class: 'lg-launcher-pin', reactive: true, track_hover: true, child: icon,
+            y_align: Clutter.ActorAlign.CENTER
+        });
         const sync = () => {
             const pinned = this._pins.has(pin.provider, pin.id);
             icon.gicon = Gio.FileIcon.new(Gio.File.new_for_path(`${this._path}/media/${pinned ? 'pinned' : 'pin'}-symbolic.svg`));
@@ -805,7 +779,6 @@ export class Launcher {
         sync();
         return toggle;
     }
-
     _row(icon, title, detail, pin, activate, onPinChange, badge = '') {
         const row = new St.Button({ style_class: 'lg-launcher-result', can_focus: false, x_expand: true });
         const box = new St.BoxLayout({ style_class: 'lg-launcher-result-box', x_expand: true });
@@ -834,7 +807,6 @@ export class Launcher {
         row.set_child(box);
         return row;
     }
-
     _pinIcon(pin, size) {
         if (pin.provider === 'applications' && pin.id.endsWith('.desktop')) {
             const app = Shell.AppSystem.get_default().lookup_app(pin.id);
@@ -854,15 +826,16 @@ export class Launcher {
         }
         return new St.Icon({ gicon: gicon ?? Gio.ThemedIcon.new('text-x-generic-symbolic'), icon_size: size });
     }
-
     // The pinned page: a back button, the applications in a grid of square tiles, and the rest as a list.
     _showPinned() {
         const view = this._pinnedBox;
         view.get_child()?.destroy();
         const page = new St.BoxLayout({ style_class: 'lg-launcher-page', x_expand: true, ...verticalBoxParams() });
         const header = new St.BoxLayout({ style_class: 'lg-launcher-header' });
-        const back = new St.Button({ style_class: 'lg-launcher-back', can_focus: false, accessible_name: 'Back to the search',
-            child: new St.Icon({ icon_name: 'go-previous-symbolic', icon_size: PIN_ICON_SIZE }) });
+        const back = new St.Button({
+            style_class: 'lg-launcher-back', can_focus: false, accessible_name: 'Back to the search',
+            child: new St.Icon({ icon_name: 'go-previous-symbolic', icon_size: PIN_ICON_SIZE })
+        });
         back.connect('clicked', () => this.showView('search'));
         header.add_child(back);
         header.add_child(new St.Label({ text: 'Pinned', style_class: 'lg-launcher-title', y_align: Clutter.ActorAlign.CENTER }));
@@ -895,13 +868,17 @@ export class Launcher {
                 }
                 const app = pin.id.endsWith('.desktop') ? Shell.AppSystem.get_default().lookup_app(pin.id) : null;
                 const button = new St.Button({ style_class: 'lg-launcher-tile', can_focus: false, width: tile });
-                const content = new St.BoxLayout({ style_class: 'lg-launcher-tile-box', x_align: Clutter.ActorAlign.CENTER,
-                    y_align: Clutter.ActorAlign.CENTER, x_expand: true, y_expand: true, ...verticalBoxParams() });
+                const content = new St.BoxLayout({
+                    style_class: 'lg-launcher-tile-box', x_align: Clutter.ActorAlign.CENTER,
+                    y_align: Clutter.ActorAlign.CENTER, x_expand: true, y_expand: true, ...verticalBoxParams()
+                });
                 const icon = this._pinIcon(pin, iconSize);
                 icon.x_align = Clutter.ActorAlign.CENTER;
                 content.add_child(icon);
-                const name = new St.Label({ text: app?.get_name() ?? pin.name, style_class: 'lg-launcher-tile-name',
-                    x_align: Clutter.ActorAlign.CENTER });
+                const name = new St.Label({
+                    text: app?.get_name() ?? pin.name, style_class: 'lg-launcher-tile-name',
+                    x_align: Clutter.ActorAlign.CENTER
+                });
                 name.clutter_text.ellipsize = Pango.EllipsizeMode.END;
                 content.add_child(name);
                 const toggle = this._pinToggle(button, pin, () => this._activatePin(pin), refresh);
@@ -933,16 +910,17 @@ export class Launcher {
             page.add_child(list);
         }
         if (!pins.length) {
-            page.add_child(new St.Label({ text: 'Nothing pinned yet. Point at a search result and click the pin on its left.',
-                style_class: 'lg-launcher-empty', x_align: Clutter.ActorAlign.CENTER, y_align: Clutter.ActorAlign.CENTER, y_expand: true }));
+            page.add_child(new St.Label({
+                text: 'Nothing pinned yet. Point at a search result and click the pin on its left.',
+                style_class: 'lg-launcher-empty', x_align: Clutter.ActorAlign.CENTER, y_align: Clutter.ActorAlign.CENTER, y_expand: true
+            }));
         }
         view.set_child(page);
         this._select(Math.min(this._selected, Math.max(this._items.length - 1, 0)));
         this._text.invalidate();
         this._colorText();
     }
-
-    // Chooses the text colour for where the panel is about to be, from its size with the rows it has now, before
+    // Chooses the text color for where the panel is about to be, from its size with the rows it has now, before
     // the next layout gives it that size.
     _colorText() {
         const root = this._root;
@@ -956,7 +934,6 @@ export class Launcher {
         this._coloredFor = key;
         this._text.colorFor(rect);
     }
-
     cleanup() {
         this.close();
         if (this._keybinding)
@@ -967,11 +944,9 @@ export class Launcher {
         this._settingsIds = [];
         Launcher.instance = null;
     }
-
     get _frameSlot() {
         return { get: () => this._frameSyncId, set: (id) => { this._frameSyncId = id; } };
     }
-
     get _frameSignalSlot() {
         return { get: () => this._frameSignalId, set: (id) => { this._frameSignalId = id; } };
     }

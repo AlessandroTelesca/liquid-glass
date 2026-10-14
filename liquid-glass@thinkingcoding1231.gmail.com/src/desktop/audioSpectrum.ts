@@ -62,8 +62,8 @@ export class AudioSpectrum {
       const first = Math.floor(lo / width);
       return [first, Math.max(Math.ceil(hi / width), first + 1)];
     });
-    const centre = ([lo, hi]: [number, number]) => Math.sqrt(lo * hi);
-    this._tilt = RANGES.map(r => TILT_DB_PER_OCTAVE * Math.log2(centre(r) / centre(RANGES[0])));
+    const center = ([lo, hi]: [number, number]) => Math.sqrt(lo * hi);
+    this._tilt = RANGES.map(r => TILT_DB_PER_OCTAVE * Math.log2(center(r) / center(RANGES[0])));
   }
 
   get listening(): boolean {

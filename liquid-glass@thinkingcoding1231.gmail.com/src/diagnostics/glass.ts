@@ -249,7 +249,7 @@ function createDebugApi(): object {
     textColorMode: (mode: string) => {
       const m: AdaptiveColorMode = mode === 'rgb-lerp' ? 'rgb-lerp' : 'cross-fade';
       setAdaptiveColorMode(m);
-      return report(`adaptive text colour mode = ${m}`);
+      return report(`adaptive text color mode = ${m}`);
     },
     textColorModeName: () => getAdaptiveColorMode(),
 

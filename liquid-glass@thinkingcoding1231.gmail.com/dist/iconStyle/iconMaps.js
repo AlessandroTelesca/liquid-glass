@@ -11,7 +11,6 @@ const MAP_VERSION = 10;
 const MAX_WORKERS = 4;
 // Icons asked for one after another (an app grid page, a folder) make one run of work, not one each.
 const IDLE_DELAY_MS = 1500;
-
 function loadFile(file, cancellable) {
     return new Promise((resolve, reject) => {
         file.load_contents_async(cancellable, (_f, res) => {
@@ -24,7 +23,6 @@ function loadFile(file, cancellable) {
         });
     });
 }
-
 function modified(file, cancellable) {
     return new Promise((resolve, reject) => {
         file.query_info_async('time::modified', Gio.FileQueryInfoFlags.NONE, GLib.PRIORITY_DEFAULT, cancellable, (_f, res) => {
@@ -37,7 +35,6 @@ function modified(file, cancellable) {
         });
     });
 }
-
 function exists(file, cancellable) {
     return new Promise((resolve, reject) => {
         file.query_info_async('standard::type', Gio.FileQueryInfoFlags.NONE, GLib.PRIORITY_DEFAULT, cancellable, (_f, res) => {
@@ -54,11 +51,9 @@ function exists(file, cancellable) {
         });
     });
 }
-
 function isCancelled(e) {
     return e instanceof GLib.Error && e.matches(Gio.IOErrorEnum, Gio.IOErrorEnum.CANCELLED);
 }
-
 export class IconMaps {
     _logger;
     _onBusy;
@@ -73,7 +68,6 @@ export class IconMaps {
     _prepareSerial = 0;
     _cancellable = new Gio.Cancellable();
     _dir = `${GLib.get_user_cache_dir()}/liquid-glass/icon-maps`;
-
     /** @param _onBusy Called when maps start being made, and once they all are. */
     constructor(extensionPath, _logger, _onBusy) {
         this._logger = _logger;
@@ -81,7 +75,6 @@ export class IconMaps {
         const count = Math.max(1, Math.min(MAX_WORKERS, GLib.get_num_processors() - 1));
         this._workers = Array.from({ length: count }, () => new WorkerProcess(`${extensionPath}/dist/iconStyle/iconWorker.js`, 'icon worker', _logger));
     }
-
     /** The map of the icon in `path`. Rejects when it cannot be made. */
     get(path) {
         let map = this._maps.get(path);
@@ -93,7 +86,6 @@ export class IconMaps {
         }
         return map;
     }
-
     /**
      * Makes the maps of the icons in `paths` that are not in the cache yet, without loading them, one per worker at
      * a time so that icons asked for meanwhile wait little. A later call takes the place of this one.
@@ -116,7 +108,6 @@ export class IconMaps {
         };
         this._workers.forEach(() => next());
     }
-
     // The cache file of the icon in `path`, made first if it is not there.
     async _cached(path) {
         const time = await modified(Gio.File.new_for_path(path), this._cancellable);
@@ -132,7 +123,6 @@ export class IconMaps {
         await making;
         return cache;
     }
-
     async _make(path, cache) {
         if (this._idleId)
             GLib.Source.remove(this._idleId);
@@ -161,7 +151,6 @@ export class IconMaps {
             }
         }
     }
-
     async _load(path) {
         const cache = await this._cached(path);
         const bytes = await loadFile(cache, this._cancellable);
@@ -171,7 +160,6 @@ export class IconMaps {
         return { map: iconStyleTexture(bytes.subarray(0, length)), tone: iconStyleTexture(bytes.subarray(length, length * 2)),
             lens: iconStyleTexture(bytes.subarray(length * 2), LENS_SIZE, LENS_SIZE * 2) };
     }
-
     destroy() {
         this._cancellable.cancel();
         if (this._idleId)

@@ -66,7 +66,7 @@ function _recordSubmenuNeighbour(n: Clutter.Actor, root: Clutter.Actor, gap: Sub
   if (!origin || Number.isNaN(nodeW) || Number.isNaN(nodeH) || nodeH <= 5 || nodeW <= 5) return false;
   const nodeY = origin[1];
 
-  // The lowest item above the submenu's centre and the highest one below it.
+  // The lowest item above the submenu's center and the highest one below it.
   if (nodeY + (nodeH / 2) < gap.subCenterY) {
     if (nodeY + nodeH <= gap.subCenterY && nodeY + nodeH > gap.aboveMaxY) gap.aboveMaxY = nodeY + nodeH;
   } else if (nodeY >= gap.subCenterY && nodeY < gap.belowMinY) {
@@ -153,7 +153,7 @@ export class QuickSettingsManager {
   private _applyingForeground = false;
   // Incremented when sampling stops, so a late result is dropped.
   private _adaptiveGeneration = 0;
-  // Set on open until the first sample has coloured the text; see
+  // Set on open until the first sample has colored the text; see
   // _startAdaptiveColorSampling().
   private _awaitingOpenColors = false;
   private _openSampleId = 0;
@@ -185,8 +185,8 @@ export class QuickSettingsManager {
   // quick-settings-tint-color as normalized [r, g, b].
   private _tintColorArray: [number, number, number] = [1.0, 1.0, 1.0];
 
-  // Toggle mode: how strongly each toggle's own colour is applied ("Button
-  // base colour", quick-settings-toggle-tint-strength), independently of the
+  // Toggle mode: how strongly each toggle's own color is applied ("Button
+  // base color", quick-settings-toggle-tint-strength), independently of the
   // custom tint strength.
   private _toggleBaseStrength: number = 0.5;
   private _toggleCornerRadius: number = 18.0;
@@ -447,7 +447,7 @@ export class QuickSettingsManager {
 
     const glass = this._createGlass(false);
 
-    // The menu scales from its top centre; the glass follows it by geometry.
+    // The menu scales from its top center; the glass follows it by geometry.
     this.animActor.set_pivot_point(0.5, 0.0);
 
     let menuRoot: Clutter.Actor = this.menu.actor;
@@ -498,7 +498,7 @@ export class QuickSettingsManager {
         this._stableBaseW = undefined;
         this._stableBaseH = undefined;
         startFrameSync();
-        // The first colours of an open are applied without a tween.
+        // The first colors of an open are applied without a tween.
         this._startAdaptiveColorSampling(true);
         this._startButtonAlphaSampling();
         this._startAnimation(1);
@@ -796,8 +796,8 @@ export class QuickSettingsManager {
       let regionH = h + (this._glassExpand * 2) + (SHADER_PADDING * 2);
 
       let entry = this._toggleStyles.colorFor(toggle);
-      // The toggle's own colour is the region's base colour, a layer separate
-      // from the custom tint. A toggle whose colour could not be sampled gets
+      // The toggle's own color is the region's base color, a layer separate
+      // from the custom tint. A toggle whose color could not be sampled gets
       // strength 0.
       let hasBase = !!(entry && entry.baseAlpha > 0.02);
       let base = hasBase ? entry!.baseColor : this._tintColorArray;
@@ -939,7 +939,7 @@ export class QuickSettingsManager {
 
   private _resolvePanelOrigin(w: number): [number, number] {
     return resolveGlassOrigin(this.animActor, this as any, () => {
-      // Top centre of the primary monitor.
+      // Top center of the primary monitor.
       const monitor = Main.layoutManager.primaryMonitor;
       if (!monitor) return [0, 0];
       return [(monitor.width / 2) - (w / 2), (Main.panel.height || 27) + (this._menuYoffset ?? 0)];
@@ -1039,7 +1039,7 @@ export class QuickSettingsManager {
   }
 
   // Text sitting on an opaque backdrop of its own (a row's highlight, an
-  // expanded section) takes its colour from that backdrop instead of the
+  // expanded section) takes its color from that backdrop instead of the
   // sample; see _watchBackdrop().
   _applyAdaptiveColorMap(colorMap: Map<Clutter.Actor, string>, skipAnimations = false) {
     if (!colorMap || colorMap.size === 0) return;
@@ -1122,7 +1122,7 @@ export class QuickSettingsManager {
   /**
    * @param skipAnimations Set on open: the first sample is taken before the
    *   first frame, before the glass is drawn, from the bare backdrop where the
-   *   panel will be, and its colours are applied without a tween and kept
+   *   panel will be, and its colors are applied without a tween and kept
    *   while the open animation runs. The last open's decision is forgotten.
    */
   _startAdaptiveColorSampling(skipAnimations = false) {
@@ -1210,7 +1210,7 @@ export class QuickSettingsManager {
     let targetAlpha = isInsensitive ? 0.5 : 1.0;
     let startAlpha = startColor.alpha / 255.0;
 
-    // Replaces only the colour rules, keeping whatever else the button alpha
+    // Replaces only the color rules, keeping whatever else the button alpha
     // dimming has put in the inline style.
     const apply = (r: number, g: number, b: number, a: number) => {
       const rgba = `rgba(${r}, ${g}, ${b}, ${a.toFixed(3)})`;
@@ -1222,7 +1222,7 @@ export class QuickSettingsManager {
       this._applyingForeground = false;
     };
 
-    // An existing tween is not cancelled: add() restarts from the colour it
+    // An existing tween is not cancelled: add() restarts from the color it
     // last applied.
     if (skipAnimations) {
       adaptiveColorTweener.cancel(actor);
@@ -1278,7 +1278,7 @@ export class QuickSettingsManager {
     button.ensure_style();
     const bgColor = button.get_theme_node().get_background_color();
 
-    // A toggle whose child button is coloured (checked) hides its own
+    // A toggle whose child button is colored (checked) hides its own
     // background, which would otherwise darken the child's.
     if (this._hasColoredToggleChild(button)) {
       button.set_style(origStyle
@@ -1296,7 +1296,7 @@ export class QuickSettingsManager {
       this._updateSingleButtonAlpha(parent as CustomBannerActor, targetAlpha);
   }
 
-  // Keeps the adaptive text colour rules while the background is re-applied.
+  // Keeps the adaptive text color rules while the background is re-applied.
   _updateSingleButtonAlpha(button: CustomBannerActor, targetAlpha: number) {
     if (!button || button._isUpdatingAlpha) return;
     button._isUpdatingAlpha = true;
@@ -1432,7 +1432,7 @@ export class QuickSettingsManager {
     }
   }
 
-  // Centres an open submenu horizontally in the menu and vertically in the
+  // Centers an open submenu horizontally in the menu and vertically in the
   // gap between the items above and below it. Everything is measured as laid
   // out in the menu's BoxPointer, which holds both the panel and the
   // submenus: the panel's scale while it opens would skew the result, and so
