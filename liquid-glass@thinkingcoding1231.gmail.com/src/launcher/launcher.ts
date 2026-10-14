@@ -143,12 +143,12 @@ export class Launcher {
   private _selected = 0;
   private _terms: string[] = [];
   private _text: AdaptiveTextColor;
-  // The panel's top and height its text colour was last chosen for.
+  // The panel's top and height its text color was last chosen for.
   private _coloredFor = '';
 
   constructor(private _path: string, private _settings: Gio.Settings, private _logger: Logger, private _icons: IconStyler) {
-    // One colour for the field and the results, set on the panel. Rows that come in take it at once, and the
-    // colour for the panel's new size is chosen as they come, while the glass is still growing to it.
+    // One color for the field and the results, set on the panel. Rows that come in take it at once, and the
+    // color for the panel's new size is chosen as they come, while the glass is still growing to it.
     this._text = new AdaptiveTextColor(() => (this._panel ? [this._panel] : []),
       () => (this._glass ? [this._glass] : []), _logger, 'launcher',
       { ownColor: true, held: () => this._shapeRemaining(GLib.get_monotonic_time()) > 0 });
@@ -185,8 +185,10 @@ export class Launcher {
     const monitor = Main.layoutManager.primaryMonitor;
     if (!monitor) return;
 
-    const root = new St.Widget({ name: 'liquid-glass-launcher', reactive: true,
-      x: monitor.x, y: monitor.y, width: monitor.width, height: monitor.height, opacity: 0 });
+    const root = new St.Widget({
+      name: 'liquid-glass-launcher', reactive: true,
+      x: monitor.x, y: monitor.y, width: monitor.width, height: monitor.height, opacity: 0
+    });
 
     const glass = new BackdropGlass({
       extensionPath: this._path, settings: this._settings, logger: this._logger, owner: 'launcher',
@@ -197,8 +199,10 @@ export class Launcher {
     root.add_child(glass);
 
     const width = this._panelWidth(false, monitor.width);
-    const panel = new St.BoxLayout({ style_class: 'liquid-glass-launcher', reactive: true, can_focus: true, width,
-      x: Math.round((monitor.width - width) / 2), y: this._panelTop(monitor.height), ...verticalBoxParams() } as any);
+    const panel = new St.BoxLayout({
+      style_class: 'liquid-glass-launcher', reactive: true, can_focus: true, width,
+      x: Math.round((monitor.width - width) / 2), y: this._panelTop(monitor.height), ...verticalBoxParams()
+    } as any);
     // Keys on the pinned page, where the panel has the focus.
     panel.connect('key-press-event', (_actor: Clutter.Actor, event: Clutter.Event) => this._onPinnedKey(event));
     // A click outside the field closes it. Presses inside must not be stopped: from GNOME 49 a button clicks
@@ -219,23 +223,29 @@ export class Launcher {
       ticker.set_duration(TICK_MS);
       ticker.start();
     });
-    const entry = new St.Entry({ style_class: 'lg-launcher-entry', hint_text: 'Search', can_focus: true, x_expand: true,
-      primary_icon: new St.Icon({ icon_name: 'edit-find-symbolic', style_class: 'lg-launcher-entry-icon' }) });
-    // The hint takes the panel's colour too, dimmed the way the theme dims it.
+    const entry = new St.Entry({
+      style_class: 'lg-launcher-entry', hint_text: 'Search', can_focus: true, x_expand: true,
+      primary_icon: new St.Icon({ icon_name: 'edit-find-symbolic', style_class: 'lg-launcher-entry-icon' })
+    });
+    // The hint takes the panel's color too, dimmed the way the theme dims it.
     entry.hint_actor!.opacity = HINT_OPACITY;
     const list = new St.BoxLayout({ style_class: 'lg-launcher-list', x_expand: true, ...verticalBoxParams() } as any);
     // Hidden while empty, so the panel's spacing does not add room below the field. Its height is limited in
     // _limitResults(), as St.BoxLayout ignores max-height.
-    const resultsBox = new St.ScrollView({ style_class: 'lg-launcher-results', x_expand: true, visible: false,
-      hscrollbar_policy: St.PolicyType.NEVER, vscrollbar_policy: St.PolicyType.AUTOMATIC, overlay_scrollbars: true });
+    const resultsBox = new St.ScrollView({
+      style_class: 'lg-launcher-results', x_expand: true, visible: false,
+      hscrollbar_policy: St.PolicyType.NEVER, vscrollbar_policy: St.PolicyType.AUTOMATIC, overlay_scrollbars: true
+    });
     resultsBox.set_child(list);
     const searchBox = new St.BoxLayout({ style_class: 'lg-launcher-page', x_expand: true, ...verticalBoxParams() } as any);
     searchBox.add_child(entry);
     searchBox.add_child(resultsBox);
-    const pinnedBox = new St.ScrollView({ style_class: 'lg-launcher-pinned', x_expand: true, visible: false,
+    const pinnedBox = new St.ScrollView({
+      style_class: 'lg-launcher-pinned', x_expand: true, visible: false,
       hscrollbar_policy: St.PolicyType.NEVER, vscrollbar_policy: St.PolicyType.AUTOMATIC, overlay_scrollbars: true,
       // On the scroll view, as St.BoxLayout ignores min-height; inside the panel's padding.
-      style: this._pinnedStyle(monitor.height) });
+      style: this._pinnedStyle(monitor.height)
+    });
     panel.add_child(searchBox);
     panel.add_child(pinnedBox);
     root.add_child(panel);
@@ -325,7 +335,7 @@ export class Launcher {
   /** The pinned items' page, or the search again. */
   showView(view: View): void {
     if (!this._root || view === (this._switch?.view ?? this._view)) return;
-    const morph = this._settings.get_string('launcher-pinned-transition') !== 'tween';
+    const morph = this._settings.get_string('launcher-pinned-transition') === 'morph';
     const sw = this._switch;
     if (sw) {
       // Turned back midway: the content goes again from as far as it had come, or comes back from as far as
@@ -691,11 +701,13 @@ export class Launcher {
   // The calculation, first of all results, with the value as its name.
   private _calculation(text: string, value: number): Result {
     const formatted = formatNumber(value);
-    return { provider: null, order: -1, meta: {
-      id: 'liquid-glass-calculation', name: formatted, value: formatted,
-      description: `${text.replace(/=\s*$/, '').trim()} = ${formatted} · Enter copies the result`,
-      createIcon: (size: number) => new St.Icon({ icon_name: 'accessories-calculator-symbolic', icon_size: size }),
-    } };
+    return {
+      provider: null, order: -1, meta: {
+        id: 'liquid-glass-calculation', name: formatted, value: formatted,
+        description: `${text.replace(/=\s*$/, '').trim()} = ${formatted} · Enter copies the result`,
+        createIcon: (size: number) => new St.Icon({ icon_name: 'accessories-calculator-symbolic', icon_size: size }),
+      }
+    };
   }
 
   private _isPinned(result: Result): boolean {
@@ -719,7 +731,7 @@ export class Launcher {
       const icon = this._resultIcon(result, ICON_SIZE);
       const activate = () => this._activateResult(result);
       const row = this._row(icon, result.meta.name ?? '', result.meta.description || result.provider?.appInfo?.get_name() || '',
-        this._pinOf(result, icon), activate, () => {}, result.install ? 'Install' : '');
+        this._pinOf(result, icon), activate, () => { }, result.install ? 'Install' : '');
       row.connect('notify::hover', () => { if (row.hover) this._select(i, false); });
       list.add_child(row);
       return { actor: row, activate };
@@ -745,16 +757,20 @@ export class Launcher {
     const { provider, meta } = result;
     if (!provider || UNPINNABLE.has(provider.id)) return null;
     const gicon = (icon instanceof St.Icon ? icon.gicon : null) ?? provider.appInfo?.get_icon() ?? null;
-    return { provider: provider.id, id: meta.id, name: meta.name ?? '', description: meta.description ?? '',
-      icon: gicon?.to_string() ?? '' };
+    return {
+      provider: provider.id, id: meta.id, name: meta.name ?? '', description: meta.description ?? '',
+      icon: gicon?.to_string() ?? ''
+    };
   }
 
   // The pin to the left of a row or in a tile's corner: an outline while not pinned, shown on hover, and filled
   // while pinned, shown all the time. A click on it flips it; a click on the rest of the owner activates that.
   private _pinToggle(owner: St.Button, pin: Pin, activate: () => void, onChange: () => void): St.Bin {
     const icon = new St.Icon({ icon_size: PIN_ICON_SIZE });
-    const toggle = new St.Bin({ style_class: 'lg-launcher-pin', reactive: true, track_hover: true, child: icon,
-      y_align: Clutter.ActorAlign.CENTER });
+    const toggle = new St.Bin({
+      style_class: 'lg-launcher-pin', reactive: true, track_hover: true, child: icon,
+      y_align: Clutter.ActorAlign.CENTER
+    });
     const sync = () => {
       const pinned = this._pins.has(pin.provider, pin.id);
       icon.gicon = Gio.FileIcon.new(Gio.File.new_for_path(`${this._path}/media/${pinned ? 'pinned' : 'pin'}-symbolic.svg`));
@@ -830,8 +846,10 @@ export class Launcher {
     (view.get_child() as unknown as Clutter.Actor | null)?.destroy();
     const page = new St.BoxLayout({ style_class: 'lg-launcher-page', x_expand: true, ...verticalBoxParams() } as any);
     const header = new St.BoxLayout({ style_class: 'lg-launcher-header' });
-    const back = new St.Button({ style_class: 'lg-launcher-back', can_focus: false, accessible_name: 'Back to the search',
-      child: new St.Icon({ icon_name: 'go-previous-symbolic', icon_size: PIN_ICON_SIZE }) });
+    const back = new St.Button({
+      style_class: 'lg-launcher-back', can_focus: false, accessible_name: 'Back to the search',
+      child: new St.Icon({ icon_name: 'go-previous-symbolic', icon_size: PIN_ICON_SIZE })
+    });
     back.connect('clicked', () => this.showView('search'));
     header.add_child(back);
     header.add_child(new St.Label({ text: 'Pinned', style_class: 'lg-launcher-title', y_align: Clutter.ActorAlign.CENTER }));
@@ -864,13 +882,17 @@ export class Launcher {
         }
         const app = pin.id.endsWith('.desktop') ? Shell.AppSystem.get_default().lookup_app(pin.id) : null;
         const button = new St.Button({ style_class: 'lg-launcher-tile', can_focus: false, width: tile });
-        const content = new St.BoxLayout({ style_class: 'lg-launcher-tile-box', x_align: Clutter.ActorAlign.CENTER,
-          y_align: Clutter.ActorAlign.CENTER, x_expand: true, y_expand: true, ...verticalBoxParams() } as any);
+        const content = new St.BoxLayout({
+          style_class: 'lg-launcher-tile-box', x_align: Clutter.ActorAlign.CENTER,
+          y_align: Clutter.ActorAlign.CENTER, x_expand: true, y_expand: true, ...verticalBoxParams()
+        } as any);
         const icon = this._pinIcon(pin, iconSize);
         icon.x_align = Clutter.ActorAlign.CENTER;
         content.add_child(icon);
-        const name = new St.Label({ text: app?.get_name() ?? pin.name, style_class: 'lg-launcher-tile-name',
-          x_align: Clutter.ActorAlign.CENTER });
+        const name = new St.Label({
+          text: app?.get_name() ?? pin.name, style_class: 'lg-launcher-tile-name',
+          x_align: Clutter.ActorAlign.CENTER
+        });
         name.clutter_text.ellipsize = Pango.EllipsizeMode.END;
         content.add_child(name);
         const toggle = this._pinToggle(button, pin, () => this._activatePin(pin), refresh);
@@ -901,8 +923,10 @@ export class Launcher {
       page.add_child(list);
     }
     if (!pins.length) {
-      page.add_child(new St.Label({ text: 'Nothing pinned yet. Point at a search result and click the pin on its left.',
-        style_class: 'lg-launcher-empty', x_align: Clutter.ActorAlign.CENTER, y_align: Clutter.ActorAlign.CENTER, y_expand: true }));
+      page.add_child(new St.Label({
+        text: 'Nothing pinned yet. Point at a search result and click the pin on its left.',
+        style_class: 'lg-launcher-empty', x_align: Clutter.ActorAlign.CENTER, y_align: Clutter.ActorAlign.CENTER, y_expand: true
+      }));
     }
     view.set_child(page);
     this._select(Math.min(this._selected, Math.max(this._items.length - 1, 0)));
@@ -910,7 +934,7 @@ export class Launcher {
     this._colorText();
   }
 
-  // Chooses the text colour for where the panel is about to be, from its size with the rows it has now, before
+  // Chooses the text color for where the panel is about to be, from its size with the rows it has now, before
   // the next layout gives it that size.
   private _colorText(): void {
     const root = this._root!;

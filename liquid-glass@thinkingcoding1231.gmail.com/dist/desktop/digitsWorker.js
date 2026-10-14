@@ -7,7 +7,6 @@ import GLib from 'gi://GLib';
 import { DigitsMaker } from './digits.js';
 import { serveRequests } from '../workers/workerProcess.js';
 const maker = new DigitsMaker();
-
 function save(bytes) {
     const [fd, path] = GLib.file_open_tmp('liquid-glass-digits-XXXXXX');
     GLib.close(fd);
@@ -24,7 +23,6 @@ function save(bytes) {
         });
     });
 }
-
 await serveRequests(async (request) => {
     const digits = await maker.make(request);
     const path = await save(digits.bytes);

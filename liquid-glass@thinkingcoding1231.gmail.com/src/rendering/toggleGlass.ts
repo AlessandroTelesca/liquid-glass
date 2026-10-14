@@ -73,7 +73,7 @@ export const BackdropReader = GObject.registerClass(paintNodeWithContext(
 
 export type BackdropReader = InstanceType<typeof BackdropReader>;
 
-// "Over" for premultiplied colours: the panel material (layer 1) over the
+// "Over" for premultiplied colors: the panel material (layer 1) over the
 // desktop (layer 0). Each layer has its own rect within the composed quad.
 const COMPOSE_DECL = 'uniform vec4 d_rect;\nuniform vec4 m_rect;\n';
 const COMPOSE_BODY =

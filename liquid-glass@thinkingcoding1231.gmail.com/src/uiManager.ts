@@ -120,14 +120,14 @@ export class UIManager {
   private _hoverSignals: Map<Clutter.Actor, number> = new Map();
   private _pendingBackdropRoots: Set<Clutter.Actor> = new Set();
   private _backdropColored: Set<Clutter.Actor> = new Set();
-  // The last sampled colour of each text, which a row's text returns to when
+  // The last sampled color of each text, which a row's text returns to when
   // its highlight goes.
   private _sampleColors: Map<Clutter.Actor, string> = new Map();
-  // Set on open until the first sample has coloured the text; see
+  // Set on open until the first sample has colored the text; see
   // _startAdaptiveColorSampling().
   private _awaitingOpenColors: boolean = false;
   private _openSampleId: number = 0;
-  // The colour the last merged sample gave every text, for text added since.
+  // The color the last merged sample gave every text, for text added since.
   private _sharedColor: string | null = null;
   private _newTextId: number = 0;
   private _newTextPending: boolean = false;
@@ -178,14 +178,14 @@ export class UIManager {
   private _menuRoot: Clutter.Actor | null = null;
 
   constructor(extensionPath: string, settings: Gio.Settings, logger: Logger,
-              panelButton: any = Main.panel.statusArea.dateMenu, ownsAccentCss: boolean = true,
-              private _enableKey: string = 'enable-menu-glass',
-              // Settings prefix: `menu` for the calendar, `panel-menu` for the
-              // other panel menus (see PanelMenuManager).
-              private _keyPrefix: string = 'menu',
-              // Names this glass in logs, dumps and actor names.
-              private _label: string = 'menu',
-              private _ownsSettingsNamespace: boolean = true) {
+    panelButton: any = Main.panel.statusArea.dateMenu, ownsAccentCss: boolean = true,
+    private _enableKey: string = 'enable-menu-glass',
+    // Settings prefix: `menu` for the calendar, `panel-menu` for the
+    // other panel menus (see PanelMenuManager).
+    private _keyPrefix: string = 'menu',
+    // Names this glass in logs, dumps and actor names.
+    private _label: string = 'menu',
+    private _ownsSettingsNamespace: boolean = true) {
     this.extensionPath = extensionPath;
     this._settings = settings;
     this._logger = logger;
@@ -256,7 +256,7 @@ export class UIManager {
     this._springScale.updateParams(this._springStiffness, this._springDamping, this._springMass);
 
     this._interfaceSettings = new Gio.Settings({ schema_id: 'org.gnome.desktop.interface' });
-    // The theme context picks up the new accent colour a moment later.
+    // The theme context picks up the new accent color a moment later.
     this._accentColorSignalId = this._interfaceSettings.connect('changed::accent-color', () => {
       if (this._accentColorTimeoutId)
         GLib.Source.remove(this._accentColorTimeoutId);
@@ -275,7 +275,7 @@ export class UIManager {
   }
 
   /**
-   * The accent colour and its foreground as [background, foreground] hex.
+   * The accent color and its foreground as [background, foreground] hex.
    * Asked of St rather than read off a themed dummy widget, because themes
    * such as MacTahoe only paint today's date in the accent while selected.
    * The dummy (marked :selected) remains the fallback when St has no accent
@@ -285,7 +285,7 @@ export class UIManager {
     const accent = accentColors();
     if (accent)
       return [rgbToHex(accent[0].red, accent[0].green, accent[0].blue),
-        rgbToHex(accent[1].red, accent[1].green, accent[1].blue)];
+      rgbToHex(accent[1].red, accent[1].green, accent[1].blue)];
 
     // The theme's selectors need the calendar ancestry.
     const parent = new UnpickableWidget({ style_class: 'calendar' });
@@ -745,7 +745,7 @@ export class UIManager {
     this.glass = glass;
     glass.set_size(1.0, 1.0);
 
-    // The menu scales from its top centre; the glass follows it by geometry.
+    // The menu scales from its top center; the glass follows it by geometry.
     this.animActor.set_pivot_point(0.5, 0.0);
     glass.set_pivot_point(0.0, 0.0);
 
@@ -971,7 +971,7 @@ export class UIManager {
     return this._findAllTextActors(this.menu?.actor);
   }
 
-  // The calendar menu's cards get their text colour from the stylesheet, not from what is behind the glass.
+  // The calendar menu's cards get their text color from the stylesheet, not from what is behind the glass.
   _isCard(actor: Clutter.Actor) {
     return CARD_CLASSES.some(name => this._hasStyleClass(actor, name)) &&
       !!this.animActor?.has_style_class_name('liquid-glass-menu-root');
@@ -1047,7 +1047,7 @@ export class UIManager {
   }
 
   // A hovered row restyles its parent (the highlight); watching that lets the
-  // text colours follow the highlight instead of the glass behind it.
+  // text colors follow the highlight instead of the glass behind it.
   _watchHoverFor(targets: Clutter.Actor[]): void {
     const restyled = new Set(targets);
     for (const target of targets) {
@@ -1102,8 +1102,8 @@ export class UIManager {
         this._setActorColor(actor as unknown as CustomBannerActor, color, true, batchStart);
         continue;
       }
-      // Off the highlight, the text goes straight back to the colour the rest
-      // of the menu has, so moving along the rows never leaves two colours.
+      // Off the highlight, the text goes straight back to the color the rest
+      // of the menu has, so moving along the rows never leaves two colors.
       const sampled = this._sampleColors.get(actor);
       if (this._backdropColored.delete(actor) && sampled)
         this._setActorColor(actor as unknown as CustomBannerActor, sampled, true, batchStart);
@@ -1131,7 +1131,7 @@ export class UIManager {
    * @param skipAnimations Set on open. The first sample is taken before the
    *   first frame, before the glass is drawn: the screen then shows the bare
    *   backdrop where the menu will be, and the glass's tone predicts the rest.
-   *   Its colours are applied without a tween and kept while the open
+   *   Its colors are applied without a tween and kept while the open
    *   animation runs, during which the glass is still growing over the
    *   backdrop. The last open's decision is forgotten: the menu may be over
    *   something else now.
@@ -1194,9 +1194,9 @@ export class UIManager {
   }
 
   // Some menus add their items as they open (Kiwi Menu rebuilds them every
-  // time), after the open sample. Their text takes the menu's colour before it
+  // time), after the open sample. Their text takes the menu's color before it
   // is drawn, rather than the theme's until the next sample; before the first
-  // sample has a colour, the items are what it waits for.
+  // sample has a color, the items are what it waits for.
   _queueNewTextColors(): void {
     if (!this._adaptiveConfig.enabled || !this.menu?.isOpen || this._newTextId !== 0) return;
     this._newTextId = global.compositor.get_laters().add(Meta.LaterType.BEFORE_REDRAW, () => {
@@ -1227,7 +1227,7 @@ export class UIManager {
 
     let targets = this._collectAdaptiveTextTargets();
     // A menu still empty when it opens is measured all the same, through its
-    // box, so the text it gets next can take the colour straight away.
+    // box, so the text it gets next can take the color straight away.
     const placeholder = targets.length === 0 && this._awaitingOpenColors && !this._adaptiveConfig.samplePerElement
       ? this.menu?.box ?? null : null;
     if (placeholder)
@@ -1282,7 +1282,7 @@ export class UIManager {
 
   _animateActorColor(actor: CustomBannerActor, targetHexColor: string, isInsensitive: boolean,
     durationMs = 380, skipAnimations = false, batchStart?: number) {
-    // An existing tween is not cancelled: add() restarts from the colour it
+    // An existing tween is not cancelled: add() restarts from the color it
     // last applied.
     const originalStyle = (this._styledActors.get(actor) || '').trim();
     const stylePrefix = originalStyle ? `${originalStyle.replace(/;$/, '')}; ` : '';
@@ -1459,16 +1459,18 @@ export class UIManager {
     if (!m.motion) {
       if (!menu) {
         // Not laid out yet: hold the glass on the button for a few frames.
-        this._placeMorph({ body: m.button, bodyRadius: m.button[3] / 2, contentScale: 1,
-          contentOpacity: 0, lens: 0, glassOpacity: 1, soften: 0, done: false });
+        this._placeMorph({
+          body: m.button, bodyRadius: m.button[3] / 2, contentScale: 1,
+          contentOpacity: 0, lens: 0, glassOpacity: 1, soften: 0, done: false
+        });
         if (++m.waitFrames < MORPH_WAIT_FRAMES) return true;
         this._morphTickId = 0;
         this._endMorph();
         return false;
       }
-      m.motion = new MenuMorphMotion(m.opening, m.button, menu, this._cornerRadius, m.from, m.velocities);
+      m.motion = new MenuMorphMotion(m.opening, m.button, menu, this._cornerRadius * this._menuScale);
     } else {
-      m.motion.retarget(m.button, menu, this._cornerRadius);
+      m.motion.retarget(m.button, menu, this._cornerRadius * this._menuScale);
     }
 
     const now = GLib.get_monotonic_time();

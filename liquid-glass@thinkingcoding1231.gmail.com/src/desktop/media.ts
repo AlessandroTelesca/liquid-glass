@@ -74,7 +74,7 @@ export class MediaWidget extends GlassCard {
     this._bars = new St.DrawingArea({ width: BAR_COUNT * BAR_WIDTH + (BAR_COUNT - 1) * BAR_GAP, height: BAR_MAX,
       y_align: Clutter.ActorAlign.CENTER });
     this._bars.connect('repaint', () => this._drawBars());
-    // The bars are drawn in the title's colour, which automatic contrast sets
+    // The bars are drawn in the title's color, which automatic contrast sets
     // on the labels only.
     this._title.connect('style-changed', () => this._bars.queue_repaint());
     row.add_child(this._art);
@@ -220,7 +220,7 @@ export class MediaWidget extends GlassCard {
     }, 16);
   }
 
-  // Rounded lines standing on the same baseline, in the title's colour.
+  // Rounded lines standing on the same baseline, in the title's color.
   private _drawBars(): void {
     const cr = this._bars.get_context();
     const [, height] = this._bars.get_surface_size();

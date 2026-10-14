@@ -1,6 +1,6 @@
 // Redraws an St.Icon from its style map with shaders/icon-style.frag: glass
 // plates under a symbol, or, while a clone draws it (the launch
-// animation), the icon's own picture in the style's colour. In the clear look
+// animation), the icon's own picture in the style's color. In the clear look
 // the plates are glass that refracts what is behind the icon (iconBackdrop.ts).
 import Clutter from 'gi://Clutter';
 import Cogl from 'gi://Cogl';
@@ -55,11 +55,11 @@ export interface IconStyleTextures {
 
 /** A style map's, its tones' or its lens map's pixels (RGBA) as a texture. */
 export function iconStyleTexture(data: Uint8Array, width = MAP_SIZE, height = MAP_SIZE): Cogl.Texture {
-  // Declared premultiplied so that Cogl keeps the channels as they are: they are distances, not a colour.
+  // Declared premultiplied so that Cogl keeps the channels as they are: they are distances, not a color.
   return Cogl.Texture2D.new_from_data(coglContext(), width, height, Cogl.PixelFormat.RGBA_8888_PRE, width * 4, data);
 }
 
-// Where an St.Icon draws its image: in a child, centred in its content box. While the image is still
+// Where an St.Icon draws its image: in a child, centerd in its content box. While the image is still
 // loading the child has no size, and the square in the middle of the content box stands for it.
 function imageRect(actor: Clutter.Actor): number[] {
   const image = actor.get_first_child()?.get_allocation_box();

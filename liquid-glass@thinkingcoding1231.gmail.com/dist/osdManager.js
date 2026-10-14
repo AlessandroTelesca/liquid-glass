@@ -13,7 +13,6 @@ import { setClipIfChanged } from './actors/writes.js';
 import { resolveCrossFade, adaptiveColorTweener, hexToColorArray, hexToRgb, rgbToHex } from './animation/colors.js';
 // Room around the glass rect for the shader's edge effects.
 const SHADER_PADDING = 20;
-
 export class OsdManager {
     extensionPath;
     _settings;
@@ -34,7 +33,6 @@ export class OsdManager {
     _adaptiveInFlight;
     _styledActors;
     _isFirstAdaptiveRun;
-
     constructor(extensionPath, settings, logger) {
         this.extensionPath = extensionPath;
         this._settings = settings;
@@ -59,7 +57,6 @@ export class OsdManager {
         this._osdYOffset = 0;
         this._isFirstAdaptiveRun = true;
     }
-
     setup() {
         if (!this._settings)
             return;
@@ -68,7 +65,6 @@ export class OsdManager {
             this._applyEffect();
         }
     }
-
     _bindSettings() {
         const connectSetting = (key, callback) => {
             let id = this._settings.connect(`changed::${key}`, callback.bind(this));
@@ -169,7 +165,6 @@ export class OsdManager {
             }
         });
     }
-
     _applyEffect() {
         if (this._isEffectActive)
             return;
@@ -214,7 +209,6 @@ export class OsdManager {
             }
         });
     }
-
     _setupOsdEffect(osdWindow) {
         // The OSD's 'osd-window' box, which draws its background.
         const targetBox = osdWindow._hbox ?? null;
@@ -283,7 +277,6 @@ export class OsdManager {
             this._destroyGlass(state);
         });
     }
-
     // Every frame, for one monitor's OSD.
     _syncGeometry(state) {
         const glass = state.glass;
@@ -362,7 +355,6 @@ export class OsdManager {
         // After the geometry setters, so the relays cover this frame's rect.
         glass.syncSources();
     }
-
     _osdVisualHeight(state, h) {
         // When the icon changes, the box's height briefly includes its bottom
         // margin; that jump is ignored.
@@ -377,7 +369,6 @@ export class OsdManager {
             state._stableBaseH = h;
         return visualH;
     }
-
     _removeEffect() {
         if (!this._isEffectActive)
             return;
@@ -394,12 +385,10 @@ export class OsdManager {
         }
         this._osdStates = [];
     }
-
     _cleanupOsdState(state) {
         this._restoreOsdTarget(state);
         this._destroyGlass(state);
     }
-
     _destroyGlass(state) {
         const glass = state.glass;
         if (!glass)
@@ -410,7 +399,6 @@ export class OsdManager {
         if (isActorValid(glass))
             glass.destroy();
     }
-
     _restoreOsdTarget(state) {
         if (state.osdWindow && state._destroyId) {
             state.osdWindow.disconnect(state._destroyId);
@@ -421,7 +409,6 @@ export class OsdManager {
             state.targetBox.translation_y = 0;
         }
     }
-
     cleanup() {
         this._stopFrameSync();
         for (let sigId of this._settingsSignals)
@@ -429,7 +416,6 @@ export class OsdManager {
         this._settingsSignals = [];
         this._removeEffect();
     }
-
     _collectAdaptiveTextTargets() {
         let targets = [];
         for (let state of this._osdStates) {
@@ -439,7 +425,6 @@ export class OsdManager {
         }
         return targets;
     }
-
     _findAllTextActors(actor, foundActors = []) {
         if (!actor)
             return foundActors;
@@ -455,7 +440,6 @@ export class OsdManager {
         }
         return foundActors;
     }
-
     _setActorColor(actor, color, skipAnimations = false, batchStart) {
         // Clutter.Text targets have no St style.
         if (!(actor instanceof St.Widget))
@@ -472,7 +456,6 @@ export class OsdManager {
         actor._currentTargetColor = color;
         this._animateActorColor(actor, color, 380, skipAnimations, batchStart);
     }
-
     _clearAdaptiveStyles() {
         for (const [actor, style] of this._styledActors.entries()) {
             adaptiveColorTweener.cancel(actor);
@@ -481,7 +464,6 @@ export class OsdManager {
         }
         this._styledActors.clear();
     }
-
     _applyAdaptiveColorMap(colorMap, skipAnimations = false) {
         if (!colorMap || colorMap.size === 0)
             return;
@@ -491,7 +473,6 @@ export class OsdManager {
             this._setActorColor(actor, color, skipAnimations, batchStart);
         }
     }
-
     _startAdaptiveColorSampling() {
         if (!this._adaptiveConfig.enabled)
             return;
@@ -505,14 +486,12 @@ export class OsdManager {
             return GLib.SOURCE_CONTINUE;
         });
     }
-
     _stopAdaptiveColorSampling() {
         if (this._adaptiveTimerId !== 0) {
             GLib.source_remove(this._adaptiveTimerId);
             this._adaptiveTimerId = 0;
         }
     }
-
     _updateAdaptiveTextColors() {
         if (!this._adaptiveConfig.enabled || this._adaptiveInFlight)
             return;
@@ -534,9 +513,8 @@ export class OsdManager {
             this._adaptiveInFlight = false;
         });
     }
-
     _animateActorColor(actor, targetHexColor, durationMs = 380, skipAnimations = false, batchStart) {
-        // An existing tween is not cancelled: add() restarts from the colour it
+        // An existing tween is not cancelled: add() restarts from the color it
         // last applied.
         const originalStyle = (this._styledActors.get(actor) || '').trim();
         const stylePrefix = originalStyle ? `${originalStyle.replace(/;$/, '')}; ` : '';
@@ -544,7 +522,7 @@ export class OsdManager {
         let startColor = themeNode.get_foreground_color();
         let startBgColor = themeNode.get_background_color();
         let targetRgb = hexToRgb(targetHexColor);
-        // The level bar's fill takes the text colour and its track a colour 70%
+        // The level bar's fill takes the text color and its track a color 70%
         // of the way to the other one.
         let isProgressBar = actor.has_style_class_name('level');
         let trackTargetRgb = targetRgb;
@@ -563,7 +541,7 @@ export class OsdManager {
         // The level bar keeps the plain lerp: it is a filled shape, not a glyph, so
         // it never becomes illegible against the background it sits on, and dipping
         // it through transparent would punch a hole in the OSD instead. Its track
-        // colour rides the same eased progress, which is why `apply` takes one.
+        // color rides the same eased progress, which is why `apply` takes one.
         const apply = (r, g, b, a, progress) => {
             if (isProgressBar) {
                 const e = progress < 0.5
@@ -592,19 +570,16 @@ export class OsdManager {
             crossFade: !isProgressBar && resolveCrossFade(startRgb, targetRgb),
             durationMs,
             apply,
-            // The bar writes a second colour the tuple does not describe.
+            // The bar writes a second color the tuple does not describe.
             coalesce: !isProgressBar,
         }, batchStart);
     }
-
     get _frameSlot() {
         return { get: () => this._frameSyncId, set: (id) => { this._frameSyncId = id; } };
     }
-
     get _frameSignalSlot() {
         return { get: () => this._frameSignalId, set: (id) => { this._frameSignalId = id; } };
     }
-
     _stopFrameSync() {
         stopStageLoop(this._frameSignalSlot, this._frameSlot);
     }

@@ -13,7 +13,7 @@ import { type HandleSide, type Rect, placeBeside, resizeRect } from './placement
 // Room between the item and its frame, px.
 const FRAME_GAP = 8;
 const HANDLE_SIZE = 14;
-// How far (px) from a handle's centre a press still takes it.
+// How far (px) from a handle's center a press still takes it.
 const HANDLE_REACH = 12;
 // The smallest the frame can be resized to, px.
 const MIN_SIZE = 48;
@@ -118,7 +118,7 @@ export class EditFrame {
     return { x: r.x - g, y: r.y - g, width: r.width + g * 2, height: r.height + g * 2 };
   }
 
-  private _handleCentre(f: Rect, hx: HandleSide, hy: HandleSide): [number, number] {
+  private _handleCenter(f: Rect, hx: HandleSide, hy: HandleSide): [number, number] {
     return [f.x + (hx + 1) / 2 * f.width, f.y + (hy + 1) / 2 * f.height];
   }
 
@@ -128,7 +128,7 @@ export class EditFrame {
     this._frame.set_size(Math.round(f.width), Math.round(f.height));
     const half = HANDLE_SIZE / 2;
     HANDLES.forEach(([hx, hy], i) => {
-      const [cx, cy] = this._handleCentre(f, hx, hy);
+      const [cx, cy] = this._handleCenter(f, hx, hy);
       this._handles[i]?.set_position(Math.round(cx - half), Math.round(cy - half));
     });
     const [, doneW] = this._done.get_preferred_width(-1);
@@ -191,7 +191,7 @@ export class EditFrame {
     cr.$dispose();
   }
 
-  // The work area of the monitor the frame's centre is on.
+  // The work area of the monitor the frame's center is on.
   private _workArea(f: Rect): Rect {
     const cx = f.x + f.width / 2, cy = f.y + f.height / 2;
     const layout = Main.layoutManager;
@@ -216,7 +216,7 @@ export class EditFrame {
   private _hit(x: number, y: number): [HandleSide, HandleSide] | null {
     const f = this._frameRect();
     for (let i = 0; i < this._handles.length; i++) {
-      const [cx, cy] = this._handleCentre(f, HANDLES[i][0], HANDLES[i][1]);
+      const [cx, cy] = this._handleCenter(f, HANDLES[i][0], HANDLES[i][1]);
       if (Math.abs(x - cx) <= HANDLE_REACH && Math.abs(y - cy) <= HANDLE_REACH)
         return [HANDLES[i][0], HANDLES[i][1]];
     }

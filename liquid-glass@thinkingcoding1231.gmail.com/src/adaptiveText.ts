@@ -13,7 +13,7 @@ import type { Logger } from './logger.js';
 const COLOR_TWEEN_MS = 380;
 
 export interface AdaptiveTextOptions {
-  // The roots take the colour themselves and their text inherits it, so that text added later shows in it at once.
+  // The roots take the color themselves and their text inherits it, so that text added later shows in it at once.
   ownColor?: boolean;
   // Measurements wait while this holds, for a surface whose glass is still changing size.
   held?: () => boolean;
@@ -21,7 +21,7 @@ export interface AdaptiveTextOptions {
 
 /**
  * Keeps the labels and icons under `roots` readable on their glass: every
- * `intervalMs` it measures what is behind them and colours them light or
+ * `intervalMs` it measures what is behind them and colors them light or
  * dark. For surfaces that stay on screen (the top bar, desktop widgets,
  * the launcher); a measurement is skipped while nothing behind them was
  * repainted.
@@ -34,7 +34,7 @@ export class AdaptiveTextColor {
   private _first = true;
   // colorFor() calls still measuring; the periodic measurement waits for them.
   private _pending = 0;
-  // Each coloured actor's own inline style, put back by clear().
+  // Each colored actor's own inline style, put back by clear().
   private _styled = new Map<St.Widget, { style: string, destroyId: number, color: string }>();
 
   constructor(private _roots: () => Clutter.Actor[], private _glasses: () => BackdropSource[],
@@ -70,7 +70,7 @@ export class AdaptiveTextColor {
     this._sampler.invalidate();
   }
 
-  // True while any of this surface's text actors are being recoloured. Layouts
+  // True while any of this surface's text actors are being recolored. Layouts
   // that derive geometry from those actors can hold their last stable bounds.
   isAnimating(): boolean {
     for (const actor of this._styled.keys()) {
@@ -98,12 +98,12 @@ export class AdaptiveTextColor {
         const batch = GLib.get_monotonic_time();
         for (const [actor, color] of colors) this._apply(actor, color, skip, batch);
       })
-      .catch(e => this._logger.error(`[Liquid Glass] ${this._label} text colour update failed: ${e}`))
+      .catch(e => this._logger.error(`[Liquid Glass] ${this._label} text color update failed: ${e}`))
       .finally(() => { this._inFlight = false; });
   }
 
   /**
-   * Colours the roots at once, without a tween, for what is behind `rect` (stage coordinates): for a surface with
+   * Colors the roots at once, without a tween, for what is behind `rect` (stage coordinates): for a surface with
    * ownColor about to take that size, whose new part has no glass under it yet. Does nothing unless started.
    */
   colorFor(rect: SampleRect): void {
@@ -115,7 +115,7 @@ export class AdaptiveTextColor {
         const batch = GLib.get_monotonic_time();
         for (const root of this._roots()) this._apply(root, color, true, batch);
       })
-      .catch(e => this._logger.error(`[Liquid Glass] ${this._label} text colour update failed: ${e}`))
+      .catch(e => this._logger.error(`[Liquid Glass] ${this._label} text color update failed: ${e}`))
       .finally(() => { this._pending--; });
   }
 
@@ -130,7 +130,7 @@ export class AdaptiveTextColor {
       });
       this._styled.set(actor, entry);
     }
-    // A style that went back to the actor's own was reset by someone else; the colour is put on again.
+    // A style that went back to the actor's own was reset by someone else; the color is put on again.
     const reset = entry.color !== '' && (actor.get_style() ?? '') === entry.style && !adaptiveColorTweener.isAnimating(actor);
     if (entry.color === color && !skip && !reset) return;
     entry.color = color;

@@ -1,10 +1,10 @@
 import GLib from 'gi://GLib';
 import Meta from 'gi://Meta';
 import { isActorValid } from '../actors/lifecycle.js';
-// The adaptive text colour flips between a light and a dark colour.
+// The adaptive text color flips between a light and a dark color.
 // Interpolating those in RGB passes through mid-grey, which is unreadable on
 // the very background that triggered the flip, so a real light/dark flip
-// cross-dissolves instead: fade the old colour out (easeIn), swap at the
+// cross-dissolves instead: fade the old color out (easeIn), swap at the
 // bottom of the dip, fade the new one in (easeOut). Alpha is scaled between
 // the two endpoint alphas, so an actor that turns insensitive mid-flip still
 // ends at its own alpha.
@@ -92,7 +92,7 @@ export function resolveCrossFade(start: RgbColor, target: RgbColor): boolean {
   return _adaptiveColorMode === 'cross-fade' && shouldCrossFadeColors(start, target);
 }
 
-// One frame-driven clock for every adaptive-colour tween. Per-actor GLib
+// One frame-driven clock for every adaptive-color tween. Per-actor GLib
 // timers flipped a row of labels out of step and beat against the frame rate;
 // stepping every actor from the same timestamp in one BEFORE_REDRAW pass keeps
 // them together and smooth. Actors queued in the same turn share a start time
@@ -105,7 +105,7 @@ interface ColorTweenEntry {
   crossFade: boolean;
   durationMs: number;
   startTime: number; // GLib monotonic microseconds
-  // `progress` is for the OSD level bar, whose track colour follows the same clock.
+  // `progress` is for the OSD level bar, whose track color follows the same clock.
   apply: (r: number, g: number, b: number, a: number, progress: number) => void;
   // False when `apply` writes more than (r,g,b,a) describes (the level bar's
   // track), so a repeated tuple must still be applied. Defaults to true.
@@ -119,7 +119,7 @@ class AdaptiveColorTweener {
 
   /**
    * @param batchStart monotonic timestamp shared by every actor updated in the
-   *   same turn. Callers pass one value for a whole colour map so the actors
+   *   same turn. Callers pass one value for a whole color map so the actors
    *   move in lockstep; omitted, the actor starts from now.
    */
   add(actor: any, entry: Omit<ColorTweenEntry, 'startTime' | 'last'>, batchStart?: number): void {

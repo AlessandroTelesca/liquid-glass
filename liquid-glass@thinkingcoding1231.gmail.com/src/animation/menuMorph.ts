@@ -5,7 +5,11 @@
 // and less; each time it is also given a push of its own, somewhere
 // downwards, so no two openings are quite the same. Closing, the menu shrinks
 // back into a drop that rises into the button, stretching into its capsule on
-// the way, and fades there. The springs follow liquid-dom's menu demo.
+// the way, and fades there. The springs follow liquid-dom (below) 's menu demo.
+//
+// Note: this implementation is inspired by and adapted from:
+// https://github.com/AndrewPrifer/liquid-dom
+// Big thanks to the original author (@AndrewPrifer) for the elegant solution.
 
 // [x, y, w, h]
 export type Rect = number[];
@@ -114,7 +118,7 @@ export interface MorphFrame {
   // The glass and its corner radius.
   body: Rect;
   bodyRadius: number;
-  // The menu's items: drawn around the body's centre at this scale and opacity.
+  // The menu's items: drawn around the body's center at this scale and opacity.
   contentScale: number;
   contentOpacity: number;
   // How deep in the glass the content looks, 0 (at the surface) to 1.
@@ -158,16 +162,20 @@ export class MenuMorphMotion {
     private _menuRadius: number, from: MorphFrame | null = null, velocities: number[] | null = null,
     random: () => number = Math.random) {
     const start: MorphFrame = from ?? (opening
-      ? { body: [..._buttonRect], bodyRadius: _buttonRect[3] / 2, contentScale: CONTENT_CLOSED_SCALE,
-        contentOpacity: 0, lens: 1, glassOpacity: 1, soften: 0, done: false }
-      : { body: [..._menu], bodyRadius: _menuRadius, contentScale: 1, contentOpacity: 1, lens: 0, glassOpacity: 1,
-        soften: 0, done: false });
+      ? {
+        body: [..._buttonRect], bodyRadius: _buttonRect[3] / 2, contentScale: CONTENT_CLOSED_SCALE,
+        contentOpacity: 0, lens: 1, glassOpacity: 1, soften: 0, done: false
+      }
+      : {
+        body: [..._menu], bodyRadius: _menuRadius, contentScale: 1, contentOpacity: 1, lens: 0, glassOpacity: 1,
+        soften: 0, done: false
+      });
     this._frame = start;
     this._capsuleS = opening && !from ? CAPSULE_S : 0;
 
     const [stiffness, damping] = opening ? OPEN_MOVE : CLOSE_MOVE;
     // The drop is thrown from where it fell to.
-    const [cx, y] = centre(start.body);
+    const [cx, y] = center(start.body);
     const cy = y + (this._capsuleS ? this._fall() : 0);
     this._x = new Spring(cx, stiffness, damping);
     this._y = new Spring(cy, stiffness, damping);
@@ -217,7 +225,7 @@ export class MenuMorphMotion {
   }
 
   private _aim(): void {
-    [this._x.target, this._y.target] = centre(this.opening ? this._menu : this._buttonRect);
+    [this._x.target, this._y.target] = center(this.opening ? this._menu : this._buttonRect);
     this._opacity.target = this.opening ? 1 : 0;
   }
 
@@ -247,8 +255,10 @@ export class MenuMorphMotion {
       const drop = this._drop();
       const w = lerp(bw, drop, k), h = lerp(bh, drop, k);
       const y = by + bh / 2 + this._fall() * t ** 1.5;
-      return { body: [bx + bw / 2 - w / 2, y - h / 2, w, h], bodyRadius: Math.min(w, h) / 2,
-        contentScale: CONTENT_CLOSED_SCALE, contentOpacity: 0, lens: 1, glassOpacity: 1, soften: 0, done: false };
+      return {
+        body: [bx + bw / 2 - w / 2, y - h / 2, w, h], bodyRadius: Math.min(w, h) / 2,
+        contentScale: CONTENT_CLOSED_SCALE, contentOpacity: 0, lens: 1, glassOpacity: 1, soften: 0, done: false
+      };
     }
     this._stepSprings(Math.min(dt, this._t - this._capsuleS));
     const t = this._t - this._capsuleS;
@@ -285,7 +295,7 @@ export class MenuMorphMotion {
     let body = [this._x.value - w / 2, this._y.value - h / 2, w, h];
     let bodyRadius = Math.min(radius, w / 2, h / 2);
 
-    const [hx, hy] = centre(this._buttonRect);
+    const [hx, hy] = center(this._buttonRect);
     const near = Math.hypot(this._x.value - hx, this._y.value - hy) <= this._buttonRect[3] * ARRIVE_HEIGHTS;
     if (this._arrivedAt < 0 && ((near && t >= CLOSE_SIZE_S) || t >= ARRIVE_MAX_S)) {
       this._arrivedAt = t;
@@ -333,6 +343,6 @@ function rectGap(a: Rect, b: Rect): number {
   return Math.hypot(dx, dy);
 }
 
-function centre(r: Rect): number[] {
+function center(r: Rect): number[] {
   return [r[0] + r[2] / 2, r[1] + r[3] / 2];
 }

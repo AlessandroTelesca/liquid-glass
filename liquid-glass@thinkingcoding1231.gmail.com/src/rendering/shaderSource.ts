@@ -44,7 +44,7 @@ export function splitShader(src: string, warn?: (message: string) => void): Shad
 
 /**
  * A linear-sampling Gaussian kernel for `sigma` (half-res texels) with
- * `fetchPairs` merged tap pairs: the centre stays a single sample, and each
+ * `fetchPairs` merged tap pairs: the center stays a single sample, and each
  * (i, i+1) pair becomes one fetch at the weighted mean offset. The shader's
  * structure depends only on fetchPairs, so a sigma change within it only
  * updates the kernel_scale uniform.

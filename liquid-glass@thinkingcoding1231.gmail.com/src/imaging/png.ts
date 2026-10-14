@@ -55,7 +55,7 @@ export function decodePng(png: Uint8Array): DecodedPng {
   }
   const channels = ({ 0: 1, 2: 3, 4: 2, 6: 4 } as Record<number, number>)[colorType];
   if (depth !== 8 || interlace !== 0 || !channels || !width || !height)
-    throw new Error(`unsupported PNG (depth ${depth}, colour type ${colorType}, interlace ${interlace})`);
+    throw new Error(`unsupported PNG (depth ${depth}, color type ${colorType}, interlace ${interlace})`);
 
   const joined = new Uint8Array(chunks.reduce((n, c) => n + c.length, 0));
   let offset = 0;

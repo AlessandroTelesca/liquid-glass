@@ -139,8 +139,6 @@
       <summary>Glass for additional top panel menus</summary>
       <description>Automatically apply glass to detected panel dropdowns. Calendar and Quick Settings have separate controls.</description>
     </key>
-    <!-- A shortcut that records the glass state while a problem is on screen,
-         without Looking Glass. -->
     <key name="enable-dump-shortcut" type="b">
       <default>false</default>
       <summary>Enable the diagnostic dump shortcut</summary>
@@ -166,8 +164,6 @@
       <summary>Detected optional panel menus</summary>
       <description>Written by the shell at runtime so the preferences window can offer a toggle only for menus that actually exist.</description>
     </key>
-    <!-- Appearance of the detected top bar menus, separate from the calendar
-         menu. The defaults match the menu-* keys. -->
     <key name="enable-panel-menu-animation" type="b">
       <default>true</default>
       <summary>Enable panel menu animation</summary>

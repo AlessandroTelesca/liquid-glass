@@ -1,5 +1,5 @@
 // Guides for an item being moved on the desktop: where it lines up with the
-// other items (the same edge, or the same centre line), with the middle of
+// other items (the same edge, or the same center line), with the middle of
 // the work area, and where it sits as far from one item as that item is from
 // the next. Near such a place the item is pulled onto it.
 

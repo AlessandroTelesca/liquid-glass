@@ -5,8 +5,8 @@ import type { Logger } from '../logger.js';
 import { QS_MENU_TOGGLE_CLASS } from '../shellVersion.js';
 
 // Quick Settings' toggle-button mode: every toggle pod gets its own piece of
-// glass. This finds the pods, samples each pod's own colour (it changes with
-// ON/OFF and hover) for the glass's base colour, and makes the pod's own
+// glass. This finds the pods, samples each pod's own color (it changes with
+// ON/OFF and hover) for the glass's base color, and makes the pod's own
 // backgrounds transparent so the glass shows through.
 
 const TRANSPARENT_OVERRIDE = 'background-color: transparent !important;';
@@ -15,10 +15,10 @@ type ToggleEntry = {
   destroyId: number;
   baseColor: [number, number, number];
   // How much real paint the sample found; near zero means the sample carries
-  // no colour and baseColor keeps its previous value.
+  // no color and baseColor keeps its previous value.
   baseAlpha: number;
   styledSubs: { actor: Clutter.Actor; origStyle: string }[];
-  // The pod's colour-relevant pseudo-classes as of the last sample; while
+  // The pod's color-relevant pseudo-classes as of the last sample; while
   // they are unchanged, re-sampling (which restyles the whole pod) is skipped.
   stateKey: string;
 };
@@ -49,21 +49,21 @@ export class ToggleStyles {
     return this._toggleRegions.get(actor);
   }
 
-  // Logs the sampled colours for the next few passes (with logging on).
+  // Logs the sampled colors for the next few passes (with logging on).
   resetDiagnostics(): void {
     this._debugToggleColorLogFrames = 15;
   }
 
-  // How often each pod's colour is re-read, i.e. how quickly the glass
+  // How often each pod's color is re-read, i.e. how quickly the glass
   // follows a toggle's ON/OFF and hover state. Pods whose state is unchanged
   // are skipped, so a steady tick is cheap.
   private static readonly TOGGLE_COLOR_SAMPLE_MS = 100;
 
   // Every Nth pass re-samples every pod anyway, to catch a theme change,
-  // which changes colours without changing any state.
+  // which changes colors without changing any state.
   private static readonly TOGGLE_COLOR_FULL_PASS_EVERY = 8;
 
-  // Pod -> its sampled colour and the actors whose backgrounds were made
+  // Pod -> its sampled color and the actors whose backgrounds were made
   // transparent, with their original inline styles.
   private _toggleRegions: Map<Clutter.Actor, ToggleEntry> = new Map();
 
@@ -140,7 +140,7 @@ export class ToggleStyles {
     return found;
   }
 
-  // The actor whose colour represents the pod: for a has-menu pod, its main
+  // The actor whose color represents the pod: for a has-menu pod, its main
   // `.quick-toggle` button, which may sit more than one level down.
   private _getPrimaryToggleButton(pod: Clutter.Actor): Clutter.Actor {
     if (pod instanceof St.Widget && pod.has_style_class_name(QS_MENU_TOGGLE_CLASS)) {
@@ -162,7 +162,7 @@ export class ToggleStyles {
     return pod;
   }
 
-  // Some themes put a toggle's ON/OFF colour on its `.quick-toggle-icon`.
+  // Some themes put a toggle's ON/OFF color on its `.quick-toggle-icon`.
   private _getToggleIconActors(root: Clutter.Actor): Clutter.Actor[] {
     const found: Clutter.Actor[] = [];
     const walk = (actor: Clutter.Actor) => {
@@ -176,7 +176,7 @@ export class ToggleStyles {
   }
 
   // The theme background as normalized {r, g, b, a}, falling back to the
-  // average of a background gradient when the flat colour is transparent.
+  // average of a background gradient when the flat color is transparent.
   private _readThemeBg(actor: Clutter.Actor | null): { r: number; g: number; b: number; a: number } | null {
     if (!(actor instanceof St.Widget)) return null;
     actor.ensure_style();
@@ -205,7 +205,7 @@ export class ToggleStyles {
   // What is actually visible at `actor`: its own background composited over
   // its ancestors' until opaque. A transparent background still reports RGB
   // (usually black) that the theme never paints; this replaces it with the
-  // colour really showing there. `a` is the accumulated coverage.
+  // color really showing there. `a` is the accumulated coverage.
   private _compositeOverAncestors(
     actor: Clutter.Actor | null,
     own: { r: number; g: number; b: number; a: number } | null
@@ -236,7 +236,7 @@ export class ToggleStyles {
     return { r: outR / outA, g: outG / outA, b: outB / outA, a: outA };
   }
 
-  // The pod's visible colour. Themes put a toggle's state colour in different
+  // The pod's visible color. Themes put a toggle's state color in different
   // places: Adwaita on the inner `.quick-toggle`, MacTahoe on the has-menu
   // wrapper (whose inner button is `background: none`) or only on the
   // `.quick-toggle-icon`. Every candidate is read, the most opaque wins
@@ -266,7 +266,7 @@ export class ToggleStyles {
       return this._compositeOverAncestors(bestActor, bestOwn);
     }
 
-    // Nothing in the pod paints; its colour is whatever shows through.
+    // Nothing in the pod paints; its color is whatever shows through.
     return this._compositeOverAncestors(pod, null);
   }
 
@@ -289,7 +289,7 @@ export class ToggleStyles {
   private _ensureEntry(pod: Clutter.Actor): ToggleEntry {
     let entry = this._toggleRegions.get(pod);
     if (entry) return entry;
-    // baseAlpha 0 until a real colour has been sampled.
+    // baseAlpha 0 until a real color has been sampled.
     entry = { destroyId: 0, baseColor: [1.0, 1.0, 1.0], baseAlpha: 0, styledSubs: [], stateKey: '' };
     this._toggleRegions.set(pod, entry);
     entry.destroyId = pod.connect('destroy', () => {
@@ -305,7 +305,7 @@ export class ToggleStyles {
 
   private _updateBaseColor(entry: ToggleEntry, pod: Clutter.Actor, primary: St.Widget) {
     const sampled = this._samplePodColor(pod, primary);
-    // A near-transparent sample says nothing about the colour.
+    // A near-transparent sample says nothing about the color.
     if (sampled.a > 0.02) {
       entry.baseColor = [sampled.r, sampled.g, sampled.b];
       entry.baseAlpha = sampled.a;
@@ -323,8 +323,8 @@ export class ToggleStyles {
     }
   }
 
-  // Re-samples each pod's colour: lifts the override from its sub-actors,
-  // reads the theme colour, and puts the override back.
+  // Re-samples each pod's color: lifts the override from its sub-actors,
+  // reads the theme color, and puts the override back.
   private _resampleToggleColors() {
     let forceFull = (this._resamplePassCount++ % ToggleStyles.TOGGLE_COLOR_FULL_PASS_EVERY) === 0;
     for (const [pod, entry] of this._toggleRegions.entries())

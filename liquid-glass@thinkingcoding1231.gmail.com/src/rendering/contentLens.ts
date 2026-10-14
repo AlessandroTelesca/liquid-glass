@@ -2,6 +2,11 @@
 // cut to its rounded outline and, when they are deep in it, refracted by its
 // rim the way the glass refracts what is behind it. At no depth it only cuts
 // round corners (the media card's cover art).
+//
+// Note: this implementation is inspired by and adapted from:
+// https://github.com/AndrewPrifer/liquid-dom
+// Big thanks to the original author (@AndrewPrifer) for the elegant solution.
+
 import Clutter from 'gi://Clutter';
 import Cogl from 'gi://Cogl';
 import GObject from 'gi://GObject';
@@ -39,9 +44,9 @@ vec2 slope = vec2(lensHeight(p + vec2(0.5, 0.0)) - lensHeight(p - vec2(0.5, 0.0)
                   lensHeight(p + vec2(0.0, 0.5)) - lensHeight(p - vec2(0.0, 0.5)));
 vec3 ray = refract(vec3(0.0, 0.0, -1.0), normalize(vec3(-slope, 1.0)), 1.0 / max(lens_ior, 1.001));
 vec2 shift = ray.xy / max(-ray.z, 0.15) * lens_depth;
-vec4 colour = texture2D(cogl_sampler0, clamp(uv + shift / lens_px, lens_box.xy, lens_box.zw));
+vec4 color = texture2D(cogl_sampler0, clamp(uv + shift / lens_px, lens_box.xy, lens_box.zw));
 float inside = 1.0 - smoothstep(-0.5, 0.5, lensBox(p));
-cogl_color_out = colour * (lens_opacity * inside);
+cogl_color_out = color * (lens_opacity * inside);
 `;
 
 // liquid-dom's showcase menu: content 80 px deep in glass of index 1.5 under a
@@ -71,8 +76,10 @@ export function rectInOffscreen(actor: Clutter.Actor, rect: number[]): { box: nu
 export const ContentLens = GObject.registerClass(
   class ContentLens extends Clutter.OffscreenEffect {
     declare private _pipeline: Cogl.Pipeline | null;
-    declare private _uniforms: { box: number[], px: number[], radius: number, band: number, depth: number,
-      ior: number };
+    declare private _uniforms: {
+      box: number[], px: number[], radius: number, band: number, depth: number,
+      ior: number
+    };
     // The glass in the actor's own px, and screen px per actor px.
     declare private _clip: number[];
     declare private _scale: number;

@@ -10,24 +10,24 @@ import { utilsLog } from './diagnostics/logging.js';
 import { createTarget } from './rendering/stageCopy.js';
 import { coglContext, paintStageToContent } from './shellVersion.js';
 
-// How much better the other colour has to score before the decision flips.
-// With a preferred colour set, flipping towards it is easy and away from it
+// How much better the other color has to score before the decision flips.
+// With a preferred color set, flipping towards it is easy and away from it
 // hard.
 const SWITCH_ADVANTAGE = 1.2;
 const SWITCH_ADVANTAGE_TOWARD_PREFERRED = 1.02;
 const SWITCH_ADVANTAGE_AGAINST_PREFERRED = 1.6;
-// Contrast ratios this close mean the background favours neither colour; a
-// preferred colour then applies outright (see decideTextColor()).
+// Contrast ratios this close mean the background favours neither color; a
+// preferred color then applies outright (see decideTextColor()).
 const AMBIGUOUS_RATIO = 1.15;
 // Measurements are ignored this long after a flip: the samples cover the text
-// itself, and the colour tween (about 380ms) would be measured as a change.
+// itself, and the color tween (about 380ms) would be measured as a change.
 const SWITCH_SETTLE_MS = 600;
 const MIN_READABLE_CONTRAST = 4.5;
 const BACKDROP_COVERS_GLASS_ALPHA = 190;
 const READABILITY_FLIP_COOLDOWN = 3;
 const BACKGROUND_REALLY_MOVED = 0.15;
 const BACKDROP_SEARCH_DEPTH = 8;
-// With preferredMinContrast set, the preferred colour comes back once it
+// With preferredMinContrast set, the preferred color comes back once it
 // reads this many times better than that.
 const PREFERRED_RETURN = 1.15;
 
@@ -38,14 +38,14 @@ export const AdaptiveContrastConfig = {
   sampleIntervalMs: 200,
   lightTextColor: '#f2f2f2',
   darkTextColor: '#1a1a1a',
-  // 'light'/'dark' name the text colour to favour; 'auto' favours neither.
+  // 'light'/'dark' name the text color to favour; 'auto' favours neither.
   preference: 'auto' as AdaptiveColorPreference,
-  // When above 0, the preferred colour is kept while its contrast ratio is
-  // at least this, not only when the background favours neither colour.
+  // When above 0, the preferred color is kept while its contrast ratio is
+  // at least this, not only when the background favours neither color.
   preferredMinContrast: 0,
 };
 
-/** Which text colour the user wants the ambiguous cases resolved to. */
+/** Which text color the user wants the ambiguous cases resolved to. */
 export type AdaptiveColorPreference = 'auto' | 'light' | 'dark';
 
 // Anything unrecognised in the setting counts as 'auto'.
@@ -244,7 +244,7 @@ export interface BackdropSource {
 }
 
 /**
- * What the glass does to the colour of its backdrop away from the edges
+ * What the glass does to the color of its backdrop away from the edges
  * (applySCB(), the tint and the flat surface light in glass.frag), so that the
  * backdrop alone predicts what the text is drawn over.
  */
@@ -289,7 +289,7 @@ export function tonedLuminance(r: number, g: number, b: number, tone: GlassTone)
   cr = finish(cr, tone.tint[0]);
   cg = finish(cg, tone.tint[1]);
   cb = finish(cb, tone.tint[2]);
-  // The shader scales an overbright colour down by its largest channel.
+  // The shader scales an overbright color down by its largest channel.
   const peak = Math.max(1, cr, cg, cb);
   return _luminanceFromRgb(_clamp(cr / peak, 0, 1) * 255, _clamp(cg / peak, 0, 1) * 255, _clamp(cb / peak, 0, 1) * 255);
 }
@@ -499,7 +499,7 @@ export class StageContrastSampler {
       return null;
     }
 
-    // A screenshot contains the text itself, whose colour is what is being
+    // A screenshot contains the text itself, whose color is what is being
     // decided. Trimming 30% from each end (an interquartile mean) keeps the
     // glyphs from moving the result, so a flip cannot flip itself back.
     return _trimmedMean(values, 0.30);
@@ -562,7 +562,7 @@ export class StageContrastSampler {
     // From the raw contrasts, so it reflects what is on screen now.
     const ambiguous = Math.max(rawLight, rawDark) < Math.min(rawLight, rawDark) * AMBIGUOUS_RATIO;
     const floor = hasPreference ? config.preferredMinContrast : 0;
-    // The contrast a colour needs to be called readable.
+    // The contrast a color needs to be called readable.
     const readableAt = (bright: boolean) => floor > 0 && bright === preferDark ? floor : MIN_READABLE_CONTRAST;
     // Per-element decisions keep no history, so the preference is the only
     // stabiliser.
@@ -573,7 +573,7 @@ export class StageContrastSampler {
     }
 
     // Hold the decision for SWITCH_SETTLE_MS after a flip, unless the held
-    // colour is unreadable and the other one is not. A configuration change
+    // color is unreadable and the other one is not. A configuration change
     // ends the hold: it should apply at once.
     const now = GLib.get_monotonic_time();
     const holdConfig = `${preference}|${floor}|${config.lightTextColor}|${config.darkTextColor}`;
@@ -616,7 +616,7 @@ export class StageContrastSampler {
     }
 
     // Readability wins over smoothing and over the preference: switch at once
-    // when the current colour is unreadable and the other is not.
+    // when the current color is unreadable and the other is not.
     const rawCurrent = isBright ? rawDark : rawLight;
     const rawAlternative = isBright ? rawLight : rawDark;
     const jumped = this._lastRawLuma === null ||
@@ -651,7 +651,7 @@ export class StageContrastSampler {
    * @param paintSignature Optional counter that advances whenever the glass
    *   under the text is painted. Anything that changes under the text
    *   repaints that glass, so while the counter stands still the capture is
-   *   skipped and an empty map returned (the applied colours stay).
+   *   skipped and an empty map returned (the applied colors stay).
    * @param backdrops The glasses under the text, whose backdrops are measured
    *   in place of the screen; see _measure().
    */
@@ -692,13 +692,13 @@ export class StageContrastSampler {
     if (!merged)
       return new Map();
     // Text that is not laid out yet, as in a menu opening for the first time,
-    // takes the same colour, so it does not show up in the old one.
+    // takes the same color, so it does not show up in the old one.
     return this._chooseMerged(actors, merged, config, settle, sources);
   }
 
   /**
-   * The colour for text that is about to cover `rect`, decided at once from this measurement alone: the current
-   * colour stays unless the other one reads clearly better. A merged decision measured meanwhile is dropped, and
+   * The color for text that is about to cover `rect`, decided at once from this measurement alone: the current
+   * color stays unless the other one reads clearly better. A merged decision measured meanwhile is dropped, and
    * the next one goes on from this one while it is over the same rect. Null when it could not be measured, or when
    * a later call took over.
    */

@@ -613,7 +613,7 @@ export class OsdManager {
 
   _animateActorColor(actor: CustomBannerActor, targetHexColor: string, durationMs = 380,
     skipAnimations = false, batchStart?: number) {
-    // An existing tween is not cancelled: add() restarts from the colour it
+    // An existing tween is not cancelled: add() restarts from the color it
     // last applied.
     const originalStyle = (this._styledActors.get(actor) || '').trim();
     const stylePrefix = originalStyle ? `${originalStyle.replace(/;$/, '')}; ` : '';
@@ -622,7 +622,7 @@ export class OsdManager {
     let startBgColor = themeNode.get_background_color();
     let targetRgb = hexToRgb(targetHexColor);
 
-    // The level bar's fill takes the text colour and its track a colour 70%
+    // The level bar's fill takes the text color and its track a color 70%
     // of the way to the other one.
     let isProgressBar = actor.has_style_class_name('level');
     let trackTargetRgb = targetRgb;
@@ -643,7 +643,7 @@ export class OsdManager {
     // The level bar keeps the plain lerp: it is a filled shape, not a glyph, so
     // it never becomes illegible against the background it sits on, and dipping
     // it through transparent would punch a hole in the OSD instead. Its track
-    // colour rides the same eased progress, which is why `apply` takes one.
+    // color rides the same eased progress, which is why `apply` takes one.
     const apply = (r: number, g: number, b: number, a: number, progress: number) => {
       if (isProgressBar) {
         const e = progress < 0.5
@@ -675,7 +675,7 @@ export class OsdManager {
       crossFade: !isProgressBar && resolveCrossFade(startRgb, targetRgb),
       durationMs,
       apply,
-      // The bar writes a second colour the tuple does not describe.
+      // The bar writes a second color the tuple does not describe.
       coalesce: !isProgressBar,
     }, batchStart);
   }

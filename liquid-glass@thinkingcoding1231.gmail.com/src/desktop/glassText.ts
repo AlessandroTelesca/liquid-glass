@@ -44,7 +44,7 @@ export function decodePngAlpha(png: Uint8Array): { alpha: Uint8Array, width: num
 
 const INF = 1e20;
 
-// How far (px) the edge is from a pixel's centre, positive when the centre is
+// How far (px) the edge is from a pixel's center, positive when the center is
 // outside, from its coverage `a` (0 to 1) and the coverage's gradient: the
 // edge is taken to be straight across the pixel (Gustavson's anti-aliased
 // distance transform).
@@ -65,7 +65,7 @@ function edgeOffset(gx: number, gy: number, a: number): number {
 // the short piece of edge that crosses it, placed to a fraction of a pixel
 // from its coverage; every other
 // pixel takes the nearest of those pieces from its neighbours. Distances to
-// pixel centres instead would follow the pixels' staircase, which the glass
+// pixel centers instead would follow the pixels' staircase, which the glass
 // shows as facets along a curve.
 function edgeField(alpha: Uint8Array, w: number, h: number):
   { signed: Float32Array, nearest: Int32Array, nx: Float32Array, ny: Float32Array } {
@@ -264,7 +264,7 @@ export function strokeWidths(alpha: Uint8Array, w: number, h: number): [number, 
   const upright: number[] = [], flat: number[] = [];
   for (let e = 0; e < w * h; e++) {
     if (nearest[e] !== e || deepest[e] === 0) continue;
-    // The pixel centres on the two sides of a stroke stop short of its
+    // The pixel centers on the two sides of a stroke stop short of its
     // middle by a pixel between them.
     const width = 2 * deepest[e] + 1;
     if (Math.abs(nx[e]) > SIDE_NORMAL) upright.push(width);
@@ -304,7 +304,7 @@ export function dotSize(alpha: Uint8Array, w: number, h: number): [number, numbe
  */
 export function traceOutlines(alpha: Uint8Array, w: number, h: number): number[][] {
   const inside = (i: number) => alpha[i] >= 128;
-  // Edges between neighbouring pixel centres: 2i to the right of pixel i, 2i + 1 below it.
+  // Edges between neighbouring pixel centers: 2i to the right of pixel i, 2i + 1 below it.
   const points = new Map<number, [number, number]>();
   const next = new Map<number, number>();
   const cross = (edge: number, i: number, j: number, x: number, y: number, dx: number, dy: number) => {
@@ -1083,23 +1083,23 @@ export function fileFace(font: TrueTypeFont, size: number): TextFace {
 export type TallStyle = 'even' | 'upright';
 
 // How glyphs are made taller, in px at the size they are drawn at: evenly,
-// y drawn at centre + scale * (y - centre), or along their upright strokes,
+// y drawn at center + scale * (y - center), or along their upright strokes,
 // rows top to bottom made extra px taller (see growUpright()). Either way
 // the strokes are given back the thickness the pen draws them with,
 // [across, tall] (see restroke()).
-type Tallness = { even: true, scale: number, centre: number, pen: [number, number] } |
+type Tallness = { even: true, scale: number, center: number, pen: [number, number] } |
   { even: false, top: number, bottom: number, extra: number, pen: [number, number] };
 
 function tallY(tall: Tallness | null, y: number): number {
   if (!tall) return y;
-  if (tall.even) return tall.centre + tall.scale * (y - tall.centre);
+  if (tall.even) return tall.center + tall.scale * (y - tall.center);
   return y <= tall.top ? y : y >= tall.bottom ? y + tall.extra : y + tall.extra * (y - tall.top) / (tall.bottom - tall.top);
 }
 
 // `tall` at `k` times the size.
 function scaledTall(tall: Tallness, k: number, pen: [number, number]): Tallness {
   const scaledPen = pen.map(v => v * k) as [number, number];
-  return tall.even ? { ...tall, centre: tall.centre * k, pen: scaledPen }
+  return tall.even ? { ...tall, center: tall.center * k, pen: scaledPen }
     : { ...tall, top: tall.top * k, bottom: tall.bottom * k, extra: tall.extra * k, pen: scaledPen };
 }
 
@@ -1125,9 +1125,9 @@ async function rasterize(face: TextFace, text: string, scale: number, stretch: n
   cr.setSourceRGBA(1, 1, 1, 1);
   cr.translate(-ax, -ay);
   if (tall?.even) {
-    cr.translate(0, tall.centre);
+    cr.translate(0, tall.center);
     cr.scale(stretch, tall.scale);
-    cr.translate(0, -tall.centre);
+    cr.translate(0, -tall.center);
   } else {
     cr.scale(stretch, 1);
   }
@@ -1224,7 +1224,7 @@ export class GlyphFields {
       const h = this.digitHeight;
       const [top, baseline] = this._band;
       const flat = Math.min(pen[1], h / 3);
-      const even: Tallness = { even: true, scale: (this.height * h - flat) / (h - flat), centre: top + flat / 2, pen };
+      const even: Tallness = { even: true, scale: (this.height * h - flat) / (h - flat), center: top + flat / 2, pen };
       const digits: Tallness = this.style === 'upright'
         ? { even: false, top, bottom: baseline, extra: Math.round((this.height - 1) * h), pen } : even;
       return { digits, colon: even };

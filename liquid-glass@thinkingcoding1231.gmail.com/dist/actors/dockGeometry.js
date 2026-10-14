@@ -16,7 +16,6 @@ export function clipDockBounds(bounds, target) {
         baseH = (tY + tH) - absY;
     return { absX, absY, baseW, baseH };
 }
-
 export function dockEdges(bounds, monitor) {
     let minCenterDist = -1;
     let distLeftCenter = 0, distRightCenter = 0, distTopCenter = 0, distBottomCenter = 0;
@@ -31,7 +30,6 @@ export function dockEdges(bounds, monitor) {
     }
     return { minCenterDist, distLeftCenter, distRightCenter, distTopCenter, distBottomCenter };
 }
-
 // The gaps before and after the reference rect. On a flipped axis (a dock
 // placed at the top, or a mirrored left/right dock) the reference's origin is
 // at its far edge, so its real start is refStart - refSize.
@@ -45,7 +43,6 @@ function referenceGaps(start, size, refStart, refSize) {
     }
     return [before, after];
 }
-
 export function balanceDockBounds(bounds, reference, edges) {
     let { absX, absY, baseW, baseH } = bounds;
     const { absX: refX, absY: refY, baseW: refW, baseH: refH } = reference;
@@ -65,7 +62,7 @@ export function balanceDockBounds(bounds, reference, edges) {
         }
     }
     else {
-        // Vertical dock. Only the gap facing the screen centre is trimmed: for a
+        // Vertical dock. Only the gap facing the screen center is trimmed: for a
         // left dock that is the right gap, and the start is never moved right.
         const diff = Math.abs(rightGap - leftGap);
         if (diff > 0 && diff < baseW / 2 &&
@@ -77,7 +74,6 @@ export function balanceDockBounds(bounds, reference, edges) {
     }
     return { absX, absY, baseW, baseH };
 }
-
 // Trims the dock to `margin` from the screen edge it is closest to.
 export function insetDockBounds(bounds, monitor, edges, margin, stableBaseW, stableBaseH) {
     let { absX, absY, baseW, baseH } = bounds;
@@ -96,7 +92,6 @@ export function insetDockBounds(bounds, monitor, edges, margin, stableBaseW, sta
     }
     return { absX, absY, baseW, baseH };
 }
-
 function insetSpan(start, size, edge, stableSize, leading) {
     if (leading) {
         if (start < edge) {
@@ -112,7 +107,6 @@ function insetSpan(start, size, edge, stableSize, leading) {
         size = stableSize;
     return [start, size];
 }
-
 export function visibleDockSize(bounds, monitor) {
     const { absX, absY, baseW, baseH } = bounds;
     let visibleW = baseW, visibleH = baseH;

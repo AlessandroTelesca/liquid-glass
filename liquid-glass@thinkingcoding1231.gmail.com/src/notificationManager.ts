@@ -630,7 +630,7 @@ export class NotificationManager {
 
   _animateActorColor(actor: CustomBannerActor, targetHexColor: string, durationMs = 380,
     skipAnimations = false, batchStart?: number) {
-    // An existing tween is not cancelled: add() restarts from the colour it
+    // An existing tween is not cancelled: add() restarts from the color it
     // last applied.
     const originalStyle = (this._styledActors.get(actor) || '').trim();
     const stylePrefix = originalStyle ? `${originalStyle.replace(/;$/, '')}; ` : '';

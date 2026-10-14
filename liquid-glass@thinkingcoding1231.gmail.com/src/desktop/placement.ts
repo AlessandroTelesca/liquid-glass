@@ -1,6 +1,6 @@
-// Where an item on the desktop goes: a corner or the centre of the primary
+// Where an item on the desktop goes: a corner or the center of the primary
 // monitor's work area, or where the user moved it, kept as the fraction of
-// the work area its centre is at so it survives a resolution change.
+// the work area its center is at so it survives a resolution change.
 
 export type Anchor = 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right' | 'center';
 
@@ -18,7 +18,7 @@ export function sanitizeAnchor(value: string, fallback: Anchor = 'top-right'): A
 
 /**
  * Stacks items of the given sizes at `anchor` of `area`, the first nearest
- * the edge (or on top, at the centre). Returns each item's top left corner.
+ * the edge (or on top, at the center). Returns each item's top left corner.
  */
 export function stackAt(anchor: Anchor, area: Rect, sizes: [number, number][]): [number, number][] {
   const total = sizes.reduce((sum, [, h]) => sum + h, 0) + ITEM_GAP * Math.max(sizes.length - 1, 0);
@@ -40,7 +40,7 @@ export function stackAt(anchor: Anchor, area: Rect, sizes: [number, number][]): 
   return out;
 }
 
-/** The top left corner of an item of `size` whose centre is at `fraction` of `area`, kept inside it. */
+/** The top left corner of an item of `size` whose center is at `fraction` of `area`, kept inside it. */
 export function placeAtFraction(fraction: [number, number], area: Rect, size: [number, number]): [number, number] {
   const [w, h] = size;
   const x = area.x + fraction[0] * area.width - w / 2;
@@ -51,7 +51,7 @@ export function placeAtFraction(fraction: [number, number], area: Rect, size: [n
   ];
 }
 
-/** The fraction of `area` the centre of an item at `pos` of `size` is at. */
+/** The fraction of `area` the center of an item at `pos` of `size` is at. */
 export function fractionOf(pos: [number, number], area: Rect, size: [number, number]): [number, number] {
   const fx = (pos[0] + size[0] / 2 - area.x) / Math.max(area.width, 1);
   const fy = (pos[1] + size[1] / 2 - area.y) / Math.max(area.height, 1);
@@ -78,7 +78,7 @@ export function resizeRect(rect: Rect, hx: HandleSide, hy: HandleSide, dx: numbe
   return out;
 }
 
-// Where the user moved an item to: the fraction of the work area its centre
+// Where the user moved an item to: the fraction of the work area its center
 // was at, and the item's height then. The height keeps its top edge in place
 // when the content grows or shrinks; older entries have none.
 export type SavedPosition = [number, number] | [number, number, number];

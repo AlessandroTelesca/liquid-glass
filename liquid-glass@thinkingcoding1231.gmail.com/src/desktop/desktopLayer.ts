@@ -29,7 +29,7 @@ const ANCHOR_NAMES: [Anchor, string][] = [
 /**
  * The glass clock and the desktop widgets, above the wallpaper and below
  * every window, so they are hidden with the windows in the overview. Each
- * sits at a corner or the centre of the primary monitor's work area, stacked
+ * sits at a corner or the center of the primary monitor's work area, stacked
  * with the others there, unless the user moved it somewhere else. A right
  * click on one opens its menu, from which it can be moved (and the clock
  * resized).
@@ -315,7 +315,7 @@ export class DesktopLayer {
     edit.start();
   }
 
-  // Keeps the clock's centre where the resized frame's is, as far as the
+  // Keeps the clock's center where the resized frame's is, as far as the
   // frame and the clock's shown part differ.
   private _resized(clock: GlassClock, from: Rect, to: Rect): void {
     const sx = to.width / from.width;
@@ -323,8 +323,8 @@ export class DesktopLayer {
     const [w, h] = clock.size();
     const [bx, by, bw, bh] = clock.bounds();
     const size: [number, number] = [w * sx, h * sy];
-    const centre = [to.x + to.width / 2 + (w / 2 - bx - bw / 2) * sx, to.y + to.height / 2 + (h / 2 - by - bh / 2) * sy];
-    this._savePosition(clock, [centre[0] - size[0] / 2, centre[1] - size[1] / 2], size);
+    const center = [to.x + to.width / 2 + (w / 2 - bx - bw / 2) * sx, to.y + to.height / 2 + (h / 2 - by - bh / 2) * sy];
+    this._savePosition(clock, [center[0] - size[0] / 2, center[1] - size[1] / 2], size);
     clock.resizeBy(sx, sy);
   }
 

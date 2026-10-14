@@ -10,9 +10,9 @@
 // A distance d (map px, negative inside) is stored as 0.5 - d / (2 * RANGE).
 // Beside it, a tone map of the same size: in R the tone of the plate whose
 // distance G holds at that pixel, in G that of B's plate and in B the outer
-// plate's, from 0 (darker) through 0.5 (the look's own colour) to 1, so that
-// plates side by side in different colours, and parts of a plate a little apart
-// in shade, stay apart once they are glass in one colour. The tone map's A
+// plate's, from 0 (darker) through 0.5 (the look's own color) to 1, so that
+// plates side by side in different colors, and parts of a plate a little apart
+// in shade, stay apart once they are glass in one color. The tone map's A
 // is unused.
 //
 // And a lens map for the glass of the clear look, LENS_SIZE wide and twice as
@@ -36,7 +36,7 @@ export const LENS_RANGE = 128;
 // have none is a squircle.
 const OUTER_HALF = 0.46;
 const OUTER_EXPONENT = 4;
-// What goes on that plate is scaled to reach this far from its centre, as a
+// What goes on that plate is scaled to reach this far from its center, as a
 // share of the plate's half size.
 const CONTENT_REACH = 0.74;
 // An icon's own outermost plate is its rounded square when it is about square,
@@ -58,7 +58,6 @@ const SLIVER_INSIDE = 0.1;
 // a part of a plate's surface differs from the plate.
 const TONE_GAIN = 2.5;
 const SURFACE_GAIN = 5;
-
 function smoothCorners(shape) {
     if (shape.kind !== 'roundrect')
         return shape;
@@ -68,14 +67,12 @@ function smoothCorners(shape) {
     // From the midpoint condition sqrt(2) * k * (1 - 2^(-1/n)) = sqrt(2) - 1, as in glass.frag's cornerShape().
     return { ...shape, radius: r * k, corner: -1 / Math.log2(1 - 0.29289322 / k) };
 }
-
 function isSquare(shape, width) {
     const roundEnough = shape.kind === 'roundrect' ? shape.radius <= Math.min(shape.rx, shape.ry) * SQUARE_RADIUS
         : shape.exponent >= SQUARE_EXPONENT;
     return roundEnough && !shape.ripple && Math.abs(shape.rx - shape.ry) <= Math.max(shape.rx, shape.ry) * SQUARE_ASPECT &&
         Math.min(shape.rx, shape.ry) * 2 >= width * SQUARE_FILL;
 }
-
 // How much of what is drawn lies outside `shape`.
 function outsideShare(pixels, scale, shape) {
     let outside = 0, total = 0;
@@ -89,7 +86,6 @@ function outsideShare(pixels, scale, shape) {
     }
     return total ? outside / total : 0;
 }
-
 function dropSliver(symbol, pixels, scale, shape) {
     const { width: w, height: h } = pixels;
     const reach = Math.ceil(1.5 / scale);
@@ -112,8 +108,7 @@ function dropSliver(symbol, pixels, scale, shape) {
     for (const i of drop)
         symbol[i] = 0;
 }
-
-// The centre and the half size (largest distance along x or y) of what is drawn, in analysis px.
+// The center and the half size (largest distance along x or y) of what is drawn, in analysis px.
 function extent(pixels, scale) {
     let x1 = Infinity, y1 = Infinity, x2 = -Infinity, y2 = -Infinity;
     for (let i = 0; i < pixels.width * pixels.height; i++) {
@@ -129,37 +124,32 @@ function extent(pixels, scale) {
         return { cx: pixels.width * scale / 2, cy: pixels.height * scale / 2, half: 1 };
     return { cx: (x1 + x2) / 2 * scale, cy: (y1 + y2) / 2 * scale, half: Math.max(x2 - x1, y2 - y1) / 2 * scale };
 }
-
 function depthOf(plates, k) {
     return plates[k].parent < 0 ? 0 : depthOf(plates, plates[k].parent) + 1;
 }
-
 function encode(d) {
     return Math.round(Math.min(Math.max(0.5 - d / (2 * MAP_RANGE), 0), 1) * 255);
 }
-
 // A lens distance as its high and low byte.
 function encodeLens(d) {
     const v = Math.round(Math.min(Math.max((d + LENS_RANGE) / (2 * LENS_RANGE), 0), 1) * 65535);
     return [v >> 8, v & 255];
 }
-
 // The largest distance from a shape's outline inside it.
 function halfWidth(shape) {
     return Math.min(shape.rx, shape.ry);
 }
-
 /**
  * The style map of an icon, from its analysis and the icon drawn again at
  * `detail` (any size; twice the analysis's keeps the symbol's edges smooth).
  */
 export function buildStyleMap(analysis, detail, size = MAP_SIZE) {
-    // A plate that carries a picture is not glass: the picture is drawn as symbol, in shades that keep its colours apart.
+    // A plate that carries a picture is not glass: the picture is drawn as symbol, in shades that keep its colors apart.
     const plates = withoutPlates(analysis.plates, plate => !plate.plain);
     const A = analysis.width;
     const scale = A / detail.width;
-    const centre = A / 2;
-    // The outer plate, and where the content goes on it: content point q shows at centre + k (q - from).
+    const center = A / 2;
+    // The outer plate, and where the content goes on it: content point q shows at center + k (q - from).
     const tops = plates.map((_, k) => k).filter(k => plates[k].parent < 0);
     const own = tops.length === 1 && isSquare(plates[tops[0]].shape, A) &&
         outsideShare(detail, scale, plates[tops[0]].shape) < OUTSIDE_SHARE;
@@ -168,12 +158,12 @@ export function buildStyleMap(analysis, detail, size = MAP_SIZE) {
     if (own) {
         const shape = plates[tops[0]].shape;
         k = half / Math.max(shape.rx, shape.ry);
-        outer = smoothCorners({ ...shape, cx: centre, cy: centre, rx: shape.rx * k, ry: shape.ry * k, radius: shape.radius * k });
+        outer = smoothCorners({ ...shape, cx: center, cy: center, rx: shape.rx * k, ry: shape.ry * k, radius: shape.radius * k });
         fromX = shape.cx;
         fromY = shape.cy;
     }
     else {
-        outer = { kind: 'superellipse', cx: centre, cy: centre, rx: half, ry: half, radius: 0, exponent: OUTER_EXPONENT,
+        outer = { kind: 'superellipse', cx: center, cy: center, rx: half, ry: half, radius: 0, exponent: OUTER_EXPONENT,
             ripple: null, fit: 1 };
         const e = extent(detail, scale);
         k = Math.min(1, half * CONTENT_REACH / e.half);
@@ -209,7 +199,7 @@ export function buildStyleMap(analysis, detail, size = MAP_SIZE) {
     for (let y = 0; y < size; y++) {
         for (let x = 0; x < size; x++) {
             const fx = (x + 0.5) / mapPx, fy = (y + 0.5) / mapPx;
-            const qx = fromX + (fx - centre) / k, qy = fromY + (fy - centre) / k;
+            const qx = fromX + (fx - center) / k, qy = fromY + (fy - center) / k;
             // The tone is the innermost plate's that the point is in (a disc in a ring shares the ring's channel), and outside
             // them all the nearest plate's, so that it does not bleed in at the edges.
             const inner = [Infinity, Infinity], innerTone = [0.5, 0.5], toneLevel = [-1, -1];
@@ -242,8 +232,8 @@ export function buildStyleMap(analysis, detail, size = MAP_SIZE) {
             let sym = 0;
             for (let ty = 0; ty < taps; ty++) {
                 for (let tx = 0; tx < taps; tx++) {
-                    const sx = fromX + ((x + (tx + 0.5) / taps) / mapPx - centre) / k;
-                    const sy = fromY + ((y + (ty + 0.5) / taps) / mapPx - centre) / k;
+                    const sx = fromX + ((x + (tx + 0.5) / taps) / mapPx - center) / k;
+                    const sy = fromY + ((y + (ty + 0.5) / taps) / mapPx - center) / k;
                     sym += sample(sx, sy);
                 }
             }
@@ -261,7 +251,7 @@ export function buildStyleMap(analysis, detail, size = MAP_SIZE) {
     for (let y = 0; y < LENS_SIZE; y++) {
         for (let x = 0; x < LENS_SIZE; x++) {
             const fx = (x + 0.5) * lensPx / mapPx, fy = (y + 0.5) * lensPx / mapPx;
-            const qx = fromX + (fx - centre) / k, qy = fromY + (fy - centre) / k;
+            const qx = fromX + (fx - center) / k, qy = fromY + (fy - center) / k;
             const inner = [Infinity, Infinity], half = [0, 0];
             plates.forEach((plate, i) => {
                 if (level[i] === 0)
@@ -281,8 +271,7 @@ export function buildStyleMap(analysis, detail, size = MAP_SIZE) {
     }
     return { size, data, tone, lens, ownPlate: own };
 }
-
-// Each plate's tone among the plates at its level in the map: their colours
+// Each plate's tone among the plates at its level in the map: their colors
 // along the direction they differ most in, lighter higher. A plate alone at its
 // level is 0.5.
 function plateTones(plates, level) {
@@ -293,12 +282,12 @@ function plateTones(plates, level) {
             continue;
         const colors = members.map(i => plateColor(plates[i], plates[i].shape.cx, plates[i].shape.cy));
         const mean = [0, 1, 2].map(c => colors.reduce((sum, col) => sum + col[c], 0) / colors.length);
-        const centred = colors.map(col => col.map((v, c) => v - mean[c]));
+        const centerd = colors.map(col => col.map((v, c) => v - mean[c]));
         // The principal direction, by power iteration on the covariance, starting along lightness.
         let dir = [1, 0, 0];
         for (let round = 0; round < 20; round++) {
             const next = [0, 0, 0];
-            for (const v of centred) {
+            for (const v of centerd) {
                 const dot = v[0] * dir[0] + v[1] * dir[1] + v[2] * dir[2];
                 for (let c = 0; c < 3; c++)
                     next[c] += v[c] * dot;
@@ -311,7 +300,7 @@ function plateTones(plates, level) {
         if (dir[0] < 0)
             dir = dir.map(v => -v);
         members.forEach((i, m) => {
-            const along = centred[m][0] * dir[0] + centred[m][1] * dir[1] + centred[m][2] * dir[2];
+            const along = centerd[m][0] * dir[0] + centerd[m][1] * dir[1] + centerd[m][2] * dir[2];
             tones[i] = Math.min(Math.max(0.5 + along * TONE_GAIN, 0), 1);
         });
     }
