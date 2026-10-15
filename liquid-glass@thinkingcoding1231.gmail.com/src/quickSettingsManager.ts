@@ -541,7 +541,7 @@ export class QuickSettingsManager {
   private _createGlass(toggles: boolean): BackdropGlass | ToggleBackdropGlass {
     const params = {
       extensionPath: this.extensionPath, settings: this._settings, logger: this._logger,
-      owner: toggles ? 'quick-settings-toggles' : 'quick-settings',
+      owner: toggles ? 'quick-settings-toggles' : 'quick-settings', outline: 'quick-settings',
     };
     const glass = toggles ? new ToggleBackdropGlass(params as any) : new BackdropGlass(params as any);
     this.glass = glass;
