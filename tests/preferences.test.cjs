@@ -186,6 +186,7 @@ test('external settings updates refresh controls without a write feedback loop',
 
 test('window rules only show the active list while window glass is enabled', () => {
   const f = fixture();
+  f.controls.write({'application-glass-all-windows': false});
   assert.equal(f.row('Included applications').visible, false);
   assert.equal(f.row('Excluded applications').visible, false);
   f.controls.write({'enable-application-glass': true});
