@@ -1204,6 +1204,16 @@
       <summary>How the launcher changes to its pinned items</summary>
       <description>"morph": the glass flows into its new shape on a spring, with the content seen deep in it; "tween": the glass eases to its new shape and the content fades.</description>
     </key>
+    <key name="launcher-spring-response" type="d">
+      <default>0.42</default>
+      <summary>Spring response</summary>
+      <description>How fast the springs respond to changes in the menu's size.</description>
+    </key>
+    <key name="launcher-spring-damping-fraction" type="d">
+      <default>0.72</default>
+      <summary>Spring damping fraction</summary>
+      <description>How much the springs damp when they reach their target.</description>
+    </key>
 
     <key name="dock-outline-enabled" type="b">
       <default>false</default>

@@ -1344,10 +1344,15 @@ export class QuickSettingsManager {
         let [parentW, parentH] = getAllocatedSize(this.animActor);
         if (!parent || Number.isNaN(parentW) || Number.isNaN(parentH) || parentW <= 0 || parentH <= 0)
             return;
+        // The shell places the submenu overlay from an offset it measures once, so it can stay
+        // wrong after an animated open; the overlay belongs on the grid.
+        const gridOrigin = _layoutOrigin(this.menu._grid, root);
+        const overlayOrigin = _layoutOrigin(this.menu._overlay, root);
+        const overlayError = gridOrigin && overlayOrigin ? gridOrigin[1] - overlayOrigin[1] : 0;
         for (let submenu of this._cachedSubmenus)
-            this._centerSubmenu(submenu, root, parent, parentW, parentH);
+            this._centerSubmenu(submenu, root, parent, parentW, parentH, overlayError);
     }
-    _centerSubmenu(submenu, root, [parentX, parentY], parentW, parentH) {
+    _centerSubmenu(submenu, root, [parentX, parentY], parentW, parentH, overlayError) {
         if (!submenu.mapped || !submenu.visible)
             return;
         const origin = _layoutOrigin(submenu, root);
@@ -1358,7 +1363,8 @@ export class QuickSettingsManager {
         const translationX = parentX + (parentW - subW) / 2 - subX;
         if (Math.abs(submenu.translation_x - translationX) > 0.5)
             submenu.translation_x = translationX;
-        const gap = { subCenterY: subY + (subH / 2), aboveMaxY: parentY, belowMinY: parentY + parentH };
+        // Neighbours are told apart by where the submenu belongs, not where the overlay put it.
+        const gap = { subCenterY: subY + overlayError + (subH / 2), aboveMaxY: parentY, belowMinY: parentY + parentH };
         for (let child of this.animActor.get_children())
             _findSubmenuGap(child, submenu, root, gap);
         const translationY = (gap.aboveMaxY + gap.belowMinY) / 2 - (subH / 2) - subY;
