@@ -10,9 +10,10 @@ export function uniformPatch(keys, value) {
 
 export function commonValue(settings, keys) {
   const values = keys.map(key => settings.get_value(key).deep_unpack());
-  return {value: values[0], mixed: values.some(value => value !== values[0])};
+  return { value: values[0], mixed: values.some(value => value !== values[0]) };
 }
 
+// Check if a settings patch perfectly matches the current settings.
 export function matches(settings, patch) {
   return Object.entries(patch).every(([key, value]) => settings.get_value(key).deep_unpack() === value);
 }
@@ -48,19 +49,19 @@ export function parseSettings(settings, text) {
     if (schema.get_key(key).range_check(value)) changes.push([key, value]);
     else skipped++;
   }
-  return {changes, skipped};
+  return { changes, skipped };
 }
 
 // Rows that depend on a setting hang below its row, set in from the left. With
 // `fold`, an arrow at the end of that row (`parent`) hides and shows them again.
 export class Branch {
-  constructor(parent, {fold = true} = {}) {
+  constructor(parent, { fold = true } = {}) {
     this._rows = [];
     this._open = true;
     this._enabled = true;
     this._arrow = null;
     if (!fold) return;
-    this._arrow = new Gtk.Button({valign: Gtk.Align.CENTER, css_classes: ['flat']});
+    this._arrow = new Gtk.Button({ valign: Gtk.Align.CENTER, css_classes: ['flat'] });
     this._arrow.connect('clicked', () => {
       this._open = !this._open;
       this._update();
@@ -97,7 +98,7 @@ export class Branch {
 export class ToggleBranch {
   constructor(parent, scenes) {
     this._parent = parent;
-    this._rows = Array.from({length: scenes}, () => []);
+    this._rows = Array.from({ length: scenes }, () => []);
     this._scene = 0;
     parent.connect('notify::visible', () => this._update());
   }
@@ -115,6 +116,7 @@ export class ToggleBranch {
   }
 
   _update() {
+    // Show rows whose parent is visible and the switched scene.
     this._rows.forEach((rows, i) => {
       for (const row of rows) row.visible = this._parent.visible && i === this._scene;
     });
@@ -156,28 +158,33 @@ export class PreferenceControls {
 
   // [key, GLib.Variant] pairs written together, as one change.
   commit(changes) {
-    const transaction = new Gio.Settings({settings_schema: this.settings.settings_schema, path: this.settings.path});
+    const transaction = new Gio.Settings({ settings_schema: this.settings.settings_schema, path: this.settings.path });
     transaction.delay();
     for (const [key, value] of changes) transaction.set_value(key, value);
     transaction.apply();
   }
 
+  // create and return a group with a title and description
   group(page, title, description = '') {
-    const group = new Adw.PreferencesGroup({title, description});
+    const group = new Adw.PreferencesGroup({ title, description });
     page.add(group);
     return group;
   }
 
+  // create and return a switch row with a title and subtitle
   toggle(group, title, key, subtitle = '') {
-    const row = new Adw.SwitchRow({title, subtitle});
+    const row = new Adw.SwitchRow({ title, subtitle });
     group.add(row);
     this.settings.bind(key, row, 'active', Gio.SettingsBindFlags.DEFAULT);
     return row;
   }
 
+  // create and return a combo row
   choice(group, title, choices, subtitle = '', custom = true) {
-    const row = new Adw.ComboRow({title, subtitle,
-      model: Gtk.StringList.new([...choices.map(choice => choice.title), ...(custom ? ['Custom'] : [])])});
+    const row = new Adw.ComboRow({
+      title, subtitle,
+      model: Gtk.StringList.new([...choices.map(choice => choice.title), ...(custom ? ['Custom'] : [])])
+    });
     if (custom) row.list_factory = this.readoutListFactory(row, choices.length);
     group.add(row);
     let syncing = false;
@@ -210,9 +217,9 @@ export class PreferenceControls {
     const syncCheck = item => { item._check.opacity = row.selected === item.position ? 1 : 0; };
     row.connect('notify::selected', () => items.forEach(syncCheck));
     factory.connect('setup', (_factory, item) => {
-      const box = new Gtk.Box({spacing: 6});
-      const label = new Gtk.Label({xalign: 0, hexpand: true});
-      const check = new Gtk.Image({icon_name: 'object-select-symbolic'});
+      const box = new Gtk.Box({ spacing: 6 });
+      const label = new Gtk.Label({ xalign: 0, hexpand: true });
+      const check = new Gtk.Image({ icon_name: 'object-select-symbolic' });
       box.append(label);
       box.append(check);
       item.child = box;
@@ -234,11 +241,13 @@ export class PreferenceControls {
   // `slider` adds a slider that shares the spin row's adjustment, for values
   // that are tuned by eye while watching the glass (blur, tint, refraction,
   // offsets, ...) rather than typed in as a number.
-  number(group, title, keys, min, max, step, subtitle = '', {slider = false} = {}) {
+  number(group, title, keys, min, max, step, subtitle = '', { slider = false } = {}) {
     const digits = step < 1 ? 2 : 0;
-    const row = new Adw.SpinRow({title, subtitle,
-      adjustment: new Gtk.Adjustment({lower: min, upper: max, step_increment: step, page_increment: step * 10}),
-      digits});
+    const row = new Adw.SpinRow({
+      title, subtitle,
+      adjustment: new Gtk.Adjustment({ lower: min, upper: max, step_increment: step, page_increment: step * 10 }),
+      digits
+    });
     if (slider) this.addSlider(row, digits);
     group.add(row);
     let syncing = false;
@@ -257,9 +266,12 @@ export class PreferenceControls {
     return row;
   }
 
+  // create and return a slider row
   addSlider(row, digits) {
-    const scale = new Gtk.Scale({orientation: Gtk.Orientation.HORIZONTAL, adjustment: row.adjustment,
-      draw_value: false, hexpand: true, valign: Gtk.Align.CENTER, width_request: 160, round_digits: digits});
+    const scale = new Gtk.Scale({
+      orientation: Gtk.Orientation.HORIZONTAL, adjustment: row.adjustment,
+      draw_value: false, hexpand: true, valign: Gtk.Align.CENTER, width_request: 160, round_digits: digits
+    });
     row.add_suffix(scale);
     // Adw.SpinRow packs its spin button into the suffix box first; move the
     // slider in front of it so the row reads title, slider, number.
@@ -267,10 +279,13 @@ export class PreferenceControls {
     row._slider = scale;
   }
 
+  // create and return a color picker row
   color(group, title, keys) {
-    const row = new Adw.ActionRow({title});
-    const button = new Gtk.ColorDialogButton({valign: Gtk.Align.CENTER,
-      dialog: new Gtk.ColorDialog({with_alpha: false})});
+    const row = new Adw.ActionRow({ title });
+    const button = new Gtk.ColorDialogButton({
+      valign: Gtk.Align.CENTER,
+      dialog: new Gtk.ColorDialog({ with_alpha: false })
+    });
     row.add_suffix(button);
     row.activatable_widget = button;
     group.add(row);
@@ -295,8 +310,8 @@ export class PreferenceControls {
   }
 
   // A text setting edited in an entry row, stored when it is applied and `valid`.
-  entry(group, title, key, {read = v => v, write = v => v, valid = () => true} = {}) {
-    const row = new Adw.EntryRow({title, show_apply_button: true});
+  entry(group, title, key, { read = v => v, write = v => v, valid = () => true } = {}) {
+    const row = new Adw.EntryRow({ title, show_apply_button: true });
     group.add(row);
     this.watch([key], () => { row.text = read(this.settings.get_value(key).deep_unpack()); });
     row.connect('apply', () => {
@@ -306,7 +321,7 @@ export class PreferenceControls {
         return;
       }
       row.remove_css_class('error');
-      this.write({[key]: write(text)});
+      this.write({ [key]: write(text) });
     });
     return row;
   }

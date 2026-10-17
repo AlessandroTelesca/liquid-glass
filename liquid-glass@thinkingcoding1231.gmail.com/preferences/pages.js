@@ -5,9 +5,9 @@ import Gtk from 'gi://Gtk';
 import Pango from 'gi://Pango';
 import Soup from 'gi://Soup?version=3.0';
 
-import {BUNDLED_FAMILIES} from '../dist/desktop/bundledFonts.js';
-import {PreferenceControls, Branch, ToggleBranch, uniformPatch, dumpSettings, parseSettings} from './controls.js';
-import {IconStyleRules, WindowRules} from './apps.js';
+import { BUNDLED_FAMILIES } from '../dist/desktop/bundledFonts.js';
+import { PreferenceControls, Branch, ToggleBranch, uniformPatch, dumpSettings, parseSettings } from './controls.js';
+import { IconStyleRules, WindowRules } from './apps.js';
 
 // The surfaces whose glass the simple view sets as one. The clock keeps its own look.
 const SURFACES = ['dock', 'menu', 'panel-menu', 'notification', 'quick-settings', 'osd', 'application', 'desktop-menu',
@@ -33,33 +33,33 @@ const smoothMotion = Object.fromEntries(['menu', 'panel-menu', 'quick-settings']
 ]));
 
 const MOTION = [
-  {title: 'Off', patch: uniformPatch(MOTION_KEYS, false)},
-  {title: 'Smooth', patch: smoothMotion},
+  { title: 'Off', patch: uniformPatch(MOTION_KEYS, false) },
+  { title: 'Smooth', patch: smoothMotion },
 ];
 
 const QUALITY = [
-  {title: 'Sharp', patch: {'blur-method': 0, 'glass-blur-downscale': 2}},
-  {title: 'Balanced', patch: {'blur-method': 1, 'glass-blur-downscale': 2}},
-  {title: 'Fast', patch: {'blur-method': 1, 'glass-blur-downscale': 4}},
+  { title: 'Sharp', patch: { 'blur-method': 0, 'glass-blur-downscale': 2 } },
+  { title: 'Balanced', patch: { 'blur-method': 1, 'glass-blur-downscale': 2 } },
+  { title: 'Fast', patch: { 'blur-method': 1, 'glass-blur-downscale': 4 } },
 ];
 
 const TOP_BAR = [
-  {title: 'Off', patch: {'top-bar-style': 'off'}},
-  {title: 'One pill', patch: {'top-bar-style': 'pill'}},
-  {title: 'Three pills', patch: {'top-bar-style': 'islands'}},
+  { title: 'Off', patch: { 'top-bar-style': 'off' } },
+  { title: 'One pill', patch: { 'top-bar-style': 'pill' } },
+  { title: 'Three pills', patch: { 'top-bar-style': 'islands' } },
 ];
 
 const QUICK_SETTINGS_GLASS = [
-  {title: 'Whole menu', patch: {'quick-settings-apply-to': 0}},
-  {title: 'Individual buttons', patch: {'quick-settings-apply-to': 1}},
+  { title: 'Whole menu', patch: { 'quick-settings-apply-to': 0 } },
+  { title: 'Individual buttons', patch: { 'quick-settings-apply-to': 1 } },
 ];
 
 const QUICK_SETTINGS_GLASS_HINT = 'Whole menu: one pane of glass behind the entire menu. ' +
   'Individual buttons: only the toggle buttons become glass, on the theme\'s own menu background';
 
 const booleanChoices = keys => [
-  {title: 'Off', patch: uniformPatch(keys, false)},
-  {title: 'On', patch: uniformPatch(keys, true)},
+  { title: 'Off', patch: uniformPatch(keys, false) },
+  { title: 'On', patch: uniformPatch(keys, true) },
 ];
 
 // The surfaces of the advanced view: id (the prefix of its keys), title, the switch that shows its glass, and a hint for that switch.
@@ -91,20 +91,20 @@ const APPEARANCE = [
 const LAYOUT = {
   dock: [['glass-expand', 'Glass expansion', 0, 50, 1], ['margin-bottom', 'Edge spacing', -5, 30, 1]],
   menu: [['glass-expand', 'Glass expansion', 0, 50, 1], ['x-offset', 'Horizontal offset', -200, 200, 1],
-    ['y-offset', 'Vertical offset', -50, 100, 1], ['scale', 'Menu scale', 0.5, 1, 0.01]],
+  ['y-offset', 'Vertical offset', -50, 100, 1], ['scale', 'Menu scale', 0.5, 1, 0.01]],
   'panel-menu': [['glass-expand', 'Glass expansion', 0, 50, 1], ['x-offset', 'Horizontal offset', -200, 200, 1],
-    ['y-offset', 'Vertical offset', -50, 100, 1], ['scale', 'Menu scale', 0.5, 1, 0.01]],
+  ['y-offset', 'Vertical offset', -50, 100, 1], ['scale', 'Menu scale', 0.5, 1, 0.01]],
   notification: [['glass-expand', 'Glass expansion', 0, 50, 1], ['y-offset', 'Vertical offset', 0, 100, 1]],
   'quick-settings': [['glass-expand', 'Glass expansion', 0, 50, 1], ['x-offset', 'Horizontal offset', -100, 100, 1],
-    ['y-offset', 'Vertical offset', -100, 100, 1], ['toggle-tint-strength', 'Button base color', 0, 1, 0.01],
-    ['toggle-corner-radius', 'Button corners', 0, 60, 1]],
+  ['y-offset', 'Vertical offset', -100, 100, 1], ['toggle-tint-strength', 'Button base color', 0, 1, 0.01],
+  ['toggle-corner-radius', 'Button corners', 0, 60, 1]],
   osd: [['glass-expand', 'Glass expansion', 0, 50, 1], ['y-offset', 'Vertical offset', -100, 100, 1]],
   application: [],
   'desktop-menu': [['content-opacity', 'Content opacity', 0, 1, 0.01]],
   'top-bar': [['margin-top', 'Margin top', 0, 50, 1], ['margin-bottom', 'Margin bottom', 0, 50, 1],
-    ['margin-left', 'Margin left', 0, 50, 1], ['margin-right', 'Margin right', 0, 50, 1],
-    ['padding-top', 'Padding top', 0, 50, 1], ['padding-bottom', 'Padding bottom', 0, 50, 1],
-    ['padding-left', 'Padding left', 0, 50, 1], ['padding-right', 'Padding right', 0, 50, 1]],
+  ['margin-left', 'Margin left', 0, 50, 1], ['margin-right', 'Margin right', 0, 50, 1],
+  ['padding-top', 'Padding top', 0, 50, 1], ['padding-bottom', 'Padding bottom', 0, 50, 1],
+  ['padding-left', 'Padding left', 0, 50, 1], ['padding-right', 'Padding right', 0, 50, 1]],
   'desktop-widget': [],
   'glass-clock': [],
   launcher: [],
@@ -177,7 +177,7 @@ const WEIGHTS = ['Light', 'Regular', 'SemiBold', 'Bold'];
 // Open-Meteo matches names in the language it is asked for, so a name
 // typed in another script is looked up again in the languages written in it.
 const SCRIPTS = [[/[぀-ヿ]/, ['ja']], [/[一-鿿]/, ['ja', 'zh']], [/[가-힯]/, ['ko']],
-  [/[Ѐ-ӿ]/, ['ru', 'uk']]];
+[/[Ѐ-ӿ]/, ['ru', 'uk']]];
 
 // Blur my Shell's popup settings, from the schemas it ships in the user's or a
 // system extension directory, as its own getSettings() reads them.
@@ -190,13 +190,13 @@ function blurMyShellPopupSettings() {
     // Loading a compiled schema file throws a GError when it is unreadable.
     try {
       const schema = Gio.SettingsSchemaSource.new_from_directory(dir, defaultSource, false).lookup(BMS_POPUP_SCHEMA, false);
-      if (schema) return new Gio.Settings({settings_schema: schema});
+      if (schema) return new Gio.Settings({ settings_schema: schema });
     } catch {
       continue;
     }
   }
   const schema = defaultSource?.lookup(BMS_POPUP_SCHEMA, true);
-  return schema ? new Gio.Settings({settings_schema: schema}) : null;
+  return schema ? new Gio.Settings({ settings_schema: schema }) : null;
 }
 
 // Shown while the shell reports Blur my Shell's popup blur on: it repaints the
@@ -207,10 +207,10 @@ function addBlurMyShellWarning(page, controls) {
     title: 'Blur my Shell is blurring popups',
     subtitle: 'Its blur shows through the glass on menus, notifications and OSDs. Turn off Popups in Blur my Shell.',
   });
-  row.add_prefix(new Gtk.Image({icon_name: 'dialog-warning-symbolic'}));
+  row.add_prefix(new Gtk.Image({ icon_name: 'dialog-warning-symbolic' }));
   const popup = blurMyShellPopupSettings();
   if (popup) {
-    const button = new Gtk.Button({label: 'Turn Off', valign: Gtk.Align.CENTER});
+    const button = new Gtk.Button({ label: 'Turn Off', valign: Gtk.Align.CENTER });
     button.connect('clicked', () => popup.set_boolean('blur', false));
     row.add_suffix(button);
   }
@@ -223,16 +223,16 @@ function addBlurMyShellWarning(page, controls) {
 
 function addBackup(page, controls, window) {
   const group = controls.group(page, 'Backup', 'Keep your settings in a file, or move them to another computer.');
-  const toast = title => window.add_toast(new Adw.Toast({title}));
+  const toast = title => window.add_toast(new Adw.Toast({ title }));
   const row = (title, subtitle, label, run) => {
-    const action = new Adw.ActionRow({title, subtitle});
-    const button = new Gtk.Button({label, valign: Gtk.Align.CENTER});
+    const action = new Adw.ActionRow({ title, subtitle });
+    const button = new Gtk.Button({ label, valign: Gtk.Align.CENTER });
     button.connect('clicked', run);
     action.add_suffix(button);
     action.activatable_widget = button;
     group.add(action);
   };
-  const dialog = title => new Gtk.FileDialog({title, initial_name: 'liquid-glass-settings.txt'});
+  const dialog = title => new Gtk.FileDialog({ title, initial_name: 'liquid-glass-settings.txt' });
 
   row('Export settings', 'Saves every setting to a file', 'Export…', () => {
     dialog('Export Settings').save(window, null, (self, result) => {
@@ -263,7 +263,7 @@ function addBackup(page, controls, window) {
         if (!error.matches(Gtk.DialogError, Gtk.DialogError.DISMISSED)) toast(`Could not import: ${error.message}`);
         return;
       }
-      const {changes, skipped} = parseSettings(controls.settings, text);
+      const { changes, skipped } = parseSettings(controls.settings, text);
       if (changes.length === 0) {
         toast('Nothing to import in that file');
         return;
@@ -277,24 +277,24 @@ function addBackup(page, controls, window) {
 function addPanelMenus(page, controls) {
   const group = controls.group(page, 'Detected top bar menus',
     'Menus of the other top bar indicators. The calendar and quick settings have their own settings.');
-  const empty = new Adw.ActionRow({title: 'No additional menus detected'});
+  const empty = new Adw.ActionRow({ title: 'No additional menus detected' });
   group.add(empty);
   const rows = new Map();
   const settings = controls.settings;
   let syncing = false;
   const add = name => {
     const title = LEGACY_MENUS[name]?.[1] ?? name.replace(/([a-z])([A-Z])/g, '$1 $2').replace(/[-_]+/g, ' ');
-    const row = new Adw.SwitchRow({title, use_markup: false});
+    const row = new Adw.SwitchRow({ title, use_markup: false });
     row.connect('notify::active', () => {
       if (syncing) return;
       if (LEGACY_MENUS[name]) {
-        controls.write({[LEGACY_MENUS[name][0]]: row.active});
+        controls.write({ [LEGACY_MENUS[name][0]]: row.active });
         return;
       }
       const disabled = new Set(settings.get_strv('disabled-extra-menus'));
       if (row.active) disabled.delete(name);
       else disabled.add(name);
-      controls.write({'disabled-extra-menus': [...disabled].sort()});
+      controls.write({ 'disabled-extra-menus': [...disabled].sort() });
     });
     rows.set(name, row);
     group.add(row);
@@ -302,22 +302,22 @@ function addPanelMenus(page, controls) {
   };
   controls.watch(['detected-extra-menus', 'disabled-extra-menus', 'enable-extra-menu-glass',
     ...Object.values(LEGACY_MENUS).map(([key]) => key)], () => {
-    syncing = true;
-    const names = settings.get_strv('detected-extra-menus');
-    const disabled = new Set(settings.get_strv('disabled-extra-menus'));
-    for (const [name, row] of rows) {
-      if (names.includes(name)) continue;
-      group.remove(row);
-      rows.delete(name);
-    }
-    for (const name of names) {
-      const row = rows.get(name) ?? add(name);
-      row.active = LEGACY_MENUS[name] ? settings.get_boolean(LEGACY_MENUS[name][0]) : !disabled.has(name);
-    }
-    empty.visible = names.length === 0;
-    group.sensitive = settings.get_boolean('enable-extra-menu-glass');
-    syncing = false;
-  });
+      syncing = true;
+      const names = settings.get_strv('detected-extra-menus');
+      const disabled = new Set(settings.get_strv('disabled-extra-menus'));
+      for (const [name, row] of rows) {
+        if (names.includes(name)) continue;
+        group.remove(row);
+        rows.delete(name);
+      }
+      for (const name of names) {
+        const row = rows.get(name) ?? add(name);
+        row.active = LEGACY_MENUS[name] ? settings.get_boolean(LEGACY_MENUS[name][0]) : !disabled.has(name);
+      }
+      empty.visible = names.length === 0;
+      group.sensitive = settings.get_boolean('enable-extra-menu-glass');
+      syncing = false;
+    });
   return group;
 }
 
@@ -365,7 +365,7 @@ function placeRow(group, controls, title, key, id) {
     }
     controls.write({
       [key]: PLACES[row.selected][0], 'desktop-item-positions': JSON.stringify(positions),
-      ...id ? {} : {'desktop-widget-anchors': '{}'},
+      ...id ? {} : { 'desktop-widget-anchors': '{}' },
     });
   });
   controls.watch([key, 'desktop-item-positions', 'desktop-widget-anchors'], refresh);
@@ -390,10 +390,10 @@ function fontRows(group, controls) {
   });
   const button = new Gtk.FontDialogButton({
     valign: Gtk.Align.CENTER, level: Gtk.FontLevel.FACE,
-    dialog: new Gtk.FontDialog({title: 'Clock Font'}),
+    dialog: new Gtk.FontDialog({ title: 'Clock Font' }),
   });
   row.add_suffix(button);
-  const weight = new Adw.ComboRow({title: 'Weight', model: Gtk.StringList.new(WEIGHTS)});
+  const weight = new Adw.ComboRow({ title: 'Weight', model: Gtk.StringList.new(WEIGHTS) });
   group.add(row);
   group.add(weight);
   const interfaceIndex = families.length;
@@ -418,7 +418,7 @@ function fontRows(group, controls) {
     if (row.selected < families.length) {
       writeBundled();
     } else if (row.selected === interfaceIndex) {
-      controls.write({'glass-clock-font': ''});
+      controls.write({ 'glass-clock-font': '' });
     } else {
       // Kept until a font is picked with the button.
       button.visible = true;
@@ -432,7 +432,7 @@ function fontRows(group, controls) {
     if (syncing || !button.font_desc) return;
     const desc = button.font_desc.copy();
     desc.unset_fields(Pango.FontMask.SIZE);
-    controls.write({'glass-clock-font': desc.to_string()});
+    controls.write({ 'glass-clock-font': desc.to_string() });
   });
 }
 
@@ -474,14 +474,14 @@ function searchPlacesIn(session, text, lang, cancellable) {
 function weatherPlaceRows(group, controls) {
   const settings = controls.settings;
   const hasWeather = Gio.AppInfo.get_all().some(app => app.get_id() === 'org.gnome.Weather.desktop');
-  const current = new Adw.ActionRow({title: 'Weather place'});
+  const current = new Adw.ActionRow({ title: 'Weather place' });
   const reset = new Gtk.Button({
     icon_name: 'edit-undo-symbolic', valign: Gtk.Align.CENTER, css_classes: ['flat'],
     tooltip_text: hasWeather ? 'Use the location set in GNOME Weather' : 'Forget the place',
   });
   current.add_suffix(reset);
   group.add(current);
-  const search = new Adw.EntryRow({title: 'Search for a city or town', show_apply_button: true});
+  const search = new Adw.EntryRow({ title: 'Search for a city or town', show_apply_button: true });
   group.add(search);
 
   controls.watch(['weather-place'], () => {
@@ -489,7 +489,7 @@ function weatherPlaceRows(group, controls) {
     current.subtitle = name || (hasWeather ? 'The location set in GNOME Weather' : 'None');
     reset.sensitive = name !== '';
   });
-  reset.connect('clicked', () => controls.write({'weather-place': ['', 0, 0]}));
+  reset.connect('clicked', () => controls.write({ 'weather-place': ['', 0, 0] }));
 
   let found = [];
   let session = null;
@@ -504,17 +504,17 @@ function weatherPlaceRows(group, controls) {
     showFound([]);
     if (!text) return;
     cancellable = new Gio.Cancellable();
-    session ??= new Soup.Session({user_agent: USER_AGENT, timeout: 20});
+    session ??= new Soup.Session({ user_agent: USER_AGENT, timeout: 20 });
     let places;
     try {
       places = await searchPlaces(session, text, cancellable);
     } catch (error) {
       if (error instanceof GLib.Error && error.matches(Gio.IOErrorEnum, Gio.IOErrorEnum.CANCELLED)) return;
-      showFound([new Adw.ActionRow({title: 'The search failed', subtitle: String(error.message ?? error)})]);
+      showFound([new Adw.ActionRow({ title: 'The search failed', subtitle: String(error.message ?? error) })]);
       return;
     }
     if (places.length === 0) {
-      showFound([new Adw.ActionRow({title: `Nothing called “${text}” was found`})]);
+      showFound([new Adw.ActionRow({ title: `Nothing called “${text}” was found` })]);
       return;
     }
     showFound(places.map(place => {
@@ -523,7 +523,7 @@ function weatherPlaceRows(group, controls) {
         subtitle: [place.admin2 !== place.name ? place.admin2 : '', place.admin1, place.country].filter(Boolean).join(', '),
       });
       row.connect('activated', () => {
-        controls.write({'weather-place': [place.name, place.latitude, place.longitude]});
+        controls.write({ 'weather-place': [place.name, place.latitude, place.longitude] });
         search.text = '';
         showFound([]);
       });
@@ -544,9 +544,9 @@ function addClock(page, controls) {
   const show = controls.toggle(group, 'Show the clock', 'enable-glass-clock');
   const details = new Branch(show);
   details.add(controls.choice(group, 'Time format', [
-    {title: 'As in Settings', patch: {'glass-clock-format': 'system'}},
-    {title: '24-hour', patch: {'glass-clock-format': '24h'}},
-    {title: '12-hour', patch: {'glass-clock-format': '12h'}},
+    { title: 'As in Settings', patch: { 'glass-clock-format': 'system' } },
+    { title: '24-hour', patch: { 'glass-clock-format': '24h' } },
+    { title: '12-hour', patch: { 'glass-clock-format': '12h' } },
   ], '', false));
   details.add(controls.toggle(group, 'Show the date', 'glass-clock-show-date'));
   controls.watch(['enable-glass-clock'], () => { details.enabled = show.active; });
@@ -559,7 +559,7 @@ function addWidgets(page, controls) {
   const show = controls.toggle(group, 'Show widgets', 'enable-desktop-widgets');
   const rows = [];
   for (const [id, title, subtitle] of WIDGETS) {
-    const row = new Adw.SwitchRow({title, subtitle});
+    const row = new Adw.SwitchRow({ title, subtitle });
     group.add(row);
     let syncing = false;
     controls.watch(['desktop-widgets'], () => {
@@ -572,7 +572,7 @@ function addWidgets(page, controls) {
       const chosen = new Set(settings.get_strv('desktop-widgets'));
       if (row.active) chosen.add(id);
       else chosen.delete(id);
-      controls.write({'desktop-widgets': WIDGETS.map(([w]) => w).filter(w => chosen.has(w))});
+      controls.write({ 'desktop-widgets': WIDGETS.map(([w]) => w).filter(w => chosen.has(w)) });
     });
     rows.push(row);
   }
@@ -580,9 +580,9 @@ function addWidgets(page, controls) {
     'On Now playing. GNOME shows the microphone indicator while they listen'));
   rows.push(placeRow(group, controls, 'Place', 'desktop-widgets-position', null));
   rows.push(controls.choice(group, 'Temperature', [
-    {title: 'Automatic', patch: {'weather-temperature-unit': 'auto'}},
-    {title: 'Celsius', patch: {'weather-temperature-unit': 'celsius'}},
-    {title: 'Fahrenheit', patch: {'weather-temperature-unit': 'fahrenheit'}},
+    { title: 'Automatic', patch: { 'weather-temperature-unit': 'auto' } },
+    { title: 'Celsius', patch: { 'weather-temperature-unit': 'celsius' } },
+    { title: 'Fahrenheit', patch: { 'weather-temperature-unit': 'fahrenheit' } },
   ], '', false));
   rows.push(...weatherPlaceRows(group, controls));
   controls.watch(['enable-desktop-widgets'], () => {
@@ -599,7 +599,7 @@ function addLauncher(page, controls) {
 
 function addNumbers(group, controls, specs, prefix = '', slider = true) {
   return new Map(specs.map(([key, title, min, max, step]) => [key,
-    controls.number(group, title, [`${prefix}${key}`], min, max, step, '', {slider})]));
+    controls.number(group, title, [`${prefix}${key}`], min, max, step, '', { slider })]));
 }
 
 function addMotion(group, controls, surface) {
@@ -626,7 +626,7 @@ function addOutline(group, controls, surface) {
   const key = `${surface}-outline-enabled`;
   const toggle = controls.toggle(group, 'Outline', key, 'A line along the visible edge of the glass, for seeing it better');
   const branch = new Branch(toggle);
-  branch.add(controls.number(group, 'Outline width', [`${surface}-outline-width`], 0.5, 10, 0.5, '', {slider: true}));
+  branch.add(controls.number(group, 'Outline width', [`${surface}-outline-width`], 0.5, 10, 0.5, '', { slider: true }));
   branch.add(controls.color(group, 'Outline color', [`${surface}-outline-color`]));
   controls.watch([key], () => { branch.enabled = controls.settings.get_boolean(key); });
 }
@@ -656,20 +656,20 @@ function addLayout(group, controls, surface, appearance) {
 
 function addClockShape(group, controls) {
   placeRow(group, controls, 'Place', 'glass-clock-position', 'clock');
-  controls.number(group, 'Size', ['glass-clock-size'], 48, 480, 1, '', {slider: true});
-  controls.number(group, 'Width', ['glass-clock-stretch'], 0.3, 4, 0.01, '', {slider: true});
-  controls.number(group, 'Height', ['glass-clock-height'], 1, 3, 0.01, '', {slider: true});
+  controls.number(group, 'Size', ['glass-clock-size'], 48, 480, 1, '', { slider: true });
+  controls.number(group, 'Width', ['glass-clock-stretch'], 0.3, 4, 0.01, '', { slider: true });
+  controls.number(group, 'Height', ['glass-clock-height'], 1, 3, 0.01, '', { slider: true });
   controls.choice(group, 'Taller digits', [
-    {title: 'Evenly', patch: {'glass-clock-tall-style': 'even'}},
-    {title: 'Along upright strokes', patch: {'glass-clock-tall-style': 'upright'}},
+    { title: 'Evenly', patch: { 'glass-clock-tall-style': 'even' } },
+    { title: 'Along upright strokes', patch: { 'glass-clock-tall-style': 'upright' } },
   ], 'How the digits grow when the height is above 1', false);
   fontRows(group, controls);
 }
 
 function addLauncherLayout(group, controls) {
   const transition = controls.choice(group, 'Change to pinned items', [
-    {title: 'Morph', patch: {'launcher-pinned-transition': 'morph'}},
-    {title: 'Ease', patch: {'launcher-pinned-transition': 'tween'}},
+    { title: 'Morph', patch: { 'launcher-pinned-transition': 'morph' } },
+    { title: 'Ease', patch: { 'launcher-pinned-transition': 'tween' } },
   ], 'Ctrl+P shows the pinned items.', false);
   const morphBranch = new Branch(transition);
   morphBranch.add(controls.number(group, 'Spring response', ['launcher-spring-response'], 0, 3, 0.01,
@@ -679,10 +679,10 @@ function addLauncherLayout(group, controls) {
   controls.watch(['launcher-pinned-transition'], () => {
     morphBranch.enabled = controls.settings.get_value('launcher-pinned-transition').deep_unpack() === 'morph';
   });
-  controls.number(group, 'Width', ['launcher-width'], 320, 1400, 10, 'Of the search field and its results', {slider: true});
-  controls.number(group, 'Pinned items height', ['launcher-pinned-height'], 240, 1200, 10, '', {slider: true});
+  controls.number(group, 'Width', ['launcher-width'], 320, 1400, 10, 'Of the search field and its results', { slider: true });
+  controls.number(group, 'Pinned items height', ['launcher-pinned-height'], 240, 1200, 10, '', { slider: true });
   controls.number(group, 'Pinned icon size', ['launcher-pinned-icon-size'], 32, 96, 4,
-    'Fewer, larger tiles in a narrow launcher; the tiles are spread evenly over the row', {slider: true});
+    'Fewer, larger tiles in a narrow launcher; the tiles are spread evenly over the row', { slider: true });
 }
 
 function addAdaptiveColor(group, controls, surface) {
@@ -692,9 +692,9 @@ function addAdaptiveColor(group, controls, surface) {
   branch.add(controls.number(group, 'Adaptive color interval (ms)', [`${surface}-sample-interval-ms`], 100, 2000, 50));
   const preferenceKey = `${surface}-adaptive-text-preference`;
   branch.add(controls.choice(group, 'Preferred text color', [
-    {title: 'Automatic', patch: {[preferenceKey]: 'auto'}},
-    {title: 'Light', patch: {[preferenceKey]: 'light'}},
-    {title: 'Dark', patch: {[preferenceKey]: 'dark'}},
+    { title: 'Automatic', patch: { [preferenceKey]: 'auto' } },
+    { title: 'Light', patch: { [preferenceKey]: 'light' } },
+    { title: 'Dark', patch: { [preferenceKey]: 'dark' } },
   ], 'Decides only when both colors are equally readable', false));
   controls.watch([key], () => { branch.enabled = controls.settings.get_boolean(key); });
 }
@@ -721,12 +721,12 @@ function addSurface(page, controls, surface, title) {
 function addRendering(page, controls) {
   const blur = controls.group(page, 'Blur');
   controls.choice(blur, 'Method', [
-    {title: 'Gaussian', patch: {'blur-method': 0}},
-    {title: 'Dual Kawase', patch: {'blur-method': 1}},
+    { title: 'Gaussian', patch: { 'blur-method': 0 } },
+    { title: 'Dual Kawase', patch: { 'blur-method': 1 } },
   ]);
   controls.choice(blur, 'Resolution', [
-    {title: 'Half', patch: {'glass-blur-downscale': 2}},
-    {title: 'Quarter', patch: {'glass-blur-downscale': 4}},
+    { title: 'Half', patch: { 'glass-blur-downscale': 2 } },
+    { title: 'Quarter', patch: { 'glass-blur-downscale': 4 } },
   ]);
   const groups = [blur];
   for (const [title, specs] of [['Optics', OPTICS], ['Lighting', LIGHTING], ['Shadows', SHADOWS]]) {
@@ -789,12 +789,13 @@ function moveToEnd(page, groups) {
   }
 }
 
+// Function called by prefs.js, main builder of simple view
 export function buildPreferences(window, settings) {
   window.set_default_size(720, 720);
   window.search_enabled = true;
   const controls = new PreferenceControls(settings, window);
   const page = (title, icon_name) => {
-    const result = new Adw.PreferencesPage({title, icon_name});
+    const result = new Adw.PreferencesPage({ title, icon_name });
     window.add(result);
     return result;
   };
@@ -806,19 +807,19 @@ export function buildPreferences(window, settings) {
   addBlurMyShellWarning(appearance, controls);
   const view = controls.group(appearance, 'Settings');
   controls.choice(view, 'Settings view', [
-    {title: 'Simple', patch: {'preferences-advanced': false}},
-    {title: 'Advanced', patch: {'preferences-advanced': true}},
+    { title: 'Simple', patch: { 'preferences-advanced': false } },
+    { title: 'Advanced', patch: { 'preferences-advanced': true } },
   ], '', false);
   addBackup(appearance, controls, window);
   const glass = controls.group(appearance, 'Glass', 'One look for all effects. Existing differences stay until you change a control.');
-  controls.number(glass, 'Blur', sharedKeys('blur-radius'), 0, 30, 1, '', {slider: true});
-  controls.number(glass, 'Corners', [...sharedKeys('corner-radius'), 'quick-settings-toggle-corner-radius'], 0, 200, 1, '', {slider: true});
+  controls.number(glass, 'Blur', sharedKeys('blur-radius'), 0, 30, 1, '', { slider: true });
+  controls.number(glass, 'Corners', [...sharedKeys('corner-radius'), 'quick-settings-toggle-corner-radius'], 0, 200, 1, '', { slider: true });
   controls.color(glass, 'Tint', sharedKeys('tint-color'));
-  controls.number(glass, 'Tint strength', sharedKeys('tint-strength'), 0, 1, 0.05, '', {slider: true});
+  controls.number(glass, 'Tint strength', sharedKeys('tint-strength'), 0, 1, 0.05, '', { slider: true });
   const outlineKeys = sharedKeys('outline-enabled');
   controls.choice(glass, 'Outline', booleanChoices(outlineKeys), 'A line along the visible edge of the glass, for seeing it better');
-  const outline = new Branch(null, {fold: false});
-  outline.add(controls.number(glass, 'Outline width', sharedKeys('outline-width'), 0.5, 10, 0.5, '', {slider: true}));
+  const outline = new Branch(null, { fold: false });
+  outline.add(controls.number(glass, 'Outline width', sharedKeys('outline-width'), 0.5, 10, 0.5, '', { slider: true }));
   outline.add(controls.color(glass, 'Outline color', sharedKeys('outline-color')));
   controls.watch(outlineKeys, () => { outline.enabled = outlineKeys.some(key => settings.get_boolean(key)); });
 
@@ -841,14 +842,14 @@ export function buildPreferences(window, settings) {
 
   const rendering = controls.group(advanced, 'Rendering');
   controls.choice(rendering, 'Quality', QUALITY);
-  controls.number(rendering, 'Refraction', ['glass-displacement-scale'], 0, 200, 1, '', {slider: true});
-  controls.number(rendering, 'Edge light', ['glass-rim-intensity'], 0, 5, 0.1, '', {slider: true});
+  controls.number(rendering, 'Refraction', ['glass-displacement-scale'], 0, 200, 1, '', { slider: true });
+  controls.number(rendering, 'Edge light', ['glass-rim-intensity'], 0, 5, 0.1, '', { slider: true });
   controls.choice(rendering, 'Shadows', [
-    {title: 'Off', patch: {'shadow-intensity': 0}},
-    {title: 'Soft', patch: {'shadow-radius': 50, 'shadow-intensity': 0.07}},
-    {title: 'Strong', patch: {'shadow-radius': 50, 'shadow-intensity': 0.5}},
+    { title: 'Off', patch: { 'shadow-intensity': 0 } },
+    { title: 'Soft', patch: { 'shadow-radius': 50, 'shadow-intensity': 0.07 } },
+    { title: 'Strong', patch: { 'shadow-radius': 50, 'shadow-intensity': 0.5 } },
   ]);
-  controls.number(rendering, 'Edge shading', ['glass-ao-intensity'], 0, 1, 0.05, '', {slider: true});
+  controls.number(rendering, 'Edge shading', ['glass-ao-intensity'], 0, 1, 0.05, '', { slider: true });
 
   addClock(desktop, controls);
   addWidgets(desktop, controls);
@@ -865,7 +866,7 @@ export function buildPreferences(window, settings) {
     controls.toggle(diagnostics, 'Render diagnostics', 'glass-debug-diagnostics', 'Adds rendering overhead; leave off for normal use.');
     const dump = controls.toggle(diagnostics, 'Dump shortcut', 'enable-dump-shortcut',
       'A global shortcut that records the glass state for bug reports');
-    const dumpBranch = new Branch(dump, {fold: false});
+    const dumpBranch = new Branch(dump, { fold: false });
     dumpBranch.add(controls.shortcut(diagnostics, 'Shortcut', 'dump-loop-keybinding'));
     controls.watch(['enable-dump-shortcut'], () => { dumpBranch.enabled = settings.get_boolean('enable-dump-shortcut'); });
   });
@@ -874,7 +875,7 @@ export function buildPreferences(window, settings) {
     const enabled = settings.get_boolean('preferences-advanced');
     for (const group of [glass, behavior, surfaces, rendering]) group.visible = !enabled;
     if (enabled && !showAdvanced) {
-      showAdvanced = buildAdvancedPreferences({appearance, effects, rendering: advanced}, controls);
+      showAdvanced = buildAdvancedPreferences({ appearance, effects, rendering: advanced }, controls);
       moveToEnd(effects, effectsTail);
       moveToEnd(advanced, renderingTail);
     }
