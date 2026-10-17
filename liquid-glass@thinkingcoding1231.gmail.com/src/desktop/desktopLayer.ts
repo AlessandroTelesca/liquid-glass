@@ -138,7 +138,7 @@ export class DesktopLayer {
     this._menuManager = new PopupMenu.PopupMenuManager(container);
     this._menuManager.addMenu(menu);
     this._menuGlass = new UIManager(this._path, this._settings, this._logger, { menu }, false,
-      'enable-extra-menu-glass', 'panel-menu', 'menu:desktop', false);
+      'enable-extra-menu-glass', 'panel-menu', 'menu:desktop', false, 'desktop-widget-menu-animation');
     this._menuGlass.setup();
   }
 

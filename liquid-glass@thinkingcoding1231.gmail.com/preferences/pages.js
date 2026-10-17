@@ -33,8 +33,8 @@ const smoothMotion = Object.fromEntries(['menu', 'panel-menu', 'quick-settings']
 ]));
 
 const MOTION = [
-  { title: 'Off', patch: uniformPatch(MOTION_KEYS, false) },
-  { title: 'Smooth', patch: smoothMotion },
+  { title: 'Off', patch: { ...uniformPatch(MOTION_KEYS, false), 'desktop-widget-menu-animation': 'off' } },
+  { title: 'Smooth', patch: { ...smoothMotion, 'desktop-widget-menu-animation': 'morph' } },
 ];
 
 const QUALITY = [
@@ -714,6 +714,13 @@ function addSurface(page, controls, surface, title) {
   if (['menu', 'panel-menu', 'quick-settings'].includes(surface)) addMotion(group, controls, surface);
   if (clock) addClockShape(group, controls);
   if (surface === 'launcher') addLauncherLayout(group, controls);
+  if (surface === 'desktop-widget') {
+    controls.choice(group, 'Menu animation', [
+      { title: 'Morph', patch: { 'desktop-widget-menu-animation': 'morph' } },
+      { title: 'Spring', patch: { 'desktop-widget-menu-animation': 'spring' } },
+      { title: 'Off', patch: { 'desktop-widget-menu-animation': 'off' } },
+    ], 'The right-click menu of the widgets and the clock. Its speed and springs are those of Other top bar menus', false);
+  }
   if (ADAPTIVE_SURFACES.includes(surface)) addAdaptiveColor(group, controls, surface);
   return group;
 }

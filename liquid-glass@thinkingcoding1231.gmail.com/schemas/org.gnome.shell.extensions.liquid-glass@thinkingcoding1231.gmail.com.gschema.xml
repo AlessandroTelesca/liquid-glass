@@ -936,6 +936,16 @@
       <summary>Temperature unit</summary>
       <description>"auto", "celsius" or "fahrenheit".</description>
     </key>
+    <key name="desktop-widget-menu-animation" type="s">
+      <choices>
+        <choice value="off"/>
+        <choice value="spring"/>
+        <choice value="morph"/>
+      </choices>
+      <default>"morph"</default>
+      <summary>How the menu of the desktop items opens</summary>
+      <description>"morph": the glass grows out of a drop where you clicked; "spring": the menu scales up on a spring; "off": it just appears. The speed and springs are those of the other top bar menus.</description>
+    </key>
     <key name="desktop-widget-tint-color" type="s">
       <default>"#ffffff"</default>
       <summary>Tint color (Hex)</summary>

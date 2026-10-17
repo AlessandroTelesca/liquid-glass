@@ -176,6 +176,8 @@ While one is moved, dotted guides show where it lines up with the others and the
 
 The widgets and the clock are hidden in the overview, together with the windows. With desktop icons ([Desktop Icons NG](https://gitlab.com/rastersoft/desktop-icons-ng)) they sit above the icons, so they can be clicked.
 
+Their right-click menu grows out of a drop of glass where you clicked; under **Appearance → Desktop widgets** it can open on a spring instead, or just appear.
+
 ### Launcher
 
 A search field on glass in the middle of the screen, like Spotlight, opened with <kbd>Super</kbd> + <kbd>Alt</kbd> + <kbd>Space</kbd> (changeable in the preferences). It asks the same search providers as the overview, so it finds applications, settings, files, calculations and whatever else your installed apps provide, as far as they are enabled in Settings → Search. Use the arrow keys and <kbd>Enter</kbd>, or click a result; <kbd>Esc</kbd> or a click outside closes it.
