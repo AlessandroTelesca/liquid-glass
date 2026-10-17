@@ -419,7 +419,7 @@ export class QuickSettingsManager {
       this._toggleBaseStrength = this._settings.get_double(this._key('toggle-tint-strength'));
     });
 
-    connectSetting(this._key('corner-radius'), () => {
+    connectSetting(this._key('toggle-corner-radius'), () => {
       this._toggleCornerRadius = this._settings.get_double(this._key('toggle-corner-radius'));
       if (this.glass && this._activeMode === 'toggles') {
         this.glass.setCornerRadius(this._toggleCornerRadius);
