@@ -59,7 +59,8 @@ function fixture(overrides = {}, dbusResponses = [], blurMyShell = null) {
     append(child) { this.add(child); }
     remove(child) { this.children = this.children.filter(item => item !== child); }
     add_prefix() {} add_suffix(child) { child._parent = this; this.suffixes = [...(this.suffixes ?? []), child]; }
-    add_css_class(name) { this.cssClasses = [...(this.cssClasses ?? []), name]; } set_header_suffix() {} set_default_size() {}
+    add_css_class(name) { this.cssClasses = [...(this.cssClasses ?? []), name]; }
+    remove_css_class(name) { this.cssClasses = (this.cssClasses ?? []).filter(item => item !== name); } set_header_suffix() {} set_default_size() {}
     get_parent() { return this._parent ?? null; }
     reorder_child_after() {}
     set_child(child) { this.child = child; } set_content(child) { this.content = child; } add_top_bar() {} pack_start() {}
@@ -74,6 +75,8 @@ function fixture(overrides = {}, dbusResponses = [], blurMyShell = null) {
     get value() { return this._value; }
     set active(value) { this._active = value; this.emit('notify::active'); }
     get active() { return this._active; }
+    set visible(value) { this._visible = value; this.emit('notify::visible'); }
+    get visible() { return this._visible; }
   }
   class RGBA { parse() { this.red = this.green = this.blue = 1; } }
   const Adw = Object.fromEntries(['PreferencesPage', 'PreferencesGroup', 'SwitchRow', 'ComboRow', 'SpinRow', 'ActionRow', 'EntryRow', 'ExpanderRow',
@@ -375,9 +378,43 @@ test('the animation and adaptive color rows are set in under their switches and 
     'Preferred text color', 'Outline width', 'Outline color'])
     assert.ok(indented.includes(title), title);
   assert.ok(!indented.includes('Animations'));
-  assert.equal(group.children.find(widget => widget.title === 'Spring mass').visible, true);
+  const row = title => group.children.find(widget => widget.title === title);
+  assert.equal(row('Morph speed').visible, true);
+  assert.equal(row('Spring mass').visible, false, 'springs are for menus that do not grow from the button');
+  f.controls.write({'menu-grow-from-button': false});
+  assert.equal(row('Morph speed').visible, false);
+  assert.equal(row('Spring mass').visible, true);
   f.controls.write({'enable-menu-animation': false});
-  assert.equal(group.children.find(widget => widget.title === 'Spring mass').visible, false);
+  assert.equal(row('Spring mass').visible, false);
+});
+
+test('the desktop page keeps the clock switch, time format and date; its look is a surface of the advanced view', () => {
+  const f = fixture({'preferences-advanced': true});
+  const desktop = f.window.children.find(page => page.title === 'Desktop');
+  const clock = desktop.children.find(group => group.title === 'Glass clock');
+  assert.deepEqual(clock.children.map(row => row.title), ['Show the clock', 'Time format', 'Show the date']);
+  const selector = f.row('Surface');
+  selector.selected = selector.model.indexOf('Desktop clock');
+  const group = f.window.children[0].children.find(group => group.title === 'Desktop clock');
+  const titles = group.children.map(row => row.title);
+  for (const title of ['Blur', 'Tint strength', 'Tint', 'Brightness', 'Contrast', 'Saturation', 'Place', 'Size', 'Width', 'Height',
+    'Taller digits', 'Font', 'Weight'])
+    assert.ok(titles.includes(title), title);
+  for (const title of ['Corners', 'Outline']) assert.ok(!titles.includes(title), title);
+  group.children.find(row => row.title === 'Saturation').value = 1.5;
+  assert.deepEqual(f.writes.at(-1), {'glass-clock-saturation': 1.5});
+});
+
+test('the dump shortcut can be rebound while it is on', () => {
+  const f = fixture();
+  const group = f.window.children.find(page => page.title === 'Rendering').children.find(group => group.title === 'Troubleshooting');
+  const shortcut = group.children.find(row => row.title === 'Shortcut');
+  assert.equal(shortcut.visible, false);
+  f.controls.write({'enable-dump-shortcut': true});
+  assert.equal(shortcut.visible, true);
+  shortcut.text = '<Control><Alt>k';
+  shortcut.emit('apply');
+  assert.deepEqual(f.values.get('dump-loop-keybinding'), ['<Control><Alt>k']);
 });
 
 test('quick settings glass is chosen with the quick settings surface, and under Show glass on in the simple view', () => {
@@ -504,7 +541,7 @@ test('exported settings are a dconf dump, and an import keeps only valid values 
     get_value: key => ({print: () => values[key], get_type_string: () => types[key]}),
     is_writable: key => key !== 'enable-dock-glass',
   };
-  const {dumpSettings, parseSettings} = createModuleLoader({Adw: {}, Gio: {}, Gtk: {}, GLib})(path.join(root, 'preferences/backup.js'));
+  const {dumpSettings, parseSettings} = createModuleLoader({Adw: {}, Gio: {}, Gtk: {}, Gdk: {}, GLib})(path.join(root, 'preferences/controls.js'));
   assert.equal(dumpSettings(settings), '[/]\ndock-blur-radius=12\nenable-dock-glass=true\nlaunch' + 'er-width=680\n');
   const result = parseSettings(settings, '[/]\ndock-blur-radius=9\nlauncher-width=5000\nenable-dock-glass=false\nmissing=1\nlauncher-width=abc\n');
   assert.deepEqual(result.changes, [['dock-blur-radius', {type: 'i', text: '9'}]]);

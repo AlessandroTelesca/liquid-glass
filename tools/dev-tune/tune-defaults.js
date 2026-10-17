@@ -5,7 +5,7 @@ import GLib from 'gi://GLib';
 import Gtk from 'gi://Gtk';
 
 import {buildPreferences} from './pages.js';
-import {parseSettings} from './backup.js';
+import {parseSettings} from './controls.js';
 
 // Developer-only tool, attached by `npm run build:dev` (see tools/dev-tune/README.md).
 const UI_ONLY_KEYS = ['preferences-advanced'];

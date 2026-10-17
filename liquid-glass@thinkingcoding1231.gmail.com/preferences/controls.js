@@ -3,7 +3,123 @@ import Gtk from 'gi://Gtk';
 import Gio from 'gi://Gio';
 import Gdk from 'gi://Gdk';
 import GLib from 'gi://GLib';
-import {commonValue, matches, uniformPatch} from './model.js';
+
+export function uniformPatch(keys, value) {
+  return Object.fromEntries(keys.map(key => [key, value]));
+}
+
+export function commonValue(settings, keys) {
+  const values = keys.map(key => settings.get_value(key).deep_unpack());
+  return {value: values[0], mixed: values.some(value => value !== values[0])};
+}
+
+export function matches(settings, patch) {
+  return Object.entries(patch).every(([key, value]) => settings.get_value(key).deep_unpack() === value);
+}
+
+// The settings as `dconf dump` writes them, so a file can also be loaded with
+// `dconf load /org/gnome/shell/extensions/liquid-glass/`.
+export function dumpSettings(settings) {
+  const lines = settings.settings_schema.list_keys().sort()
+    .map(key => `${key}=${settings.get_value(key).print(false)}`);
+  return `[/]\n${lines.join('\n')}\n`;
+}
+
+// The values in `text` that are keys of the schema, of the right type and in range. `skipped` counts the lines that are not.
+export function parseSettings(settings, text) {
+  const schema = settings.settings_schema;
+  const changes = [];
+  let skipped = 0;
+  for (const line of text.split('\n')) {
+    const at = line.indexOf('=');
+    if (at < 1 || line.startsWith('[')) continue;
+    const key = line.slice(0, at).trim();
+    if (!schema.has_key(key) || !settings.is_writable(key)) {
+      skipped++;
+      continue;
+    }
+    let value;
+    try {
+      value = GLib.Variant.parse(new GLib.VariantType(settings.get_value(key).get_type_string()), line.slice(at + 1).trim(), null, null);
+    } catch {
+      skipped++;
+      continue;
+    }
+    if (schema.get_key(key).range_check(value)) changes.push([key, value]);
+    else skipped++;
+  }
+  return {changes, skipped};
+}
+
+// Rows that depend on a setting hang below its row, set in from the left. With
+// `fold`, an arrow at the end of that row (`parent`) hides and shows them again.
+export class Branch {
+  constructor(parent, {fold = true} = {}) {
+    this._rows = [];
+    this._open = true;
+    this._enabled = true;
+    this._arrow = null;
+    if (!fold) return;
+    this._arrow = new Gtk.Button({valign: Gtk.Align.CENTER, css_classes: ['flat']});
+    this._arrow.connect('clicked', () => {
+      this._open = !this._open;
+      this._update();
+    });
+    parent.add_suffix(this._arrow);
+    this._update();
+  }
+
+  add(row) {
+    row.add_css_class('lg-branch');
+    this._rows.push(row);
+    this._update();
+    return row;
+  }
+
+  // Whether the switch row's setting is on: the rows and the arrow go away when it is not.
+  set enabled(on) {
+    this._enabled = on;
+    this._update();
+  }
+
+  _update() {
+    const shown = this._enabled && this._open;
+    for (const row of this._rows) row.visible = shown;
+    if (!this._arrow) return;
+    this._arrow.visible = this._enabled;
+    this._arrow.icon_name = this._open ? 'pan-down-symbolic' : 'pan-end-symbolic';
+    this._arrow.tooltip_text = this._open ? 'Fold' : 'Unfold';
+  }
+}
+
+// Indented rows in several sets, of which only the one picked with `switch` is
+// shown, and only while `parent` is.
+export class ToggleBranch {
+  constructor(parent, scenes) {
+    this._parent = parent;
+    this._rows = Array.from({length: scenes}, () => []);
+    this._scene = 0;
+    parent.connect('notify::visible', () => this._update());
+  }
+
+  add(row, scene) {
+    row.add_css_class('lg-branch');
+    this._rows[scene].push(row);
+    this._update();
+    return row;
+  }
+
+  set switch(scene) {
+    this._scene = scene;
+    this._update();
+  }
+
+  _update() {
+    this._rows.forEach((rows, i) => {
+      for (const row of rows) row.visible = this._parent.visible && i === this._scene;
+    });
+  }
+}
 
 export class PreferenceControls {
   constructor(settings, window) {
@@ -176,5 +292,34 @@ export class PreferenceControls {
       this.write(uniformPatch(keys, hex));
     });
     return row;
+  }
+
+  // A text setting edited in an entry row, stored when it is applied and `valid`.
+  entry(group, title, key, {read = v => v, write = v => v, valid = () => true} = {}) {
+    const row = new Adw.EntryRow({title, show_apply_button: true});
+    group.add(row);
+    this.watch([key], () => { row.text = read(this.settings.get_value(key).deep_unpack()); });
+    row.connect('apply', () => {
+      const text = row.text.trim();
+      if (!valid(text)) {
+        row.add_css_class('error');
+        return;
+      }
+      row.remove_css_class('error');
+      this.write({[key]: write(text)});
+    });
+    return row;
+  }
+
+  // A keyboard shortcut kept as the first item of a string-array setting.
+  shortcut(group, title, key) {
+    return this.entry(group, title, key, {
+      read: value => value[0] ?? '',
+      write: text => [text],
+      valid: text => {
+        const [ok, keyval] = Gtk.accelerator_parse(text);
+        return ok && keyval !== 0;
+      },
+    });
   }
 }

@@ -192,7 +192,7 @@ Point at a result and a pin appears on its left: click it to pin the result (app
 
 - **Appearance** — shared blur, corners, tint and outline; animations, adaptive color and matching menu heights; **Backup**, which exports every setting to a file and imports it again.
 - **Effects** — choose where glass appears: top bar, dock, menus, popups (and whether quick settings get one sheet or one per button), application icons and application windows. The advanced view lists every surface on its own here, the top bar included.
-- **Desktop** — the glass clock (its settings fold away while it is off), the desktop widgets and the launcher (its shortcut, width, the height of the pinned items, their icon size and how it changes to them).
+- **Desktop** — the glass clock (whether it shows, the time format and the date), the desktop widgets and the launcher (its shortcut). The clock's place, size, font and glass (blur, tint color and strength, brightness, contrast, saturation), and the launcher's width, the height of the pinned items, their icon size and how it changes to them, are surfaces of the advanced **Appearance** page.
 - **Rendering** — rendering quality, refraction, edge lighting, shadows and diagnostics.
 
 Opening the window preserves your configuration. **Custom** means your existing
@@ -242,7 +242,7 @@ A separate ambient-occlusion style darkening sits just inside the glass edge, in
 ### Troubleshooting
 - **Logging** - Print the extension's logs to the journal / terminal. Useful when reporting a bug.
 - **Render diagnostics** - More detailed rendering state in the logs; adds overhead, so leave it off for normal use.
-- **Dump shortcut** - A global shortcut (Ctrl+Alt+L) that records the glass state for a bug report.
+- **Dump shortcut** - A global shortcut (Ctrl+Alt+L unless changed in the row under the switch) that records the glass state for a bug report.
 
 
 ## The WebGL/Three.js Prototype (The Lab)
