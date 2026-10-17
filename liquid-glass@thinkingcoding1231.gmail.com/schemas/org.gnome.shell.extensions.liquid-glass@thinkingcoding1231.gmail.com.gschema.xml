@@ -559,6 +559,16 @@
       <summary>Blacklisted window classes</summary>
       <description>WM_CLASS names that never receive the glass effect. Only consulted when "apply to all windows" is on.</description>
     </key>
+    <key name="application-corner-on-maximized" type="b">
+      <default>false</default>
+      <summary>Corner on maximized windows</summary>
+      <description>Whether the glass effect should be applied to the corners of the screen when the window is maximized.</description>
+    </key>
+    <key name="application-glass-on-maximized" type="b">
+      <default>true</default>
+      <summary>Glass on maximized windows</summary>
+      <description>Whether the glass effect should be applied to the window when it is maximized.</description>
+    </key>
     <key name="application-tint-color" type="s">
       <default>"#ffffff"</default>
       <summary>Tint color (Hex)</summary>

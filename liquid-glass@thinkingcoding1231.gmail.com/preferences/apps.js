@@ -2,7 +2,7 @@ import Adw from 'gi://Adw';
 import Gio from 'gi://Gio';
 import Gtk from 'gi://Gtk';
 
-import {ICON_TUNING} from '../dist/iconStyle/styleColors.js';
+import { ICON_TUNING } from '../dist/iconStyle/styleColors.js';
 
 // The id the Show Apps button goes by in the lists (see src/iconStyle/iconStyler.ts).
 const SHOW_APPS_ID = 'show-apps';
@@ -10,10 +10,10 @@ const SHOW_APPS_ID = 'show-apps';
 const ANY_ICON_STYLE = ['icon-style-dock', 'icon-style-launcher', 'icon-style-app-grid'];
 
 // A dark dock keeps the clear look's white symbols readable over a light wallpaper.
-const CLEAR_DOCK = {'dock-tint-color': '#000000', 'dock-tint-strength': 0.16};
+const CLEAR_DOCK = { 'dock-tint-color': '#000000', 'dock-tint-strength': 0.16 };
 
 const TUNING_KEY = 'icon-style-tuning';
-const LOOK_TITLES = {dark: 'Tinted, dark', light: 'Tinted, light', mono: 'Mono', clear: 'Clear'};
+const LOOK_TITLES = { dark: 'Tinted, dark', light: 'Tinted, light', mono: 'Mono', clear: 'Clear' };
 
 const WINDOW_LIST_BUS_NAME = 'org.gnome.Shell';
 const WINDOW_LIST_OBJECT_PATH = '/org/gnome/Shell/Extensions/LiquidGlass';
@@ -23,13 +23,13 @@ const WINDOW_LIST_INTERFACE_NAME = 'org.gnome.Shell.Extensions.LiquidGlass';
 function applications() {
   const apps = Gio.AppInfo.get_all()
     .filter(app => app.should_show() && app.get_id())
-    .map(app => ({id: app.get_id(), name: app.get_display_name(), icon: app.get_icon()}))
+    .map(app => ({ id: app.get_id(), name: app.get_display_name(), icon: app.get_icon() }))
     .sort((a, b) => a.name.localeCompare(b.name));
-  return [{id: SHOW_APPS_ID, name: 'Show Apps', icon: new Gio.ThemedIcon({name: 'view-app-grid-symbolic'})}, ...apps];
+  return [{ id: SHOW_APPS_ID, name: 'Show Apps', icon: new Gio.ThemedIcon({ name: 'view-app-grid-symbolic' }) }, ...apps];
 }
 
 function appIcon(app) {
-  const image = new Gtk.Image({pixel_size: 32, valign: Gtk.Align.CENTER});
+  const image = new Gtk.Image({ pixel_size: 32, valign: Gtk.Align.CENTER });
   if (app?.icon)
     image.set_from_gicon(app.icon);
   else
@@ -38,11 +38,11 @@ function appIcon(app) {
 }
 
 function pickerDialog(title, width) {
-  const dialog = new Adw.Dialog({title, content_width: width, content_height: 560});
+  const dialog = new Adw.Dialog({ title, content_width: width, content_height: 560 });
   const toolbar = new Adw.ToolbarView();
   toolbar.add_top_bar(new Adw.HeaderBar());
   dialog.set_child(toolbar);
-  return {dialog, toolbar};
+  return { dialog, toolbar };
 }
 
 function removeAll(box) {
@@ -58,15 +58,17 @@ function currentLook(settings) {
 // A dialog of sliders for the numbers the current look is drawn with. A value left at its default is not stored.
 function presentIconTuning(parent, settings, controls) {
   const look = currentLook(settings);
-  const dialog = new Adw.Dialog({title: 'Glass Tuning', content_width: 460, content_height: 560});
+  const dialog = new Adw.Dialog({ title: 'Glass Tuning', content_width: 460, content_height: 560 });
   const toolbar = new Adw.ToolbarView();
   const header = new Adw.HeaderBar();
-  const reset = new Gtk.Button({label: 'Reset All', tooltip_text: 'Every look back to its defaults'});
+  const reset = new Gtk.Button({ label: 'Reset All', tooltip_text: 'Every look back to its defaults' });
   header.pack_start(reset);
   toolbar.add_top_bar(header);
   const page = new Adw.PreferencesPage();
-  const group = new Adw.PreferencesGroup({title: LOOK_TITLES[look] ?? look,
-    description: 'Changes show on the icons as you make them.'});
+  const group = new Adw.PreferencesGroup({
+    title: LOOK_TITLES[look] ?? look,
+    description: 'Changes show on the icons as you make them.'
+  });
   page.add(group);
   toolbar.set_content(page);
   dialog.set_child(toolbar);
@@ -74,8 +76,10 @@ function presentIconTuning(parent, settings, controls) {
   let syncing = false;
   const rows = ICON_TUNING.filter(param => param.looks.includes(look)).map(param => {
     const step = param.max - param.min > 2 ? 0.5 : 0.01;
-    const row = new Adw.SpinRow({title: param.title, digits: 2,
-      adjustment: new Gtk.Adjustment({lower: param.min, upper: param.max, step_increment: step, page_increment: step * 10})});
+    const row = new Adw.SpinRow({
+      title: param.title, digits: 2,
+      adjustment: new Gtk.Adjustment({ lower: param.min, upper: param.max, step_increment: step, page_increment: step * 10 })
+    });
     controls.addSlider(row, 2);
     group.add(row);
     row.connect('notify::value', () => {
@@ -84,15 +88,15 @@ function presentIconTuning(parent, settings, controls) {
       const value = Number(row.value.toFixed(2));
       if (value === param.value) delete values[param.key];
       else values[param.key] = value;
-      controls.write({[TUNING_KEY]: values});
+      controls.write({ [TUNING_KEY]: values });
     });
-    return {param, row};
+    return { param, row };
   });
 
   const refresh = () => {
     const values = settings.get_value(TUNING_KEY).deep_unpack();
     syncing = true;
-    for (const {param, row} of rows) {
+    for (const { param, row } of rows) {
       row.value = values[param.key] ?? param.value;
       row.subtitle = param.key in values ? `Default ${param.value}` : '';
     }
@@ -119,24 +123,24 @@ export class IconStyleRules {
     this.controls.toggle(group, 'Launcher', 'icon-style-launcher');
     this.controls.toggle(group, 'App grid', 'icon-style-app-grid', 'In the overview, folders included');
     const look = this.controls.choice(group, 'Look', [
-      {title: 'Tinted', patch: {'icon-style-mode': 'tinted'}},
-      {title: 'Mono', patch: {'icon-style-mode': 'mono'}},
-      {title: 'Clear', patch: {'icon-style-mode': 'clear'}},
+      { title: 'Tinted', patch: { 'icon-style-mode': 'tinted' } },
+      { title: 'Mono', patch: { 'icon-style-mode': 'mono' } },
+      { title: 'Clear', patch: { 'icon-style-mode': 'clear' } },
     ], '', false);
     const clearHint = this._addClearHint(group);
     const variantRow = this.controls.choice(group, 'Variant', [
-      {title: 'Dark', patch: {'icon-style-tint-variant': 'dark'}},
-      {title: 'Light', patch: {'icon-style-tint-variant': 'light'}},
+      { title: 'Dark', patch: { 'icon-style-tint-variant': 'dark' } },
+      { title: 'Light', patch: { 'icon-style-tint-variant': 'light' } },
     ], 'Dark glass under a colored symbol, or colored glass under a white one', false);
     const accentRow = this.controls.toggle(group, 'Accent color', 'icon-style-use-accent',
       'The system accent color, from GNOME 47 on');
     const colorRow = this.controls.color(group, 'Color', ['icon-style-color']);
     const strengthRow = this.controls.number(group, 'Tint strength', ['icon-style-tint-strength'], 0, 1, 0.05,
-      'From dark glass to the full color', {slider: true});
+      'From dark glass to the full color', { slider: true });
     const rows = [look,
       this.controls.number(group, 'Size', ['icon-style-size'], 0.8, 1.3, 0.05,
-        'As a share of the size each place gives them', {slider: true}),
-      this.controls.number(group, 'Symbol opacity', ['icon-style-symbol-opacity'], 0, 1, 0.05, '', {slider: true}),
+        'As a share of the size each place gives them', { slider: true }),
+      this.controls.number(group, 'Symbol opacity', ['icon-style-symbol-opacity'], 0, 1, 0.05, '', { slider: true }),
       this._addTuningRow(group),
       this.controls.toggle(group, 'Include all applications', 'icon-style-all-apps')];
     this.controls.watch([...ANY_ICON_STYLE, 'icon-style-mode', 'icon-style-tint-variant', 'icon-style-use-accent'], () => {
@@ -156,9 +160,11 @@ export class IconStyleRules {
   }
 
   _addClearHint(group) {
-    const row = new Adw.ActionRow({title: 'Hard to see?',
-      subtitle: 'Clear icons show what is behind them. On a light wallpaper, a black dock tint at 0.16 strength keeps them readable.'});
-    const button = new Gtk.Button({label: 'Apply', valign: Gtk.Align.CENTER});
+    const row = new Adw.ActionRow({
+      title: 'Hard to see?',
+      subtitle: 'Clear icons show what is behind them. On a light wallpaper, a black dock tint at 0.16 strength keeps them readable.'
+    });
+    const button = new Gtk.Button({ label: 'Apply', valign: Gtk.Align.CENTER });
     button.connect('clicked', () => this.controls.write(CLEAR_DOCK));
     row.add_suffix(button);
     group.add(row);
@@ -172,28 +178,32 @@ export class IconStyleRules {
   }
 
   _addTuningRow(group) {
-    const row = new Adw.ActionRow({title: 'Glass tuning', subtitle: 'The finer numbers of the current look',
-      activatable: true});
-    row.add_suffix(new Gtk.Image({icon_name: 'go-next-symbolic'}));
+    const row = new Adw.ActionRow({
+      title: 'Glass tuning', subtitle: 'The finer numbers of the current look',
+      activatable: true
+    });
+    row.add_suffix(new Gtk.Image({ icon_name: 'go-next-symbolic' }));
     row.connect('activated', () => presentIconTuning(row, this.settings, this.controls));
     group.add(row);
     return row;
   }
 
   _addList(page, key, title, activeWhen) {
-    const group = new Adw.PreferencesGroup({title});
+    const group = new Adw.PreferencesGroup({ title });
     page.add(group);
     this.controls.watch([...ANY_ICON_STYLE, 'icon-style-all-apps'], () => {
       group.visible = ANY_ICON_STYLE.some(k => this.settings.get_boolean(k)) &&
         this.settings.get_boolean('icon-style-all-apps') === activeWhen;
     });
 
-    const addButton = new Gtk.Button({valign: Gtk.Align.CENTER, css_classes: ['flat'], icon_name: 'list-add-symbolic',
-      tooltip_text: 'Choose an application'});
+    const addButton = new Gtk.Button({
+      valign: Gtk.Align.CENTER, css_classes: ['flat'], icon_name: 'list-add-symbolic',
+      tooltip_text: 'Choose an application'
+    });
     addButton.connect('clicked', () => this._presentPicker(addButton, key));
     group.set_header_suffix(addButton);
 
-    const listBox = new Gtk.ListBox({selection_mode: Gtk.SelectionMode.NONE});
+    const listBox = new Gtk.ListBox({ selection_mode: Gtk.SelectionMode.NONE });
     listBox.add_css_class('boxed-list');
     group.add(listBox);
     let known = null;
@@ -203,16 +213,18 @@ export class IconStyleRules {
       const ids = this.settings.get_strv(key);
       for (const id of ids) {
         const app = known.get(id);
-        const row = new Adw.ActionRow({title: app?.name ?? id, subtitle: app ? id : 'Not installed', use_markup: false});
+        const row = new Adw.ActionRow({ title: app?.name ?? id, subtitle: app ? id : 'Not installed', use_markup: false });
         row.add_prefix(appIcon(app));
-        const remove = new Gtk.Button({icon_name: 'user-trash-symbolic', valign: Gtk.Align.CENTER,
-          css_classes: ['flat', 'error'], tooltip_text: 'Remove'});
+        const remove = new Gtk.Button({
+          icon_name: 'user-trash-symbolic', valign: Gtk.Align.CENTER,
+          css_classes: ['flat', 'error'], tooltip_text: 'Remove'
+        });
         remove.connect('clicked', () => this.settings.set_strv(key, this.settings.get_strv(key).filter(v => v !== id)));
         row.add_suffix(remove);
         listBox.append(row);
       }
       if (ids.length === 0) {
-        const empty = new Adw.ActionRow({title: 'No applications added'});
+        const empty = new Adw.ActionRow({ title: 'No applications added' });
         empty.add_css_class('dim-label');
         listBox.append(empty);
       }
@@ -220,26 +232,32 @@ export class IconStyleRules {
   }
 
   _presentPicker(parent, key) {
-    const {dialog, toolbar} = pickerDialog('Choose an application', 460);
-    const search = new Gtk.SearchEntry({placeholder_text: 'Search', margin_start: 12, margin_end: 12, margin_top: 6});
+    const { dialog, toolbar } = pickerDialog('Choose an application', 460);
+    const search = new Gtk.SearchEntry({ placeholder_text: 'Search', margin_start: 12, margin_end: 12, margin_top: 6 });
     toolbar.add_top_bar(search);
-    const listBox = new Gtk.ListBox({selection_mode: Gtk.SelectionMode.NONE, margin_start: 12, margin_end: 12,
-      margin_top: 12, margin_bottom: 12, valign: Gtk.Align.START});
+    const listBox = new Gtk.ListBox({
+      selection_mode: Gtk.SelectionMode.NONE, margin_start: 12, margin_end: 12,
+      margin_top: 12, margin_bottom: 12, valign: Gtk.Align.START
+    });
     listBox.add_css_class('boxed-list');
-    toolbar.set_content(new Gtk.ScrolledWindow({hscrollbar_policy: Gtk.PolicyType.NEVER, vexpand: true, child: listBox}));
+    toolbar.set_content(new Gtk.ScrolledWindow({ hscrollbar_policy: Gtk.PolicyType.NEVER, vexpand: true, child: listBox }));
 
     const current = new Set(this.settings.get_strv(key));
     const rows = applications().map(app => {
-      const row = new Adw.ActionRow({title: app.name, subtitle: app.id, use_markup: false});
+      const row = new Adw.ActionRow({ title: app.name, subtitle: app.id, use_markup: false });
       row.add_prefix(appIcon(app));
       if (current.has(app.id)) {
-        const added = new Gtk.Image({icon_name: 'object-select-symbolic', valign: Gtk.Align.CENTER,
-          tooltip_text: 'Already in the list'});
+        const added = new Gtk.Image({
+          icon_name: 'object-select-symbolic', valign: Gtk.Align.CENTER,
+          tooltip_text: 'Already in the list'
+        });
         row.add_suffix(added);
         row.sensitive = false;
       } else {
-        const add = new Gtk.Button({icon_name: 'list-add-symbolic', valign: Gtk.Align.CENTER, css_classes: ['flat'],
-          tooltip_text: 'Add'});
+        const add = new Gtk.Button({
+          icon_name: 'list-add-symbolic', valign: Gtk.Align.CENTER, css_classes: ['flat'],
+          tooltip_text: 'Add'
+        });
         add.connect('clicked', () => {
           if (!this.settings.get_strv(key).includes(app.id))
             this.settings.set_strv(key, [...this.settings.get_strv(key), app.id]);
@@ -249,11 +267,11 @@ export class IconStyleRules {
         row.activatable_widget = add;
       }
       listBox.append(row);
-      return {row, text: `${app.name} ${app.id}`.toLowerCase()};
+      return { row, text: `${app.name} ${app.id}`.toLowerCase() };
     });
     search.connect('search-changed', () => {
       const words = search.text.toLowerCase().split(/\s+/).filter(Boolean);
-      for (const {row, text} of rows) row.visible = words.every(word => text.includes(word));
+      for (const { row, text } of rows) row.visible = words.every(word => text.includes(word));
     });
     dialog.present(parent);
   }
@@ -345,7 +363,7 @@ function windowRowSubtitle(info, rowTitle) {
 }
 
 function windowIcon(info) {
-  const image = new Gtk.Image({pixel_size: 32, valign: Gtk.Align.CENTER});
+  const image = new Gtk.Image({ pixel_size: 32, valign: Gtk.Align.CENTER });
   let icon = null;
   // An icon string that does not parse throws a GError.
   try {
@@ -410,8 +428,12 @@ export class WindowRules {
     this.controls.toggle(group, 'Window glass', 'enable-application-glass');
     const allRow = this.controls.toggle(group, 'Include all applications', 'application-glass-all-windows');
     const opacityRow = this.controls.number(group, 'Content opacity', ['application-content-opacity'], 0, 1, 0.05);
+    const cornerRow = this.controls.toggle(group, 'Corner on maximized windows', 'application-corner-on-maximized');
+    const glassRow = this.controls.toggle(group, 'Glass on maximized windows', 'application-glass-on-maximized');
     this.settings.bind('enable-application-glass', allRow, 'visible', Gio.SettingsBindFlags.GET);
     this.settings.bind('enable-application-glass', opacityRow, 'visible', Gio.SettingsBindFlags.GET);
+    this.settings.bind('enable-application-glass', cornerRow, 'visible', Gio.SettingsBindFlags.GET);
+    this.settings.bind('enable-application-glass', glassRow, 'visible', Gio.SettingsBindFlags.GET);
     for (const [all, key, title] of [
       [false, 'application-window-whitelist', 'Included applications'],
       [true, 'application-window-blacklist', 'Excluded applications'],
@@ -422,7 +444,7 @@ export class WindowRules {
   _addWindowClassEditor(page, key, title, activeWhen) {
     const settings = this.settings;
     const pickerTitle = 'Choose an application';
-    const listGroup = new Adw.PreferencesGroup({title});
+    const listGroup = new Adw.PreferencesGroup({ title });
     page.add(listGroup);
 
     this.controls.watch(['application-glass-all-windows', 'enable-application-glass'], () => {
@@ -439,7 +461,7 @@ export class WindowRules {
     addButton.connect('clicked', () => this._presentWindowPicker(addButton, key, pickerTitle));
     listGroup.set_header_suffix(addButton);
 
-    const listBox = new Gtk.ListBox({selection_mode: Gtk.SelectionMode.NONE});
+    const listBox = new Gtk.ListBox({ selection_mode: Gtk.SelectionMode.NONE });
     listBox.add_css_class('boxed-list');
     listGroup.add(listBox);
 
@@ -447,7 +469,7 @@ export class WindowRules {
       removeAll(listBox);
       const items = settings.get_strv(key);
       for (const item of items) {
-        const row = new Adw.ActionRow({title: item, use_markup: false});
+        const row = new Adw.ActionRow({ title: item, use_markup: false });
         const removeButton = new Gtk.Button({
           icon_name: 'user-trash-symbolic',
           valign: Gtk.Align.CENTER,
@@ -462,16 +484,16 @@ export class WindowRules {
       }
 
       if (items.length === 0) {
-        const emptyRow = new Adw.ActionRow({title: 'No applications added'});
+        const emptyRow = new Adw.ActionRow({ title: 'No applications added' });
         emptyRow.add_css_class('dim-label');
         listBox.append(emptyRow);
       }
     });
 
-    const manualExpander = new Adw.ExpanderRow({title: 'Add by application ID'});
+    const manualExpander = new Adw.ExpanderRow({ title: 'Add by application ID' });
     listGroup.add(manualExpander);
 
-    const entryRow = new Adw.EntryRow({title: 'Application ID', show_apply_button: true});
+    const entryRow = new Adw.EntryRow({ title: 'Application ID', show_apply_button: true });
     entryRow.connect('apply', () => {
       const value = entryRow.get_text().trim();
       if (!value) return;
@@ -492,7 +514,7 @@ export class WindowRules {
   _presentWindowPicker(parentWidget, key, title) {
     const settings = this.settings;
     const client = this.client;
-    const {dialog, toolbar} = pickerDialog(title, 500);
+    const { dialog, toolbar } = pickerDialog(title, 500);
 
     const contentBox = new Gtk.Box({
       orientation: Gtk.Orientation.VERTICAL,
@@ -525,7 +547,7 @@ export class WindowRules {
         return;
       }
       removeAll(contentBox);
-      const listBox = new Gtk.ListBox({selection_mode: Gtk.SelectionMode.NONE});
+      const listBox = new Gtk.ListBox({ selection_mode: Gtk.SelectionMode.NONE });
       listBox.add_css_class('boxed-list');
       contentBox.append(listBox);
 
