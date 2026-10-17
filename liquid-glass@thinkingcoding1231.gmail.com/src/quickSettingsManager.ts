@@ -2,12 +2,14 @@ import { ToggleStyles } from './quickSettings/toggleStyles.js';
 import { stepMenuSpring, applyMenuFrame, showMenuAtRest } from './animation/menuSpring.js';
 import { addFrameTicker, removeFrameTicker, normalizeAnimationIntervalMs } from './animation/frameTicker.js';
 import { Spring } from './animation/spring.js';
+import { MenuMorphMotion, type MorphFrame } from './animation/menuMorph.js';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import Clutter from 'gi://Clutter';
 import St from 'gi://St';
 import GLib from 'gi://GLib';
 import Meta from 'gi://Meta';
 import { BackdropGlass } from './rendering/backdropGlass.js';
+import { ContentLens } from './rendering/contentLens.js';
 import { ToggleBackdropGlass } from './rendering/toggleGlass.js';
 import { StageContrastSampler, AdaptiveContrastConfig, sanitizeColorPreference } from './contrastSampler.js';
 import Gio from 'gi://Gio';
@@ -36,6 +38,40 @@ interface CustomBannerActor extends St.Widget {
   _currentTargetColor?: string;
   _currentInsensitiveState?: boolean;
   _isUpdatingAlpha?: boolean;
+}
+
+// Frames to wait for an opening menu to get its size before it just appears.
+const MORPH_WAIT_FRAMES = 30;
+// The menu's own open and close animations, which the morph replaces. Its
+// closing fade would hide the items and then the menu long before the glass is
+// back in the button, so the fade is held and the menu is hidden by the morph.
+const BOXPOINTER_EASED = ['opacity', 'translation-x', 'translation-y', 'scale-x', 'scale-y'];
+const BOXPOINTER_HOLD_MS = 10000;
+const CONTENT_LENS = 'liquid-glass-content-lens';
+// What the refraction (displacement scale) and the blur radius come down to,
+// whatever they are set to, as the closing glass settles on the button.
+const SOFT_REFRACTION = 0.3;
+const SOFT_BLUR_RADIUS = 0;
+
+// The glass travelling between the panel button and the menu.
+interface MenuMorph {
+  opening: boolean;
+  // Null until an opening menu has its size.
+  motion: MenuMorphMotion | null;
+  // Where the motion it reverses had got to.
+  from: MorphFrame | null;
+  velocities: number[] | null;
+  // The button's glass, [x, y, w, h] in stage coordinates.
+  button: number[];
+  // On the menu's items while the glass changes shape.
+  lens: InstanceType<typeof ContentLens>;
+  lastUs: number;
+  waitFrames: number;
+  // The refraction and blur radius as set, and the blur radius last given to the glass.
+  refraction: number;
+  blurRadius: number;
+  shownBlurRadius: number;
+  speed: number;
 }
 
 function _collectSubmenus(actor: Clutter.Actor, into: Clutter.Actor[]): void {
@@ -140,6 +176,11 @@ export class QuickSettingsManager {
 
   private _enableAnimation: boolean;
 
+  private _growFromButton: boolean = true;
+  private _morph: MenuMorph | null = null;
+  private _morphTickId: number = 0;
+  private _morphSpeed: number = 1.0;
+
   private _tickId: number;
   private _contrastSampler: StageContrastSampler;
   private _adaptiveTimerId: number;
@@ -191,6 +232,9 @@ export class QuickSettingsManager {
   private _toggleBaseStrength: number = 0.5;
   private _toggleCornerRadius: number = 18.0;
 
+  private _actorDestroyed = false;
+  private _destroySignalId = 0;
+
   // The last non-empty region set and how many frames it has been reused;
   // see _resolveToggleRegions().
   private _lastGoodRegions: {
@@ -199,7 +243,11 @@ export class QuickSettingsManager {
   } | null = null;
   private _regionGraceFrames: number = 0;
 
-  constructor(extensionPath: string, settings: Gio.Settings, logger: Logger) {
+  constructor(extensionPath: string, settings: Gio.Settings, logger: Logger,
+    private _enableKey: string = 'enable-menu-glass',
+    private _keyPrefix: string = 'quick-settings',
+    private _label: string = 'quick-settings',
+    private _ownsSettingsNamespace: boolean = true) {
     this.extensionPath = extensionPath;
     this._settings = settings;
     this._logger = logger;
@@ -237,25 +285,42 @@ export class QuickSettingsManager {
     this._buttonTimerId = 0;
     this._styledButtons = new Map();
     this._buttonSignalIds = new Map();
+
+    this._destroySignalId = this.targetActor.connect('destroy', () => {
+      this._actorDestroyed = true;
+      this._destroySignalId = 0;
+      this.cleanup();
+    });
   }
 
   setup() {
     if (!this._settings) return;
     this._bindSettings();
 
-    this._enableAnimation = this._settings.get_boolean('enable-quick-settings-animation');
-    this._springStiffness = this._settings.get_double('quick-settings-spring-stiffness');
-    this._springDamping = this._settings.get_double('quick-settings-spring-damping');
-    this._springMass = this._settings.get_double('quick-settings-spring-mass');
+    this._enableAnimation = this._settings.get_boolean(this._animationKey());
+    this._springStiffness = this._settings.get_double(this._key('spring-stiffness'));
+    this._springDamping = this._settings.get_double(this._key('spring-damping'));
+    this._springMass = this._settings.get_double(this._key('spring-mass'));
     this._springScale.updateParams(this._springStiffness, this._springDamping, this._springMass);
+    this._growFromButton = this._settings.get_boolean(this._key('grow-from-button'));
 
-    this._applyTo = this._settings.get_int('quick-settings-apply-to') === 1 ? 'toggles' : 'background';
-    this._toggleBaseStrength = this._settings.get_double('quick-settings-toggle-tint-strength');
-    this._toggleCornerRadius = this._settings.get_double('quick-settings-toggle-corner-radius');
+    this._applyTo = this._settings.get_int(this._key('apply-to')) === 1 ? 'toggles' : 'background';
+    this._toggleBaseStrength = this._settings.get_double(this._key('toggle-tint-strength'));
+    this._toggleCornerRadius = this._settings.get_double(this._key('toggle-corner-radius'));
 
-    if (this._settings.get_boolean('enable-quick-settings-glass')) {
+    if (this._settings.get_boolean(this._enableKey)) {
       this._applyEffect();
     }
+  }
+
+  // A key in this instance's settings namespace; see _keyPrefix.
+  private _key(suffix: string): string {
+    return `${this._keyPrefix}-${suffix}`;
+  }
+
+  // The animation switch is named `enable-<prefix>-animation`.
+  private _animationKey(): string {
+    return `enable-${this._keyPrefix}-animation`;
   }
 
   _getMenuMonitorGeometry() {
@@ -274,56 +339,64 @@ export class QuickSettingsManager {
       this._settingsSignals.push(id);
     };
 
-    connectSetting('enable-quick-settings-glass', () => {
-      let enabled = this._settings.get_boolean('enable-quick-settings-glass');
+    connectSetting(this._enableKey, () => {
+      let enabled = this._settings.get_boolean(this._enableKey);
       if (enabled && !this._isEffectActive) this._applyEffect();
       else if (!enabled && this._isEffectActive) this._removeEffect();
     });
 
-    connectSetting('enable-quick-settings-animation', () => {
-      this._enableAnimation = this._settings.get_boolean('enable-quick-settings-animation');
+    connectSetting(this._animationKey(), () => {
+      this._enableAnimation = this._settings.get_boolean(this._animationKey());
     });
 
-    connectSetting('quick-settings-spring-stiffness', () => {
-      this._springStiffness = this._settings.get_double('quick-settings-spring-stiffness');
+    connectSetting(this._key('grow-from-button'), () => {
+      this._growFromButton = this._settings.get_boolean(this._key('grow-from-button'));
+    });
+
+    connectSetting(this._key('morph-speed'), () => {
+      this._morphSpeed = this._settings.get_double(this._key('morph-speed'));
+    });
+
+    connectSetting(this._key('spring-stiffness'), () => {
+      this._springStiffness = this._settings.get_double(this._key('spring-stiffness'));
       if (this._springScale) this._springScale.updateParams(this._springStiffness, this._springDamping, this._springMass);
     });
 
-    connectSetting('quick-settings-spring-damping', () => {
-      this._springDamping = this._settings.get_double('quick-settings-spring-damping');
+    connectSetting(this._key('spring-damping'), () => {
+      this._springDamping = this._settings.get_double(this._key('spring-damping'));
       if (this._springScale) this._springScale.updateParams(this._springStiffness, this._springDamping, this._springMass);
     });
 
-    connectSetting('quick-settings-spring-mass', () => {
-      this._springMass = this._settings.get_double('quick-settings-spring-mass');
+    connectSetting(this._key('spring-mass'), () => {
+      this._springMass = this._settings.get_double(this._key('spring-mass'));
       if (this._springScale) this._springScale.updateParams(this._springStiffness, this._springDamping, this._springMass);
     });
 
-    connectSetting('quick-settings-animation-interval-ms', () => {
-      this._animationInterval = this._settings.get_int('quick-settings-animation-interval-ms');
+    connectSetting(this._key('animation-interval-ms'), () => {
+      this._animationInterval = this._settings.get_int(this._key('animation-interval-ms'));
     });
 
-    connectSetting('quick-settings-tint-color', () => {
-      this._tintColorArray = hexToColorArray(this._settings.get_string('quick-settings-tint-color'));
+    connectSetting(this._key('tint-color'), () => {
+      this._tintColorArray = hexToColorArray(this._settings.get_string(this._key('tint-color')));
       if (this.glass) {
         this.glass.setTintColor(...this._tintColorArray);
       }
     });
 
-    connectSetting('quick-settings-tint-strength', () => {
+    connectSetting(this._key('tint-strength'), () => {
       if (this.glass) {
-        this.glass.setTintStrength(this._settings.get_double('quick-settings-tint-strength'));
+        this.glass.setTintStrength(this._settings.get_double(this._key('tint-strength')));
       }
     });
 
-    connectSetting('quick-settings-blur-radius', () => {
+    connectSetting(this._key('blur-radius'), () => {
       if (this.glass) {
-        this.glass.setBlurRadius(this._settings.get_int('quick-settings-blur-radius'));
+        this.glass.setBlurRadius(this._settings.get_int(this._key('blur-radius')));
       }
     });
 
-    connectSetting('quick-settings-corner-radius', () => {
-      this._cornerRadius = this._settings.get_double('quick-settings-corner-radius');
+    connectSetting(this._key('corner-radius'), () => {
+      this._cornerRadius = this._settings.get_double(this._key('corner-radius'));
       // Toggle mode uses quick-settings-toggle-corner-radius instead.
       if (this.glass && this._activeMode === 'background') {
         this.glass.setCornerRadius(this._cornerRadius);
@@ -331,9 +404,9 @@ export class QuickSettingsManager {
     });
 
     // Rebuilds the effect in the new mode at once.
-    connectSetting('quick-settings-apply-to', () => {
+    connectSetting(this._key('apply-to'), () => {
       const newMode: 'background' | 'toggles' =
-        this._settings.get_int('quick-settings-apply-to') === 1 ? 'toggles' : 'background';
+        this._settings.get_int(this._key('apply-to')) === 1 ? 'toggles' : 'background';
       this._applyTo = newMode;
 
       if (this._isEffectActive && this._activeMode !== null && this._activeMode !== newMode) {
@@ -342,65 +415,65 @@ export class QuickSettingsManager {
       }
     });
 
-    connectSetting('quick-settings-toggle-tint-strength', () => {
-      this._toggleBaseStrength = this._settings.get_double('quick-settings-toggle-tint-strength');
+    connectSetting(this._key('toggle-tint-strength'), () => {
+      this._toggleBaseStrength = this._settings.get_double(this._key('toggle-tint-strength'));
     });
 
-    connectSetting('quick-settings-toggle-corner-radius', () => {
-      this._toggleCornerRadius = this._settings.get_double('quick-settings-toggle-corner-radius');
+    connectSetting(this._key('corner-radius'), () => {
+      this._toggleCornerRadius = this._settings.get_double(this._key('toggle-corner-radius'));
       if (this.glass && this._activeMode === 'toggles') {
         this.glass.setCornerRadius(this._toggleCornerRadius);
       }
     });
 
-    connectSetting('quick-settings-glass-expand', () => {
+    connectSetting(this._key('glass-expand'), () => {
       if (this.glass) {
-        this._glassExpand = this._settings.get_int('quick-settings-glass-expand');
+        this._glassExpand = this._settings.get_int(this._key('glass-expand'));
       }
     });
 
-    connectSetting('quick-settings-y-offset', () => {
+    connectSetting(this._key('y-offset'), () => {
       if (this.targetActor) {
-        this._menuYoffset = this._settings.get_int('quick-settings-y-offset');
+        this._menuYoffset = this._settings.get_int(this._key('y-offset'));
         this._applyMenuOffsets();
       }
     });
 
-    connectSetting('quick-settings-x-offset', () => {
+    connectSetting(this._key('x-offset'), () => {
       if (this.targetActor) {
-        this._menuXoffset = this._settings.get_int('quick-settings-x-offset');
+        this._menuXoffset = this._settings.get_int(this._key('x-offset'));
         this._applyMenuOffsets();
       }
     });
 
-    connectSetting('quick-settings-enable-adaptive-text-color', () => {
-      this._adaptiveConfig.enabled = this._settings.get_boolean('quick-settings-enable-adaptive-text-color');
+    connectSetting(this._key('enable-adaptive-text-color'), () => {
+      this._adaptiveConfig.enabled = this._settings.get_boolean(this._key('enable-adaptive-text-color'));
     });
 
-    connectSetting('quick-settings-adaptive-text-preference', () => {
+    connectSetting(this._key('adaptive-text-preference'), () => {
       this._adaptiveConfig.preference = sanitizeColorPreference(
-        this._settings.get_string('quick-settings-adaptive-text-preference'));
+        this._settings.get_string(this._key('adaptive-text-preference')));
     });
 
-    connectSetting('quick-settings-sample-interval-ms', () => {
-      this._adaptiveConfig.sampleIntervalMs = this._settings.get_int('quick-settings-sample-interval-ms');
+    connectSetting(this._key('sample-interval-ms'), () => {
+      this._adaptiveConfig.sampleIntervalMs = this._settings.get_int(this._key('sample-interval-ms'));
     });
 
-    connectSetting('quick-settings-brightness', () => {
+    connectSetting(this._key('brightness'), () => {
       if (this.glass) {
-        this.glass.setBrightness(this._settings.get_double('quick-settings-brightness'));
+        this.glass.setBrightness(this._settings.get_double(this._key('brightness')));
       }
     });
 
-    connectSetting('quick-settings-saturation', () => {
+    connectSetting(this._key('saturation'), () => {
       if (this.glass) {
-        this.glass.setSaturation(this._settings.get_double('quick-settings-saturation'));
+        this.glass.setSaturation(this._settings.get_double(this._key('saturation')));
       }
     });
 
-    connectSetting('quick-settings-contrast', () => {
+    connectSetting(this._key('contrast'), () => {
       if (this.glass) {
-        this.glass.setContrast(this._settings.get_double('quick-settings-contrast'));
+        this.glass.setContrast(this._settings.get_double(this._key('contrast')));
       }
     });
   }
@@ -420,7 +493,7 @@ export class QuickSettingsManager {
     if (!this.targetActor) return;
 
     this._activeMode = this._applyTo;
-    this._tintColorArray = hexToColorArray(this._settings.get_string('quick-settings-tint-color'));
+    this._tintColorArray = hexToColorArray(this._settings.get_string(this._key('tint-color')));
 
     if (this._activeMode === 'toggles') {
       this._applyToggleEffect();
@@ -431,18 +504,18 @@ export class QuickSettingsManager {
 
   // Background mode: one sheet of glass behind the whole menu.
   _applyBackgroundEffect() {
-    this._menuYoffset = this._settings.get_int('quick-settings-y-offset');
-    this._menuXoffset = this._settings.get_int('quick-settings-x-offset');
-    this._glassExpand = this._settings.get_int('quick-settings-glass-expand');
-    this._animationInterval = this._settings.get_int('quick-settings-animation-interval-ms');
+    this._menuYoffset = this._settings.get_int(this._key('y-offset'));
+    this._menuXoffset = this._settings.get_int(this._key('x-offset'));
+    this._glassExpand = this._settings.get_int(this._key('glass-expand'));
+    this._animationInterval = this._settings.get_int(this._key('animation-interval-ms'));
 
     this._adaptiveConfig = {
       ...AdaptiveContrastConfig,
-      enabled: this._settings.get_boolean('quick-settings-enable-adaptive-text-color'),
+      enabled: this._settings.get_boolean(this._key('enable-adaptive-text-color')),
       samplePerElement: SAMPLE_PER_ELEMENT,
-      sampleIntervalMs: this._settings.get_int('quick-settings-sample-interval-ms'),
+      sampleIntervalMs: this._settings.get_int(this._key('sample-interval-ms')),
       preference: sanitizeColorPreference(
-        this._settings.get_string('quick-settings-adaptive-text-preference')),
+        this._settings.get_string(this._key('adaptive-text-preference'))),
     };
 
     const glass = this._createGlass(false);
@@ -463,13 +536,13 @@ export class QuickSettingsManager {
     else
       Main.layoutManager.uiGroup.add_child(glass);
 
-    let blurRadius = this._settings.get_int('quick-settings-blur-radius');
-    let tintColorStr = this._settings.get_string('quick-settings-tint-color');
-    let tintStrength = this._settings.get_double('quick-settings-tint-strength');
-    this._cornerRadius = this._settings.get_double('quick-settings-corner-radius');
-    let brightness = this._settings.get_double('quick-settings-brightness');
-    let saturation = this._settings.get_double('quick-settings-saturation');
-    let contrast = this._settings.get_double('quick-settings-contrast');
+    let blurRadius = this._settings.get_int(this._key('blur-radius'));
+    let tintColorStr = this._settings.get_string(this._key('tint-color'));
+    let tintStrength = this._settings.get_double(this._key('tint-strength'));
+    this._cornerRadius = this._settings.get_double(this._key('corner-radius'));
+    let brightness = this._settings.get_double(this._key('brightness'));
+    let saturation = this._settings.get_double(this._key('saturation'));
+    let contrast = this._settings.get_double(this._key('contrast'));
 
     glass.setPadding(SHADER_PADDING);
     glass.setTintColor(...hexToColorArray(tintColorStr));
@@ -541,7 +614,7 @@ export class QuickSettingsManager {
   private _createGlass(toggles: boolean): BackdropGlass | ToggleBackdropGlass {
     const params = {
       extensionPath: this.extensionPath, settings: this._settings, logger: this._logger,
-      owner: toggles ? 'quick-settings-toggles' : 'quick-settings', outline: 'quick-settings',
+      owner: toggles ? 'quick-settings-toggles' : 'quick-settings', outline: this._keyPrefix,
     };
     const glass = toggles ? new ToggleBackdropGlass(params as any) : new BackdropGlass(params as any);
     this.glass = glass;
@@ -850,6 +923,7 @@ export class QuickSettingsManager {
 
   // Every frame in background mode.
   _syncGeometry() {
+    if (this._morph) return;
     if (!this.glass || !this.targetActor || !this.targetActor.mapped) {
       if (this.glass && this.glass.visible) this.glass.hide();
       return;
@@ -902,7 +976,7 @@ export class QuickSettingsManager {
   private _themeMarginSize(): [number, number] {
     let themeNode = this.animActor.get_theme_node();
     return [themeNode.get_margin(St.Side.LEFT) + themeNode.get_margin(St.Side.RIGHT),
-      themeNode.get_margin(St.Side.TOP) + themeNode.get_margin(St.Side.BOTTOM)];
+    themeNode.get_margin(St.Side.TOP) + themeNode.get_margin(St.Side.BOTTOM)];
   }
 
   private _measurePanel(): { w: number, h: number, scaleX: number, scaleY: number } {
@@ -1402,9 +1476,14 @@ export class QuickSettingsManager {
     }
 
     if (!this._enableAnimation) {
+      this._endMorph();
       showMenuAtRest(this.glass, this.animActor);
       return;
     }
+
+    if (this._growFromButton && St.Settings.get().enable_animations && this._startMorph(targetValue === 1))
+      return;
+    this._endMorph();
 
     if (this.animActor) this.animActor.remove_all_transitions();
     if (this.glass) this.glass.remove_all_transitions();
@@ -1497,6 +1576,250 @@ export class QuickSettingsManager {
     this._forgetSubmenus();
   }
 
+  private _buttonRect(): number[] | null {
+    const source = this.menu?.sourceActor ?? Main.panel.statusArea.quickSettings;
+    if (!source || !isActorValid(source) || !source.mapped) return null;
+    const actor: St.Widget = source as St.Widget;
+    const [x, y] = actor.get_transformed_position();
+    const [w, h] = actor.get_transformed_size();
+    if (!Number.isFinite(x) || !Number.isFinite(y) || !(w >= 1) || !(h >= 1)) return null;
+    const node = actor.get_theme_node();
+    const [sx, sy] = actor.get_transformed_size().map((v, i) => v / Math.max(i ? actor.height : actor.width, 1));
+    const left = node.get_border_width(St.Side.LEFT) * sx, right = node.get_border_width(St.Side.RIGHT) * sx;
+    const top = node.get_border_width(St.Side.TOP) * sy, bottom = node.get_border_width(St.Side.BOTTOM) * sy;
+    if (w - left - right < 1 || h - top - bottom < 1) return [x, y, w, h];
+    return [x + left, y + top, w - left - right, h - top - bottom];
+  }
+
+  // Where the menu's items are at rest: their stage rect without the
+  // morph's own scale and shift, and the scale (`k`) the menu puts on them.
+  private _menuRest(): { x: number, y: number, w: number, h: number, k: number } | null {
+    if (!this.targetActor.mapped) return null;
+    const a = this.animActor;
+    const [w, h] = getAllocatedSize(a);
+    const [tx, ty] = a.get_transformed_position();
+    const k = this.targetActor.get_scale()[0] || 1;
+    const x = tx - a.translation_x * k;
+    const y = ty - a.translation_y * k;
+    if (!Number.isFinite(x) || !Number.isFinite(y) || !(w > 1) || !(h > 1)) return null;
+    return { x, y, w: w * k, h: h * k, k };
+  }
+
+  // The resting menu's glass body, [x, y, w, h] in stage coordinates.
+  private _menuBodyRect(): number[] | null {
+    const rest = this._menuRest();
+    if (!rest) return null;
+    const e = this._glassExpand;
+    return [rest.x - e, rest.y - e, rest.w + e * 2, rest.h + e * 2];
+  }
+
+  /**
+   * Starts the glass towards the menu (`open`) or back into the button.
+   * False when there is no button to grow out of; the scale spring runs then.
+   */
+  private _startMorph(open: boolean): boolean {
+    const button = this._buttonRect();
+    if (!this.glass || !button) return false;
+    if (!(this.glass instanceof BackdropGlass)) return false;
+    // Reversing midway starts from where the glass is.
+    const prev = this._morph;
+    if (!open && !prev?.motion && !this._menuBodyRect()) return false;
+
+    this._stopMorphTicker();
+    let lens = prev?.lens;
+    if (!lens) {
+      lens = new ContentLens();
+      this.animActor.add_effect_with_name(CONTENT_LENS, lens);
+    }
+    const blurRadius = this._settings.get_int(this._key('blur-radius'));
+    // Opened again while closing: the glass is the menu's again at once, not from the next frame.
+    if (open && prev && prev.shownBlurRadius !== blurRadius) this.glass.setBlurRadius(blurRadius);
+    if (open) this.glass.setAnimationScale(1);
+    let fromFrame = prev?.motion?.frame ?? null;
+    if (!fromFrame && prev) {
+      fromFrame = {
+        body: prev.button,
+        bodyRadius: prev.button[3] / 2,
+        contentScale: 2,
+        contentOpacity: 0,
+        lens: 1,
+        glassOpacity: 1,
+        soften: 0,
+        done: false,
+      };
+    }
+    this._morph = {
+      opening: open, motion: null, button, lens, lastUs: 0, waitFrames: 0,
+      from: fromFrame, velocities: prev?.motion?.velocities ?? null,
+      refraction: this._settings.get_double('glass-displacement-scale'), blurRadius,
+      shownBlurRadius: open ? blurRadius : prev?.shownBlurRadius ?? blurRadius,
+      speed: this._morphSpeed,
+    };
+
+    this.animActor.remove_all_transitions();
+    this.glass.remove_all_transitions();
+    this.animActor.set_pivot_point(0, 0);
+    this._morphTickId = addFrameTicker(() => this._stepMorph(),
+      normalizeAnimationIntervalMs(this._animationInterval));
+    return true;
+  }
+
+  private _stepMorph(): boolean {
+    const m = this._morph;
+    if (!m || !this.glass) {
+      this._morphTickId = 0;
+      return false;
+    }
+    m.button = this._buttonRect() ?? m.button;
+    // The menu stays where it opens and stays visible until the morph ends.
+    for (const name of BOXPOINTER_EASED) {
+      const ease = this.targetActor.get_transition(name);
+      if (!ease) continue;
+      if (m.opening) ease.set_from(ease.get_interval().peek_final_value());
+      else ease.set_to(ease.get_interval().peek_initial_value());
+      if (!m.opening && name === 'opacity') ease.set_duration(BOXPOINTER_HOLD_MS);
+    }
+
+    const menu = this._menuBodyRect();
+    if (!m.motion) {
+      if (!menu) {
+        // Not laid out yet: hold the glass on the button for a few frames.
+        this._placeMorph({
+          body: m.button, bodyRadius: m.button[3] / 2, contentScale: 1,
+          contentOpacity: 0, lens: 0, glassOpacity: 1, soften: 0, done: false
+        });
+        if (++m.waitFrames < MORPH_WAIT_FRAMES) return true;
+        this._morphTickId = 0;
+        this._endMorph();
+        return false;
+      }
+      m.motion = new MenuMorphMotion(m.opening, m.button, menu, this._cornerRadius);
+    } else {
+      m.motion.retarget(m.button, menu, this._cornerRadius);
+    }
+
+    const now = GLib.get_monotonic_time();
+    const frame = m.motion.step(m.lastUs ? (now - m.lastUs) / 1e6 : 1 / 60, m.speed);
+    m.lastUs = now;
+    this._placeMorph(frame);
+    if (!frame.done) return true;
+
+    this._morphTickId = 0;
+    const closed = !m.opening;
+    this._endMorph();
+    if (closed) {
+      this.glass.hide();
+      this.glass.opacity = 0;
+      this.animActor.opacity = 0;
+      if (!this.menu.isOpen) this.menu.actor.hide();
+    }
+    return false;
+  }
+
+  // Draws the travelling glass (stage coordinates) and the menu's items in it.
+  private _placeMorph(f: MorphFrame): void {
+    if (!(this.glass instanceof BackdropGlass)) return;
+    const glass = this.glass;
+    const monitor = this._getMenuMonitorGeometry();
+    const mx = monitor?.x ?? 0;
+    const my = monitor?.y ?? 0;
+    const p = SHADER_PADDING;
+    const body = f.body;
+    if (!glass.visible) glass.show();
+    glass.opacity = Math.round(255 * f.glassOpacity);
+    this._applyGlassBounds(glass, body[0] - p, body[1] - p, body[2] + p * 2, body[3] + p * 2,
+      mx, my, Math.max(1, monitor?.width ?? 1), Math.max(1, monitor?.height ?? 1));
+    glass.setCornerRadius(f.bodyRadius);
+    this._softenGlass(glass, f.soften);
+    this._placeContent(f);
+    glass.syncSources();
+  }
+
+  private _applyGlassBounds(glass: BackdropGlass, bgX: number, bgY: number, bgW: number, bgH: number,
+    monitorX: number, monitorY: number, screenW: number, screenH: number) {
+    if (this._lastBgW === bgW && this._lastBgH === bgH &&
+      this._lastBgX === bgX && this._lastBgY === bgY &&
+      this._lastScreenW === screenW && this._lastScreenH === screenH) return;
+
+    // Monitor-local, as the shader uses them.
+    let localBgX = bgX - monitorX;
+    let localBgY = bgY - monitorY;
+    placeScreenGlass(glass, monitorX, monitorY, screenW, screenH,
+      { x: localBgX, y: localBgY, w: bgW, h: bgH });
+
+    glass.setShadowMaxRadius(GLASS_SHADOW_MAX_RADIUS);
+    glass.setResolution(screenW, screenH);
+    glass.setGlassGeometry(localBgX, localBgY, bgW, bgH);
+
+    this._lastBgW = bgW; this._lastBgH = bgH;
+    this._lastBgX = bgX; this._lastBgY = bgY;
+    this._lastScreenW = screenW; this._lastScreenH = screenH;
+  }
+
+  // Takes the refraction and the blur from their settings towards
+  // SOFT_REFRACTION and SOFT_BLUR_RADIUS, by `soften` (0 to 1).
+  private _softenGlass(glass: InstanceType<typeof BackdropGlass>, soften: number): void {
+    const m = this._morph!;
+    const toward = (from: number, to: number) => from + (Math.min(from, to) - from) * soften;
+    glass.setAnimationScale(m.refraction > 0 ? toward(m.refraction, SOFT_REFRACTION) / m.refraction : 1);
+    const blur = Math.round(toward(m.blurRadius, SOFT_BLUR_RADIUS));
+    if (blur !== m.shownBlurRadius) {
+      m.shownBlurRadius = blur;
+      glass.setBlurRadius(blur);
+    }
+  }
+
+  // Draws the menu's items `f.contentScale` times their size around the
+  // middle of the travelling glass, cut to its outline.
+  private _placeContent(f: MorphFrame): void {
+    const a = this.animActor;
+    const rest = this._menuRest();
+    if (!rest || !this._morph) {
+      a.opacity = 0;
+      return;
+    }
+    a.opacity = Math.round(255 * f.contentOpacity * f.glassOpacity);
+    const e = this._glassExpand;
+    const [bx, by, bw, bh] = f.body;
+    // Never 0, which Cogl cannot invert.
+    const s = Math.max(f.contentScale, 0.01);
+    const x = bx + (bw - (rest.w + e * 2) * s) / 2 + e * s;
+    const y = by + (bh - (rest.h + e * 2) * s) / 2 + e * s;
+    const k = rest.k;
+    a.set_scale(s, s);
+    a.set_translation((x - rest.x) / k, (y - rest.y) / k, 0);
+    const clip = [(bx - x) / (s * k), (by - y) / (s * k), bw / (s * k), bh / (s * k)];
+    a.set_clip(clip[0], clip[1], clip[2], clip[3]);
+    this._morph.lens.shape(clip, s * k, f.bodyRadius, f.lens);
+  }
+
+  private _stopMorphTicker(): void {
+    if (!this._morphTickId) return;
+    removeFrameTicker(this._morphTickId);
+    this._morphTickId = 0;
+  }
+
+  // Leaves the glass and the menu as the rest of the manager expects them.
+  private _endMorph(): void {
+    this._stopMorphTicker();
+    const m = this._morph;
+    if (!m) return;
+    this._morph = null;
+    if (this.glass) {
+      this.glass.setAnimationScale(1);
+      if (m.shownBlurRadius !== m.blurRadius) this.glass.setBlurRadius(m.blurRadius);
+    }
+    if (!this._actorDestroyed && this.animActor) {
+      this.animActor.remove_effect_by_name(CONTENT_LENS);
+      this.animActor.remove_clip();
+      this.animActor.set_translation(0, 0, 0);
+      this.animActor.set_scale(1.0, 1.0);
+      this.animActor.set_pivot_point(0.5, 0.0);
+      this.animActor.opacity = 255;
+    }
+    if (this.glass && this.targetActor.mapped) this._syncGeometry();
+  }
+
   _removeEffect() {
     if (!this._isEffectActive) return;
     this._isEffectActive = false;
@@ -1584,7 +1907,10 @@ export class QuickSettingsManager {
     for (let sigId of this._settingsSignals)
       this._settings.disconnect(sigId);
     this._settingsSignals = [];
-
+    if (this._destroySignalId) {
+      this.targetActor.disconnect(this._destroySignalId);
+      this._destroySignalId = 0;
+    }
     this._removeEffect();
   }
 }

@@ -24,6 +24,7 @@
 ## コマンド実行ルール
 - `npm` やビルド関連のコマンドを実行する際は、`liquid-glass@thinkingcoding1231.gmail.com` ディレクトリ内で実行すること。（例: `cd liquid-glass@thinkingcoding1231.gmail.com && npm run build`）
 - TSファイルを修正・編集した後は、`npm run build` を実行してビルドエラーが出ないかチェックすること。
+- `npm run build:dev` は開発者専用の「Tune Defaults」ウィンドウ（`tools/dev-tune/`）を付けてビルドする。通常の `npm run build`・`npm run pack` は外した状態に戻す。`prefs.js` が差分に出ている間は付いている状態なので、コミットに含めない。
 
 ## ファイル読み取りの許可
 - `memo.md`: 今まで踏んだ地雷や罠、教訓などを示したMarkdownファイル。読み取りや書き込みを自由に許可します。
