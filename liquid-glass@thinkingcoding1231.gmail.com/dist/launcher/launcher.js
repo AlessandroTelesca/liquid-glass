@@ -163,7 +163,7 @@ export class Launcher {
             x: monitor.x, y: monitor.y, width: monitor.width, height: monitor.height, opacity: 0
         });
         const glass = new BackdropGlass({
-            extensionPath: this._path, settings: this._settings, logger: this._logger, owner: 'launcher',
+            extensionPath: this._path, settings: this._settings, logger: this._logger, owner: 'launcher', outline: 'launcher',
         });
         glass.setPadding(SHADER_PADDING);
         glass.setIsDock(false);
@@ -446,8 +446,10 @@ export class Launcher {
                 this._setView(sw.view);
                 sw.phase = 'in';
                 sw.startUs = now;
+                const springResponse = this._settings.get_double('launcher-spring-response');
+                const springDampingFraction = this._settings.get_double('launcher-spring-damping-fraction');
                 if (sw.morph)
-                    this._spring = new RectSpring(rect);
+                    this._spring = new RectSpring(rect, springResponse, springDampingFraction);
             }
         }
         else {

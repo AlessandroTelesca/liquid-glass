@@ -58,7 +58,9 @@ function fixture(overrides = {}, dbusResponses = [], blurMyShell = null) {
     add_row(child) { this.add(child); }
     append(child) { this.add(child); }
     remove(child) { this.children = this.children.filter(item => item !== child); }
-    add_prefix() {} add_suffix(child) { child._parent = this; } add_css_class() {} set_header_suffix() {} set_default_size() {}
+    add_prefix() {} add_suffix(child) { child._parent = this; this.suffixes = [...(this.suffixes ?? []), child]; }
+    add_css_class(name) { this.cssClasses = [...(this.cssClasses ?? []), name]; }
+    remove_css_class(name) { this.cssClasses = (this.cssClasses ?? []).filter(item => item !== name); } set_header_suffix() {} set_default_size() {}
     get_parent() { return this._parent ?? null; }
     reorder_child_after() {}
     set_child(child) { this.child = child; } set_content(child) { this.content = child; } add_top_bar() {} pack_start() {}
@@ -73,6 +75,8 @@ function fixture(overrides = {}, dbusResponses = [], blurMyShell = null) {
     get value() { return this._value; }
     set active(value) { this._active = value; this.emit('notify::active'); }
     get active() { return this._active; }
+    set visible(value) { this._visible = value; this.emit('notify::visible'); }
+    get visible() { return this._visible; }
   }
   class RGBA { parse() { this.red = this.green = this.blue = 1; } }
   const Adw = Object.fromEntries(['PreferencesPage', 'PreferencesGroup', 'SwitchRow', 'ComboRow', 'SpinRow', 'ActionRow', 'EntryRow', 'ExpanderRow',
@@ -81,6 +85,8 @@ function fixture(overrides = {}, dbusResponses = [], blurMyShell = null) {
     Scale: Widget, Orientation: {HORIZONTAL: 0},
     SignalListItemFactory: Widget, Box: Widget, Label: Widget, Image: Widget,
     StringList: {new: titles => titles}, Align: {CENTER: 0}, SelectionMode: {NONE: 0},
+    CssProvider: class { load_from_string() {} }, StyleContext: {add_provider_for_display() {}, remove_provider_for_display() {}},
+    STYLE_PROVIDER_PRIORITY_APPLICATION: 600,
     FontDialogButton: Widget, FontDialog: Widget, FontLevel: {FACE: 2},
     accelerator_parse: text => [text.length > 0, text.length > 0 ? 1 : 0, 0]};
   const WEIGHTS = {Light: 300, Regular: 400, SemiBold: 600, Bold: 700};
@@ -112,7 +118,7 @@ function fixture(overrides = {}, dbusResponses = [], blurMyShell = null) {
   const GLib = {Variant, FileTest: {EXISTS: 16}, build_filenamev: parts => parts.join('/'),
     file_test: file => blurMyShell !== null && file === `${bmsSchemas}/gschemas.compiled`,
     get_user_data_dir: () => '/home/test/.local/share', get_system_data_dirs: () => ['/usr/share']};
-  const load = createModuleLoader({Adw, Gtk, Gio, Gdk: {RGBA}, GLib, Pango});
+  const load = createModuleLoader({Adw, Gtk, Gio, Gdk: {RGBA, Display: {get_default: () => ({})}}, GLib, Pango});
   const settings = new Settings(); const window = new Widget();
   const {buildPreferences} = load(path.join(root, 'preferences/pages.js'));
   const controls = buildPreferences(window, settings);
@@ -120,10 +126,10 @@ function fixture(overrides = {}, dbusResponses = [], blurMyShell = null) {
     row: title => widgets.find(widget => widget.title === title)};
 }
 
-test('preferences expose four pages and eight shared appearance controls', () => {
+test('preferences expose four pages and eleven shared appearance controls', () => {
   const f = fixture();
   assert.deepEqual(f.window.children.map(page => page.title), ['Appearance', 'Effects', 'Desktop', 'Rendering']);
-  assert.equal(f.window.children[0].children.filter(group => !['Settings', 'Backup'].includes(group.title) && group.visible !== false).flatMap(group => group.children).length, 8);
+  assert.equal(f.window.children[0].children.filter(group => !['Settings', 'Backup'].includes(group.title) && group.visible !== false).flatMap(group => group.children).length, 11);
   assert.equal(f.widgets.filter(widget => /Spring|Sample Interval|X Offset|Y Offset/.test(widget.title ?? '')).length, 0);
   assert.equal(f.window.search_enabled, true);
 });
@@ -183,6 +189,7 @@ test('external settings updates refresh controls without a write feedback loop',
 
 test('window rules only show the active list while window glass is enabled', () => {
   const f = fixture();
+  f.controls.write({'application-glass-all-windows': false});
   assert.equal(f.row('Included applications').visible, false);
   assert.equal(f.row('Excluded applications').visible, false);
   f.controls.write({'enable-application-glass': true});
@@ -322,6 +329,94 @@ test('advanced top bar group owns its style and shows spacing only for pills', (
   assert.equal(padding.visible, false);
 });
 
+test('the simple view shows the outline width and color only while an outline is on, set in under it', () => {
+  const f = fixture();
+  const group = f.window.children[0].children.find(group => group.title === 'Glass');
+  const [width, color] = ['Outline width', 'Outline color'].map(title => group.children.find(row => row.title === title));
+  assert.equal(width.visible, false);
+  assert.equal(color.visible, false);
+  f.row('Outline').selected = 1;
+  assert.equal(f.values.get('osd-outline-enabled'), true);
+  assert.equal(Object.keys(f.writes.at(-1)).length, 11);
+  assert.equal(width.visible, true);
+  assert.equal(color.visible, true);
+  width.value = 3;
+  assert.equal(f.values.get('launcher-outline-width'), 3);
+  f.controls.write({'dock-outline-enabled': false});
+  assert.match(f.row('Outline').subtitle, /edge/);
+  f.row('Outline').selected = 0;
+  assert.equal(width.visible, false);
+});
+
+test('an advanced surface owns its outline, and its rows fold away under the switch', () => {
+  const f = fixture({'preferences-advanced': true});
+  f.row('Surface').selected = 1;
+  const group = f.window.children[0].children.find(group => group.title === 'Calendar');
+  const row = title => group.children.find(widget => widget.title === title);
+  assert.equal(row('Outline width').visible, false);
+  f.controls.write({'menu-outline-enabled': true});
+  assert.equal(row('Outline width').visible, true);
+  const arrow = row('Outline').suffixes.find(child => child.tooltip_text === 'Fold');
+  assert.ok(arrow, 'a fold arrow sits at the end of the switch row');
+  arrow.emit('clicked');
+  assert.equal(row('Outline width').visible, false);
+  assert.equal(row('Outline color').visible, false);
+  assert.equal(arrow.tooltip_text, 'Unfold');
+  arrow.emit('clicked');
+  assert.equal(row('Outline width').visible, true);
+  f.controls.write({'menu-outline-enabled': false});
+  assert.equal(row('Outline width').visible, false);
+  assert.equal(arrow.visible, false);
+});
+
+test('the animation and adaptive color rows are set in under their switches and fold with them', () => {
+  const f = fixture({'preferences-advanced': true});
+  f.row('Surface').selected = 1;
+  const group = f.window.children[0].children.find(group => group.title === 'Calendar');
+  const indented = group.children.filter(widget => widget.cssClasses?.includes('lg-branch')).map(widget => widget.title);
+  for (const title of ['Grow from the button', 'Spring stiffness', 'Animation interval (ms)', 'Adaptive color interval (ms)',
+    'Preferred text color', 'Outline width', 'Outline color'])
+    assert.ok(indented.includes(title), title);
+  assert.ok(!indented.includes('Animations'));
+  const row = title => group.children.find(widget => widget.title === title);
+  assert.equal(row('Morph speed').visible, true);
+  assert.equal(row('Spring mass').visible, false, 'springs are for menus that do not grow from the button');
+  f.controls.write({'menu-grow-from-button': false});
+  assert.equal(row('Morph speed').visible, false);
+  assert.equal(row('Spring mass').visible, true);
+  f.controls.write({'enable-menu-animation': false});
+  assert.equal(row('Spring mass').visible, false);
+});
+
+test('the desktop page keeps the clock switch, time format and date; its look is a surface of the advanced view', () => {
+  const f = fixture({'preferences-advanced': true});
+  const desktop = f.window.children.find(page => page.title === 'Desktop');
+  const clock = desktop.children.find(group => group.title === 'Glass clock');
+  assert.deepEqual(clock.children.map(row => row.title), ['Show the clock', 'Time format', 'Show the date']);
+  const selector = f.row('Surface');
+  selector.selected = selector.model.indexOf('Desktop clock');
+  const group = f.window.children[0].children.find(group => group.title === 'Desktop clock');
+  const titles = group.children.map(row => row.title);
+  for (const title of ['Blur', 'Tint strength', 'Tint', 'Brightness', 'Contrast', 'Saturation', 'Place', 'Size', 'Width', 'Height',
+    'Taller digits', 'Font', 'Weight'])
+    assert.ok(titles.includes(title), title);
+  for (const title of ['Corners', 'Outline']) assert.ok(!titles.includes(title), title);
+  group.children.find(row => row.title === 'Saturation').value = 1.5;
+  assert.deepEqual(f.writes.at(-1), {'glass-clock-saturation': 1.5});
+});
+
+test('the dump shortcut can be rebound while it is on', () => {
+  const f = fixture();
+  const group = f.window.children.find(page => page.title === 'Rendering').children.find(group => group.title === 'Troubleshooting');
+  const shortcut = group.children.find(row => row.title === 'Shortcut');
+  assert.equal(shortcut.visible, false);
+  f.controls.write({'enable-dump-shortcut': true});
+  assert.equal(shortcut.visible, true);
+  shortcut.text = '<Control><Alt>k';
+  shortcut.emit('apply');
+  assert.deepEqual(f.values.get('dump-loop-keybinding'), ['<Control><Alt>k']);
+});
+
 test('quick settings glass is chosen with the quick settings surface, and under Show glass on in the simple view', () => {
   const advanced = fixture({'preferences-advanced': true});
   advanced.row('Surface').selected = 4;
@@ -446,7 +541,7 @@ test('exported settings are a dconf dump, and an import keeps only valid values 
     get_value: key => ({print: () => values[key], get_type_string: () => types[key]}),
     is_writable: key => key !== 'enable-dock-glass',
   };
-  const {dumpSettings, parseSettings} = createModuleLoader({Adw: {}, Gio: {}, Gtk: {}, GLib})(path.join(root, 'preferences/backup.js'));
+  const {dumpSettings, parseSettings} = createModuleLoader({Adw: {}, Gio: {}, Gtk: {}, Gdk: {}, GLib})(path.join(root, 'preferences/controls.js'));
   assert.equal(dumpSettings(settings), '[/]\ndock-blur-radius=12\nenable-dock-glass=true\nlaunch' + 'er-width=680\n');
   const result = parseSettings(settings, '[/]\ndock-blur-radius=9\nlauncher-width=5000\nenable-dock-glass=false\nmissing=1\nlauncher-width=abc\n');
   assert.deepEqual(result.changes, [['dock-blur-radius', {type: 'i', text: '9'}]]);

@@ -191,7 +191,7 @@ export class Launcher {
     });
 
     const glass = new BackdropGlass({
-      extensionPath: this._path, settings: this._settings, logger: this._logger, owner: 'launcher',
+      extensionPath: this._path, settings: this._settings, logger: this._logger, owner: 'launcher', outline: 'launcher',
     } as any);
     glass.setPadding(SHADER_PADDING);
     glass.setIsDock(false);
@@ -476,7 +476,9 @@ export class Launcher {
         this._setView(sw.view);
         sw.phase = 'in';
         sw.startUs = now;
-        if (sw.morph) this._spring = new RectSpring(rect);
+        const springResponse = this._settings.get_double('launcher-spring-response');
+        const springDampingFraction = this._settings.get_double('launcher-spring-damping-fraction');
+        if (sw.morph) this._spring = new RectSpring(rect, springResponse, springDampingFraction);
       }
     } else {
       const k = Math.min(elapsed / SWITCH_IN_MS, 1);
