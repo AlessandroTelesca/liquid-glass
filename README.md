@@ -176,7 +176,7 @@ While one is moved, dotted guides show where it lines up with the others and the
 
 The widgets and the clock are hidden in the overview, together with the windows. With desktop icons ([Desktop Icons NG](https://gitlab.com/rastersoft/desktop-icons-ng)) they sit above the icons, so they can be clicked.
 
-Their right-click menu grows out of a drop of glass where you clicked; under **Appearance → Desktop widgets** it can open on a spring instead, or just appear.
+Their right-click menu just appears; under **Appearance → Desktop widgets** it can instead grow out of a drop of glass where you clicked, or open on a spring.
 
 ### Launcher
 
