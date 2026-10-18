@@ -7,6 +7,7 @@ import Clutter from 'gi://Clutter';
 import Cogl from 'gi://Cogl';
 import Mtk from 'gi://Mtk';
 import { coglContext, newRootNode, offscreenFormat } from '../shellVersion.js';
+
 // An offscreen texture to render or blit into. A blit needs both sides fixed
 // point or both floating point, so `format` follows the source when that is
 // an offscreen (rotated or HDR views); null is the default RGBA8888_PRE.
@@ -25,6 +26,7 @@ export function createTarget(width, height, format = null, logger) {
     }
     return { texture, framebuffer };
 }
+
 // Queues a blit of `rect` [x, y, w, h] of `source` to the origin of `target`.
 // A RootNode makes the target the blit's destination and, with no clear
 // flags, leaves it alone otherwise. Its color state must be the source's.
@@ -35,6 +37,7 @@ export function addBlit(root, source, target, colorState, rect) {
     blit.add_blit_rectangle(rect[0], rect[1], 0, 0, rect[2], rect[3]);
     node.add_child(blit);
 }
+
 export class StageCopier {
     _logger;
     _copies = new Map();
@@ -45,9 +48,11 @@ export class StageCopier {
     reuseCount = 0;
     offStageCount = 0;
     missCount = 0;
+
     constructor(_logger) {
         this._logger = _logger;
     }
+
     // The view a paint of `actor` draws to directly, or null for a paint that
     // goes elsewhere (a clone, a screenshot, an ancestor's offscreen), where
     // the framebuffer does not hold what is behind the actor.
@@ -60,27 +65,34 @@ export class StageCopier {
         }
         return null;
     }
+
     /**
      * The copy to draw with for this paint of `actor`: a new one of the stage
      * rect `stageRect` [x0, y0, x1, y1] when the clip covers it, otherwise the
      * last one taken on this view. `missed` is set when there is nothing to
      * draw with yet; the caller should get the rect redrawn in a later frame.
+     * `fresh` is set when this paint took a new copy. With `keep`, the last
+     * copy is drawn with even when the clip covers the rect.
      */
-    take(actor, root, paintContext, stageRect) {
+    take(actor, root, paintContext, stageRect, keep = false) {
         const fb = paintContext.get_framebuffer();
         const view = StageCopier.liveView(actor, fb);
         if (!view) {
             this.offStageCount++;
-            return { copy: this.lastCopy, missed: false };
+            return { copy: this.lastCopy, missed: false, fresh: false };
         }
         let copy = this._copies.get(view) ?? null;
+        if (keep && copy?.rect) {
+            this.reuseCount++;
+            return { copy, missed: false, fresh: false };
+        }
         const layout = view.layout;
         const x0 = Math.max(stageRect[0], layout.x);
         const y0 = Math.max(stageRect[1], layout.y);
         const x1 = Math.min(stageRect[2], layout.x + layout.width);
         const y1 = Math.min(stageRect[3], layout.y + layout.height);
         if (!(x1 > x0) || !(y1 > y0))
-            return { copy, missed: false };
+            return { copy, missed: false, fresh: false };
         // Stage to framebuffer pixels, as Clutter lays the stage out on a view.
         const scale = view.get_scale();
         const ox = Math.round(-layout.x * scale);
@@ -99,22 +111,23 @@ export class StageCopier {
         if (!inClip) {
             if (copy?.rect) {
                 this.reuseCount++;
-                return { copy, missed: false };
+                return { copy, missed: false, fresh: false };
             }
             this.missCount++;
-            return { copy: null, missed: true };
+            return { copy: null, missed: true, fresh: false };
         }
         const format = fb instanceof Cogl.Offscreen ? offscreenFormat(fb) : null;
         copy = this._target(view, copy, fx1 - fx0, fy1 - fy0, format);
         if (!copy)
-            return { copy: null, missed: false };
+            return { copy: null, missed: false, fresh: false };
         addBlit(root, fb, copy.framebuffer, view.color_state, [fx0, fy0, fx1 - fx0, fy1 - fy0]);
         copy.rect = rect;
         copy.serial = ++this._serial;
         this.lastCopy = copy;
         this.copyCount++;
-        return { copy, missed: false };
+        return { copy, missed: false, fresh: true };
     }
+
     _target(view, copy, width, height, format) {
         if (copy && copy.width === width && copy.height === height && copy.format === format)
             return copy;
@@ -125,6 +138,7 @@ export class StageCopier {
         this._copies.set(view, next);
         return next;
     }
+
     // Drops the copies of views the actor is no longer on.
     prune(views) {
         for (const view of this._copies.keys()) {
@@ -132,6 +146,7 @@ export class StageCopier {
                 this._copies.delete(view);
         }
     }
+
     clear() {
         this._copies.clear();
         this.lastCopy = null;

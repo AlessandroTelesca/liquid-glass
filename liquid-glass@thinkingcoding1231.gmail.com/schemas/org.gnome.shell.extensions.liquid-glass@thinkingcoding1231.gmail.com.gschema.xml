@@ -164,6 +164,21 @@
       <summary>Blur my Shell is blurring popups</summary>
       <description>Written by the shell at runtime so the preferences window can warn that Blur my Shell's popup blur shows through the glass.</description>
     </key>
+    <key name="blur-my-shell-override" type="b">
+      <default>false</default>
+      <summary>Turn off Blur my Shell's blur where there is glass</summary>
+      <description>While Liquid Glass runs, it turns off Blur my Shell's blur for the parts listed in blur-my-shell-override-parts that also have glass, and turns it back on when this is off, when they lose their glass, or when Liquid Glass is turned off.</description>
+    </key>
+    <key name="blur-my-shell-override-parts" type="as">
+      <default>['popups', 'panel', 'dock']</default>
+      <summary>Parts of Blur my Shell to override</summary>
+      <description>Any of "popups" (menus, Quick Settings, notifications and OSDs; Blur my Shell blurs dialogs and switchers with the same setting), "panel" (the top bar), "dock" (Dash to Dock) and "applications" (application windows).</description>
+    </key>
+    <key name="blur-my-shell-overridden" type="as">
+      <default>[]</default>
+      <summary>Blur my Shell parts turned off by Liquid Glass</summary>
+      <description>Written by the shell at runtime: the parts whose blur Liquid Glass turned off and turns back on, kept here so that a restart of the shell still turns them back on.</description>
+    </key>
     <key name="detected-extra-menus" type="as">
       <default>[]</default>
       <summary>Detected optional panel menus</summary>

@@ -152,7 +152,15 @@ const LEGACY_MENUS = {
 };
 
 const BMS_UUID = 'blur-my-shell@aunetx';
-const BMS_POPUP_SCHEMA = 'org.gnome.shell.extensions.blur-my-shell.popup';
+const BMS_SCHEMA = 'org.gnome.shell.extensions.blur-my-shell';
+
+// The parts of Blur my Shell that Liquid Glass can override.
+const BMS_PARTS = [
+  ['popups', 'Menus and popups', 'Blur my Shell blurs dialogs and switchers with the same setting'],
+  ['panel', 'Top bar', ''],
+  ['dock', 'Dock', ''],
+  ['applications', 'Application windows', 'All of its window blur, on windows without glass too'],
+];
 
 const GEOCODING = 'https://geocoding-api.open-meteo.com/v1/search';
 const USER_AGENT = 'Liquid Glass GNOME Shell extension (https://github.com/ryohsuke1231/liquid-glass)';
@@ -179,9 +187,11 @@ const WEIGHTS = ['Light', 'Regular', 'SemiBold', 'Bold'];
 const SCRIPTS = [[/[぀-ヿ]/, ['ja']], [/[一-鿿]/, ['ja', 'zh']], [/[가-힯]/, ['ko']],
 [/[Ѐ-ӿ]/, ['ru', 'uk']]];
 
-// Blur my Shell's popup settings, from the schemas it ships in the user's or a
-// system extension directory, as its own getSettings() reads them.
-function blurMyShellPopupSettings() {
+// Blur my Shell's settings for `part` (such as "popup"), from the schemas it
+// ships in the user's or a system extension directory, as its own
+// getSettings() reads them.
+function blurMyShellSettings(part) {
+  const id = `${BMS_SCHEMA}.${part}`;
   const defaultSource = Gio.SettingsSchemaSource.get_default();
   const dirs = [GLib.get_user_data_dir(), ...GLib.get_system_data_dirs()]
     .map(dir => GLib.build_filenamev([dir, 'gnome-shell', 'extensions', BMS_UUID, 'schemas']));
@@ -189,13 +199,13 @@ function blurMyShellPopupSettings() {
     if (!GLib.file_test(GLib.build_filenamev([dir, 'gschemas.compiled']), GLib.FileTest.EXISTS)) continue;
     // Loading a compiled schema file throws a GError when it is unreadable.
     try {
-      const schema = Gio.SettingsSchemaSource.new_from_directory(dir, defaultSource, false).lookup(BMS_POPUP_SCHEMA, false);
+      const schema = Gio.SettingsSchemaSource.new_from_directory(dir, defaultSource, false).lookup(id, false);
       if (schema) return new Gio.Settings({ settings_schema: schema });
     } catch {
       continue;
     }
   }
-  const schema = defaultSource?.lookup(BMS_POPUP_SCHEMA, true);
+  const schema = defaultSource?.lookup(id, true);
   return schema ? new Gio.Settings({ settings_schema: schema }) : null;
 }
 
@@ -208,7 +218,7 @@ function addBlurMyShellWarning(page, controls) {
     subtitle: 'Its blur shows through the glass on menus, notifications and OSDs. Turn off Popups in Blur my Shell.',
   });
   row.add_prefix(new Gtk.Image({ icon_name: 'dialog-warning-symbolic' }));
-  const popup = blurMyShellPopupSettings();
+  const popup = blurMyShellSettings('popup');
   if (popup) {
     const button = new Gtk.Button({ label: 'Turn Off', valign: Gtk.Align.CENTER });
     button.connect('clicked', () => popup.set_boolean('blur', false));
@@ -219,6 +229,29 @@ function addBlurMyShellWarning(page, controls) {
   controls.watch(['blur-my-shell-popup-blur'], () => {
     group.visible = controls.settings.get_boolean('blur-my-shell-popup-blur');
   });
+}
+
+// Shown while Blur my Shell is installed.
+function addCompatibility(page, controls) {
+  if (!blurMyShellSettings('popup')) return;
+  const settings = controls.settings;
+  const group = controls.group(page, 'Compatibility');
+  const override = controls.toggle(group, 'Override Blur my Shell', 'blur-my-shell-override',
+    'Turns off Blur my Shell\'s blur where there is glass, and back on when this is off or Liquid Glass is turned off');
+  const branch = new Branch(override);
+  for (const [part, title, subtitle] of BMS_PARTS) {
+    const row = branch.add(new Adw.SwitchRow({ title, subtitle }));
+    group.add(row);
+    row.connect('notify::active', () => {
+      const parts = settings.get_strv('blur-my-shell-override-parts');
+      if (row.active === parts.includes(part)) return;
+      settings.set_strv('blur-my-shell-override-parts', row.active ? [...parts, part] : parts.filter(p => p !== part));
+    });
+    controls.watch(['blur-my-shell-override-parts'], () => {
+      row.active = settings.get_strv('blur-my-shell-override-parts').includes(part);
+    });
+  }
+  controls.watch(['blur-my-shell-override'], () => { branch.enabled = settings.get_boolean('blur-my-shell-override'); });
 }
 
 function addBackup(page, controls, window) {
@@ -868,6 +901,7 @@ export function buildPreferences(window, settings) {
   });
 
   const renderingTail = collectGroups(advanced, () => {
+    addCompatibility(advanced, controls);
     const diagnostics = controls.group(advanced, 'Troubleshooting');
     controls.toggle(diagnostics, 'Logging', 'output-logs');
     controls.toggle(diagnostics, 'Render diagnostics', 'glass-debug-diagnostics', 'Adds rendering overhead; leave off for normal use.');

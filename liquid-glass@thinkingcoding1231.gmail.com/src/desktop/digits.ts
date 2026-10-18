@@ -38,7 +38,7 @@ export interface Digits {
   digitHeight: number;
 }
 
-function fontKey(r: DigitsRequest): string {
+export function fontKey(r: DigitsRequest): string {
   return `${r.font}|${r.size}|${r.stretch}|${r.height}|${r.style}`;
 }
 
@@ -67,6 +67,14 @@ export class DigitsMaker {
     await fields.pause();
     return { bytes: encodeFields(field, lens, FIELD_RANGE), width: field.width, height: field.height, band,
       digitHeight: fields.digitHeight };
+  }
+
+  /** Gives up the work for any font but `request`'s. */
+  keepOnly(request: DigitsRequest): void {
+    if (fontKey(request) === this._key) return;
+    this._fields?.then(fields => fields.cancellable.cancel(), () => {});
+    this._fields = null;
+    this._key = '';
   }
 
   // One of the fonts the extension ships with, or an installed one.

@@ -15,6 +15,7 @@ import type { BlurMethod } from './blur.js';
 import { StageCopier } from './stageCopy.js';
 import { coglContext, paintNodeWithContext } from '../shellVersion.js';
 import { RelaySet, SAMPLE_MARGIN, localToStage } from './relays.js';
+import { windowMayCover } from '../actors/windows.js';
 import { registerGlass, unregisterGlass } from '../diagnostics/glass.js';
 
 export interface GlassActorParams {
@@ -27,6 +28,8 @@ export interface GlassActorParams {
   shapeTexture?: boolean;
   // The surface whose outline settings this glass follows; none draws no outline.
   outline?: string;
+  // Drawn under the windows, in the window group (the desktop items).
+  underWindows?: boolean;
 }
 
 /**
@@ -347,6 +350,10 @@ export const BackdropGlass = GObject.registerClass(paintNodeWithContext(
     declare private _wasPainted: boolean;
     // The serial of the last copy taken before the glass was last mapped.
     declare private _serialAtMap: number;
+    declare private _underWindows: boolean;
+    // Whether the copy may hold a window that covered the backdrop, or the
+    // backdrop changed while no copy was taken; see vfunc_paint_node().
+    declare private _copyDoubtful: boolean;
 
     _init(params: GlassActorParams = {}) {
       super._init(params);
@@ -354,6 +361,8 @@ export const BackdropGlass = GObject.registerClass(paintNodeWithContext(
       this._copier = new StageCopier(this._logger);
       this._wasPainted = false;
       this._serialAtMap = 0;
+      this._underWindows = params.underWindows ?? false;
+      this._copyDoubtful = false;
     }
 
     // The relays are unmapped with the glass, so nothing behind it was
@@ -409,9 +418,16 @@ export const BackdropGlass = GObject.registerClass(paintNodeWithContext(
       const { kx, ky, resW, resH } = scale;
 
       const stageRect = localToStage(this, s[0] * kx, s[1] * ky, (s[0] + s[2]) * kx, (s[1] + s[3]) * ky);
-      const { copy, missed } = this._copier.take(this, root, paintContext, stageRect);
-      // Nothing to draw with yet; the next frame redraws the whole area.
-      if (missed) this._relays.redrawArea();
+      // Under a window, the framebuffer can hold that window where mutter left
+      // out what it covers, and the copy would show it once the window moves
+      // off. The last copy is kept meanwhile, and the area is copied again
+      // once no window is over it.
+      const covered = this._underWindows && windowMayCover(this, stageRect);
+      const { copy, missed, fresh } = this._copier.take(this, root, paintContext, stageRect, covered);
+      if (covered) this._copyDoubtful = true;
+      else if (fresh) this._copyDoubtful = false;
+      // Nothing to draw with yet, or a doubtful copy: the next frame redraws the whole area.
+      if (missed || (this._copyDoubtful && !covered && !fresh)) this._relays.redrawArea();
       if (!copy?.rect) return;
       const blurRect = this._stageToShader(copy.rect, kx, ky);
       if (!blurRect) return;

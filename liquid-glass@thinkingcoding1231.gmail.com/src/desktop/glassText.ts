@@ -1203,6 +1203,10 @@ export class GlyphFields {
    */
   pause(): Promise<void> {
     return new Promise((resolve, reject) => {
+      if (this.cancellable.is_cancelled()) {
+        reject(GLib.Error.new_literal(Gio.io_error_quark(), Gio.IOErrorEnum.CANCELLED, 'The digits are no longer wanted'));
+        return;
+      }
       const id = GLib.idle_add(GLib.PRIORITY_DEFAULT_IDLE, () => {
         this._pauses.delete(id);
         resolve();

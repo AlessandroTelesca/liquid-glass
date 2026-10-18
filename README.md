@@ -118,11 +118,11 @@ The effect can be enabled or disabled per UI element on the **Effects** page. In
 | Element | Notes / Special features |
 | --- | --- |
 | **Top Bar** | The bar itself, as **one pill** across the screen or **three pills** behind its groups of buttons (activities, clock, status icons), chosen on the Effects page (Appearance → Top bar in the Advanced view). The space around the pills (**margin**) and between their edges and the buttons (**padding**) can be set per side in the Advanced view; the bar grows to make room, and maximized windows stay below it. Off by default. Supports **adaptive text coloring**. |
-| **Dash to Dock** | Glass behind the dock. Adds a bottom margin control so the dock can float above the screen edge. Works with the Dash to Dock / Ubuntu Dock extension. |
+| **Dock** | Glass behind the dock of the Dash to Dock / Ubuntu Dock extension or of [Dhruva](https://github.com/narkagni/dhruva). With Dash to Dock, a bottom margin control lets the dock float above the screen edge; Dhruva keeps its own margin setting. The glass follows Dhruva's dock as it widens under the pointer while the icons are magnified. Glass icons are drawn in Dash to Dock only. |
 | **Application Icons** | The icons in Dash to Dock (the Show Apps button too), in the launcher's results and in the overview's app grid, redrawn as glass plates under a one-color symbol, as in macOS 26 and iOS 26. See [Glass Icons](#glass-icons). Off by default. |
 | **Calendar & Other Top Bar Menus** | Glass behind the calendar (clock) menu and behind the menus of the other top bar indicators — the keyboard layout and accessibility menus, and the indicators other extensions add, including [ArcMenu](https://gitlab.com/arcmenu/ArcMenu)'s menu and its right-click menu. The calendar menu's cards (messages, events, world clocks) follow the colour scheme in GNOME Settings: dark under Dark, pale under Default, with the text colours set to match. Each detected menu can be switched off on its own. Menus **grow out of their button**, after [liquid-dom](https://github.com/AndrewPrifer/liquid-dom)'s menu demo: the button's highlight drops out of the button and rounds off into a drop of glass, which is thrown out to where the menu will be — each time with a small push in a random downward direction — and swells into the menu, its items coming up through the glass, seen bent by its rim at first. Closing runs it back: the menu shrinks into a drop that rises into the button, widening into its highlight on the way, and fades once it has become the highlight. On by default (Appearance → Behavior → "Menus grow from their button"). With that off, a **custom spring animation** (stiffness / damping / mass) scales the menu instead. Also supports **adaptive text coloring**. |
 | **Notifications** | Glass behind notification banners. Supports **adaptive text coloring** and a hide safety margin to avoid flicker while the banner is dismissed. |
-| **Quick Settings** | Two modes: **Whole menu** applies one sheet of glass behind the whole panel, and **Individual buttons** turns every toggle button into its own piece of glass, keeping each toggle's own accent color (see "Button base color"). Also supports spring animation and adaptive text coloring. |
+| **Quick Settings** | Two modes: **Whole menu** applies one sheet of glass behind the whole panel, and **Individual buttons** turns every toggle button into its own piece of glass, keeping each toggle's own accent color (see "Button base color"). Also supports spring animation and adaptive text coloring; in Individual buttons mode the buttons spring out of the middle of the menu as it opens, those nearest the panel button first. |
 | **OSD** | Glass behind the on-screen displays (volume, brightness, and so on), with adaptive text coloring. |
 | **Application Windows** | Glass behind application windows, with a **window content opacity** slider so the glass shows through the window itself. Applies either to selected applications, or to all windows minus exclusions. Both lists are filled from a live picker of your currently open windows, so there is no need to look up `WM_CLASS` values by hand. |
 
@@ -147,12 +147,14 @@ Where it is supported, the extension samples the brightness of what is behind th
 Chosen with **Apply quick settings glass to** under **Effects → Show glass on**, or with **Apply glass to** in the quick settings surface of the advanced **Appearance** page.
 
 - **Whole menu** applies the glass as one continuous sheet behind the whole quick settings panel. Corner radius, X/Y offset and the spring animation apply to that sheet.
-- **Individual buttons** gives each toggle button its own glass shape, tracked individually. "Button corners" sets the roundness of each shape, and "Button base color" controls how much of the toggle's own original color (for example the blue of an active toggle) is kept, independently of the custom tint color. The menu keeps the theme's own background behind the buttons, so this mode is meant for themes whose quick settings menu is transparent, such as [MacTahoe](https://github.com/vinceliuice/MacTahoe-gtk-theme) (Dark). On a theme with an opaque menu (most light themes) the buttons have nothing to refract and look flat; use **Whole menu** there. The sliders and the header are not touched.
+- **Individual buttons** gives each toggle button its own glass shape, tracked individually. With animations on, the menu opens with every button's glass already there, gathered towards the middle of the menu and smaller; the buttons then spring out to their places — those nearest the panel button first — swinging once a little past their size, and their labels and icons fade in as they go. The glass of two buttons is never let closer than 3 px (or than at rest). The menu closes with the shell's own fade. "Button corners" sets the roundness of each shape, and "Button base color" controls how much of the toggle's own original color (for example the blue of an active toggle) is kept, independently of the custom tint color. The menu keeps the theme's own background behind the buttons, so this mode is meant for themes whose quick settings menu is transparent, such as [MacTahoe](https://github.com/vinceliuice/MacTahoe-gtk-theme) (Dark). On a theme with an opaque menu (most light themes) the buttons have nothing to refract and look flat; use **Whole menu** there. The sliders and the header are not touched.
 
 
 ### Using it with Blur my Shell
 
 Recent versions of [Blur my Shell](https://github.com/aunetx/blur-my-shell) (74) blur popup menus, notifications and OSDs by default. Its blur shows through the glass, so turn off **Popups** in Blur my Shell. While Blur my Shell's popup blur is on, the Liquid Glass preferences show a warning at the top of the Appearance page with a button that turns it off, and the extension notes it in its log when Logging is on. Turning off Popups leaves Blur my Shell's other effects on.
+
+Or let Liquid Glass do it: **Override Blur my Shell** (Rendering → Compatibility, shown while Blur my Shell is installed) turns Blur my Shell's blur off for the parts that also have glass, for as long as Liquid Glass runs. The parts are chosen below the switch: **menus and popups** (Blur my Shell blurs dialogs and switchers with the same setting), **top bar**, **dock** (on by default) and **application windows** (off by default, as it turns off all of Blur my Shell's window blur). A part gets its blur back when it loses its glass, when the override is turned off and when Liquid Glass is turned off (not when the screen locks). Blur my Shell's own settings are what change, so its preferences show them off meanwhile; turning one back on there while it is overridden is undone.
 
 ## On the Desktop
 
@@ -241,6 +243,9 @@ A separate ambient-occlusion style darkening sits just inside the glass edge, in
 - **Inner shading** - How dark the inner band gets. With the edge light on, the darkening falls only where the edge light does not (the edges that run along the light direction), as on macOS.
 - **Inner shading radius** - How far inward the darkening extends before fading out.
 
+### Compatibility
+- **Override Blur my Shell** - Shown while Blur my Shell is installed. Turns its blur off where there is glass; see [Using it with Blur my Shell](#using-it-with-blur-my-shell).
+
 ### Troubleshooting
 - **Logging** - Print the extension's logs to the journal / terminal. Useful when reporting a bug.
 - **Render diagnostics** - More detailed rendering state in the logs; adds overhead, so leave it off for normal use.
@@ -314,6 +319,7 @@ A significant part of this codebase was written with the help of AI coding assis
 - [x] Pin launcher results, with a page of pinned items, and work out arithmetic in the launcher
 - [x] Export and import the settings, set the launcher's size and its pinned icons' size, scroll its results, mark applications that are not installed, and keep desktop widgets in a stack when their content changes
 - [x] Outline for the glass of each element, and settings that fold away under their switch in the advanced preferences
+- [x] Add Dhruva dock support, an opening animation for Quick Settings' Individual buttons mode, and an override for Blur my Shell's blur where there is glass
 
 ### Next
 - [ ] Publish to extensions.gnome.org

@@ -148,10 +148,12 @@ export class WorkerProcess {
 
 /**
  * The worker's side: answers each line of JSON on stdin with what `handle`
- * returns, or with its error, until stdin closes. Call from the worker's
- * module and await.
+ * returns, or with its error, until stdin closes. `arrived` sees each request
+ * as soon as it is read, while earlier ones may still be worked on. Call from
+ * the worker's module and await.
  */
-export async function serveRequests(handle: (request: any) => Promise<object>): Promise<void> {
+export async function serveRequests(handle: (request: any) => Promise<object>,
+  arrived: (request: any) => void = () => {}): Promise<void> {
   const GioUnix = (await import('gi://GioUnix')).default;
   const input = new Gio.DataInputStream({ base_stream: new GioUnix.InputStream({ fd: 0, close_fd: false }) });
   const output = new GioUnix.OutputStream({ fd: 1, close_fd: false });
@@ -172,12 +174,16 @@ export async function serveRequests(handle: (request: any) => Promise<object>): 
         loop.quit();
         return;
       }
-      const text = line;
+      let message: any = null;
+      try {
+        message = JSON.parse(line);
+        arrived(message);
+      } catch {
+      }
       queue = queue.then(async () => {
-        let id = 0;
+        const { id = 0, ...request } = message ?? {};
         try {
-          const { id: asked, ...request } = JSON.parse(text);
-          id = asked;
+          if (!message) throw new Error('the request is not JSON');
           answer({ ...(await handle(request)), id });
         } catch (e) {
           answer({ id, error: String(e) });
