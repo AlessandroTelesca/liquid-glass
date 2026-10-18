@@ -303,6 +303,7 @@ export class QuickSettingsManager {
     this._springMass = this._settings.get_double(this._key('spring-mass'));
     this._springScale.updateParams(this._springStiffness, this._springDamping, this._springMass);
     this._growFromButton = this._settings.get_boolean(this._key('grow-from-button'));
+    this._morphSpeed = this._settings.get_double(this._key('morph-speed'));
 
     this._applyTo = this._settings.get_int(this._key('apply-to')) === 1 ? 'toggles' : 'background';
     this._toggleBaseStrength = this._settings.get_double(this._key('toggle-tint-strength'));
@@ -1700,7 +1701,7 @@ export class QuickSettingsManager {
         this._endMorph();
         return false;
       }
-      m.motion = new MenuMorphMotion(m.opening, m.button, menu, this._cornerRadius);
+      m.motion = new MenuMorphMotion(m.opening, m.button, menu, this._cornerRadius, m.from, m.velocities);
     } else {
       m.motion.retarget(m.button, menu, this._cornerRadius);
     }

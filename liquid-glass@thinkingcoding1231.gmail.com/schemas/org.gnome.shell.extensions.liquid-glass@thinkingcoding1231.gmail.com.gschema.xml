@@ -1002,7 +1002,7 @@
       <description>A font description without a size, such as "Cantarell Bold": one of the fonts the extension ships (Antonio, Barlow Condensed, Saira Extra Condensed, Sofia Sans Extra Condensed) with a weight (Light, Regular, SemiBold, Bold), or any installed font. Empty uses the interface font in bold.</description>
     </key>
     <key name="glass-clock-size" type="i">
-      <range min="48" max="480"/>
+      <range min="48" max="960"/>
       <default>400</default>
       <summary>Size of the glass clock's digits (px)</summary>
     </key>

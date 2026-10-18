@@ -656,7 +656,7 @@ function addLayout(group, controls, surface, appearance) {
 
 function addClockShape(group, controls) {
   placeRow(group, controls, 'Place', 'glass-clock-position', 'clock');
-  controls.number(group, 'Size', ['glass-clock-size'], 48, 480, 1, '', { slider: true });
+  controls.number(group, 'Size', ['glass-clock-size'], 48, 960, 1, '', { slider: true });
   controls.number(group, 'Width', ['glass-clock-stretch'], 0.3, 4, 0.01, '', { slider: true });
   controls.number(group, 'Height', ['glass-clock-height'], 1, 3, 0.01, '', { slider: true });
   controls.choice(group, 'Taller digits', [
