@@ -38,7 +38,7 @@ test('the buttons start small, gathered to the middle, with their content hidden
   const last = intro.frame(1);
   assert.equal(last.done, true);
   last.rects.forEach((r, i) => r.forEach((v, k) => assert.ok(Math.abs(v - RECTS[i][k]) < 0.5, `button ${i}: ${r}`)));
-  assert.deepEqual(last.opacity, RECTS.map(() => 1));
+  last.opacity.forEach((o, i) => assert.ok(o > 0.999, `button ${i}: ${o}`));
 });
 
 test('buttons nearer the panel button come out first', () => {
@@ -47,6 +47,30 @@ test('buttons nearer the panel button come out first', () => {
   // The power button, under the panel button, against the toggle at the bottom left.
   assert.ok(f.rects[4][2] / RECTS[4][2] > f.rects[8][2] / RECTS[8][2]);
   assert.ok(f.opacity[4] > f.opacity[8]);
+});
+
+test('every button starts to grow in the first frame', () => {
+  for (const expand of [0, 5]) {
+    const intro = new ToggleIntro(RECTS, ANCHOR, expand);
+    const [a, b] = [intro.frame(0), intro.frame(1 / 60)];
+    a.rects.forEach((r, i) => assert.ok(b.rects[i][2] > r[2] + 0.1, `expand ${expand}, button ${i}: ${r[2]} -> ${b.rects[i][2]}`));
+  }
+});
+
+test('no button gets smaller on its way out, and none jumps from one frame to the next', () => {
+  for (const expand of [0, 3, 5]) {
+    const intro = new ToggleIntro(RECTS, ANCHOR, expand);
+    let prev = null;
+    for (let k = 0; k < 40; k++) {
+      const widths = intro.frame(k / 60).rects.map(r => r[2]);
+      prev?.forEach((w, i) => {
+        const at = `expand ${expand}, frame ${k}, button ${i}: ${w} -> ${widths[i]}`;
+        if (widths[i] < RECTS[i][2] * 0.99) assert.ok(widths[i] > w - 0.3, at);
+        assert.ok(Math.abs(widths[i] - w) < RECTS[i][2] * 0.1, at);
+      });
+      prev = widths;
+    }
+  }
 });
 
 test('the glass of two buttons never comes closer than the least gap, nor than at rest', () => {

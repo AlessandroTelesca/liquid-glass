@@ -748,11 +748,13 @@ export default class LgDriver extends Extension {
     let bare = 0, frames = 0;
     const appIcons = () => findActors(container, a => a instanceof St.Icon && a.mapped)
       .filter(i => [...Array(6).keys()].some(k => { let p = i; for (let j = 0; j <= k && p; j++) p = p.get_parent(); return p?._delegate?.app instanceof Shell.App; }));
-    let example = '';
+    let example = '', bareGlass = 0;
     const paintId = global.stage.connect('after-paint', () => {
       frames++;
       const unstyled = appIcons().filter(i => !i.get_effect('liquid-glass-icon-style'));
       if (unstyled.length) bare++;
+      // Clear icons drawn without what is behind them (glass_ready is set as each is painted).
+      if (appIcons().some(i => i.get_effect('liquid-glass-icon-style')?._values?.get('glass_ready') === 0)) bareGlass++;
       if (unstyled.length && !example) {
         example = unstyled.map(i => `${i.gicon?.to_string?.() ?? i.icon_name} ${i.get_parent()?.constructor.name}/` +
           `${i.get_parent()?.get_parent()?.constructor.name}`).join(', ');
@@ -764,6 +766,7 @@ export default class LgDriver extends Extension {
     }
     global.stage.disconnect(paintId);
     log(`dhruva icons rebuilt: frames=${frames} frames with an unstyled app icon=${bare} ${bare === 0 ? 'OK' : `NG (${example})`}`);
+    log(`dhruva icons rebuilt (clear): frames with an icon drawn without its backdrop=${bareGlass} ${bareGlass === 0 ? 'OK' : 'NG'}`);
     settings.set_boolean('icon-style-dock', false);
     await sleep(1000);
     log(`dhruva icons off: styled ${styled()}`);
@@ -872,8 +875,11 @@ export default class LgDriver extends Extension {
     const {ToggleIntro} = await this._lgModule('animation/toggleIntro.js');
     const frame = ToggleIntro.prototype.frame;
     let slow = 8, least = Infinity;
+    // Per frame of a full-speed opening: its time and each button's width.
+    let trace = null;
     ToggleIntro.prototype.frame = function (t) {
       const f = frame.call(this, t / slow);
+      trace?.push({t, widths: f.rects.map(r => r[2]), rest: this._rects.map(r => r[2])});
       // Over the pairs it keeps apart: how far short of the gap they must keep.
       for (const {i, j, gap} of this._pairs) {
         const [a, b] = [f.rects[i], f.rects[j]];
@@ -912,8 +918,20 @@ export default class LgDriver extends Extension {
     await sleep(1500);
     slow = 1;
     least = Infinity;
+    trace = [];
     qs.open(true);
     await sleep(1200);
+    // A button that keeps its start size for a frame after the opening has started looks like it waits.
+    let still = 0;
+    for (let k = 1; k < trace.length; k++) {
+      trace[k].widths.forEach((w, i) => {
+        if (Math.abs(w - trace[k - 1].widths[i]) < 0.05 && w < trace[k].rest[i] * 0.98) still++;
+      });
+    }
+    log(`t5 intro timing: frames=${trace.length} t(ms)=${trace.slice(0, 8).map(f => Math.round(f.t * 1000)).join(',')} ` +
+      `first widths=${trace.slice(0, 4).map(f => f.widths.map(w => Math.round(w)).join('/')).join(' | ')} ` +
+      `button-frames held at their start size=${still} ${still === 0 ? 'OK' : 'NG'}`);
+    trace = null;
     log(`t3 intro: least margin over the gap kept between buttons ${least.toFixed(2)} px (pairs ${this._glass('quick-settings-toggles') ? 'checked' : '?'}), glass=${JSON.stringify(this._glass('quick-settings-toggles')?.stats ?? null)}`);
     await shot('t3-intro-rest', [m.x + m.width - 520, m.y, 520, 560]);
     qs.close(true);

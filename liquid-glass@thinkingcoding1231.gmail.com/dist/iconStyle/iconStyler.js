@@ -25,6 +25,9 @@ const EFFECT_NAME = 'liquid-glass-icon-style';
 // so that the session's start is not slowed.
 const PREPARE_DELAY_S = 5;
 const FALLBACK_ICON = 'application-x-executable';
+// How long a clear icons' backdrop is kept once its last icon has gone. Dhruva rebuilds every button whenever an
+// indicator changes; a new backdrop would leave the new icons without glass until it has loaded and copied.
+const HOST_KEEP_MS = 1000;
 
 // The actor a backdrop goes on for icons in `holder`. One painted into an ancestor's offscreen, which Dash to Dock
 // keeps its dash in, cannot read the stage, so it goes above that ancestor. The offscreen keeps what was drawn
@@ -313,7 +316,7 @@ export class IconStyler {
                 },
             });
             backdrop.attach(host);
-            entry = { backdrop, icons, destroyId: host.connect('destroy', () => this._dropHost(host)) };
+            entry = { backdrop, icons, destroyId: host.connect('destroy', () => this._dropHost(host)), dropId: 0 };
             this._hosts.set(host, entry);
         }
         return { host, entry };
@@ -326,8 +329,16 @@ export class IconStyler {
         if (!entry)
             return;
         entry.icons.delete(icon);
-        if (!entry.icons.size)
-            this._dropHost(host);
+        if (entry.icons.size)
+            return;
+        if (entry.dropId)
+            GLib.Source.remove(entry.dropId);
+        entry.dropId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, HOST_KEEP_MS, () => {
+            entry.dropId = 0;
+            if (!entry.icons.size)
+                this._dropHost(host);
+            return GLib.SOURCE_REMOVE;
+        });
     }
 
     _dropHost(host) {
@@ -335,6 +346,8 @@ export class IconStyler {
         if (!entry)
             return;
         this._hosts.delete(host);
+        if (entry.dropId)
+            GLib.Source.remove(entry.dropId);
         host.disconnect(entry.destroyId);
         entry.backdrop.cleanup();
     }

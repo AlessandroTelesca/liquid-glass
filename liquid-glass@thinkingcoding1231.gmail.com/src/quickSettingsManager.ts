@@ -43,6 +43,9 @@ interface CustomBannerActor extends St.Widget {
 
 // Frames to wait for an opening menu to get its size before it just appears.
 const MORPH_WAIT_FRAMES = 30;
+// The most the toggle-mode opening moves on from one frame to the next (s): after its first frame, and later.
+const INTRO_FIRST_STEP_S = 1 / 60;
+const INTRO_MAX_STEP_S = 1 / 30;
 // The menu's own open and close animations, which the morph replaces. Its
 // closing fade would hide the items and then the menu long before the glass is
 // back in the button, so the fade is held and the menu is hidden by the morph.
@@ -129,7 +132,9 @@ interface ToggleIntroState {
   saved: { pivot: [number, number], scale: [number, number], translation: [number, number], opacity: number }[];
   // Buttons kept out of sight until the menu is laid out, and their opacity.
   hidden: Map<Clutter.Actor, number>;
-  startUs: number;
+  // The motion's time (s), and the frame time it was last moved at.
+  elapsed: number;
+  lastUs: number;
   waitFrames: number;
 }
 
@@ -874,7 +879,7 @@ export class QuickSettingsManager {
   private _startIntro(): void {
     this._endIntro();
     if (!this._toggleAnimation || !St.Settings.get().enable_animations) return;
-    this._intro = { running: true, motion: null, pods: [], rest: [], saved: [], hidden: new Map(), startUs: 0, waitFrames: 0 };
+    this._intro = { running: true, motion: null, pods: [], rest: [], saved: [], hidden: new Map(), elapsed: 0, lastUs: 0, waitFrames: 0 };
     this._lastGoodRegions = null;
     // The menu shows at once, so the buttons' glass does from the start; the
     // shell's easing still runs to its end and lets the menu take input.
@@ -918,9 +923,14 @@ export class QuickSettingsManager {
         translation: [pod.translation_x, pod.translation_y], opacity: intro.hidden.get(pod) ?? pod.opacity,
       }));
       for (const pod of shown) pod.set_pivot_point(0.5, 0.5);
-      intro.startUs = now;
+    } else {
+      // The frame that first draws the buttons small can be slow (the menu and its glass are drawn for the first
+      // time). Taken as it is, that wait would leave them still and then make them jump; it counts as one frame.
+      const step = (now - intro.lastUs) / 1e6;
+      intro.elapsed += Math.min(step, intro.elapsed === 0 ? INTRO_FIRST_STEP_S : INTRO_MAX_STEP_S);
     }
-    const frame = intro.motion.frame((now - intro.startUs) / 1e6);
+    intro.lastUs = now;
+    const frame = intro.motion.frame(intro.elapsed);
     intro.pods.forEach((pod, i) => {
       if (!isActorValid(pod)) return;
       const [x, y, w, h] = intro.rest[i];
