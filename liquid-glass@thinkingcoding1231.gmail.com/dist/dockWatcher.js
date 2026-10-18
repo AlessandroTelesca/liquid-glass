@@ -89,9 +89,8 @@ export class DockWatcher {
                 ? new DhruvaDock(this._path, container, this._settings, this._logger)
                 : new DashManager(this._path, container, this._settings, this._logger);
             manager.setup();
-            if (!dhruva)
-                this._icons.watchDock(container);
-            const entry = { container, manager, icons: !dhruva, destroyId: 0 };
+            this._icons.watchDock(container);
+            const entry = { container, manager, destroyId: 0 };
             entry.destroyId = container.connect('destroy', () => {
                 entry.destroyId = 0;
                 this._release(entry);
@@ -111,8 +110,7 @@ export class DockWatcher {
             entry.container.disconnect(entry.destroyId);
         entry.destroyId = 0;
         entry.manager.cleanup();
-        if (entry.icons)
-            this._icons.unwatchDock(entry.container);
+        this._icons.unwatchDock(entry.container);
     }
 
     // Keeps looking until RESCAN_IDLE_TICKS scans in a row find nothing new.

@@ -1,4 +1,4 @@
-// Redraws application icons in the dock (Dash to Dock), the launcher and the
+// Redraws application icons in the dock (Dash to Dock or Dhruva), the launcher and the
 // overview's app grid as glass plates under a symbol (see iconEffect.ts), for
 // the applications the settings pick. Clear icons read what is behind them
 // from one backdrop per actor that holds them (iconBackdrop.ts).
@@ -79,7 +79,8 @@ function appIdOf(icon: St.Icon): string | null {
   // The shell's and Dash to Dock's Show Apps buttons, whatever icon they show.
   if (icon.has_style_class_name('show-apps-icon')) return SHOW_APPS_ID;
   for (let actor: Clutter.Actor | null = icon.get_parent(); actor; actor = actor.get_parent()) {
-    const app = (actor as any).app;
+    // Dhruva keeps a button's app on its delegate.
+    const app = (actor as any).app ?? (actor as any)._delegate?.app;
     if (app instanceof Shell.App) return app.get_id();
   }
   return folderAppIdOf(icon);
@@ -182,7 +183,7 @@ export class IconStyler {
     this._glassPipeline = null;
   }
 
-  /** Styles the application icons in a Dash to Dock dock, and those it adds later. */
+  /** Styles the application icons in a Dash to Dock or Dhruva dock, and those it adds later. */
   watchDock(dock: Clutter.Actor): void {
     this._watch(dock, 'dock');
   }

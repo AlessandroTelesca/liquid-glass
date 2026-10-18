@@ -660,6 +660,25 @@ export default class LgDriver extends Extension {
     log(`dhruva glass off: background opacity=${background.opacity} glass=${!!this._glass('dock:dhruva')}`);
     settings.set_boolean('enable-dock-glass', true);
     await sleep(1000);
+
+    // Glass icons on Dhruva's buttons, with the dock's switch.
+    const styled = () => {
+      const icons = findActors(container, a => a instanceof St.Icon && a.mapped);
+      return `${icons.filter(i => i.get_effect('liquid-glass-icon-style')).length}/${icons.length}`;
+    };
+    settings.set_boolean('icon-style-all-apps', true);
+    for (const mode of ['tinted', 'clear']) {
+      settings.set_string('icon-style-mode', mode);
+      settings.set_boolean('icon-style-dock', true);
+      for (let i = 0; i < 60 && styled().startsWith('0/'); i++)
+        await sleep(500);
+      await sleep(1500);
+      log(`dhruva icons ${mode}: styled ${styled()}`);
+      await this._shots(`dhruva-icons-${mode}`, region, 'dock:dhruva');
+    }
+    settings.set_boolean('icon-style-dock', false);
+    await sleep(1000);
+    log(`dhruva icons off: styled ${styled()}`);
   }
 
   // Opens, checks and closes one menu-like surface.
@@ -776,7 +795,7 @@ export default class LgDriver extends Extension {
       }
       return f;
     };
-    settings.set_boolean('enable-quick-settings-animation', true);
+    settings.set_boolean('quick-settings-toggle-animation', true);
     const m = Main.layoutManager.primaryMonitor;
     qs.open(true);
     await this._timedShots('t3-intro', [m.x + m.width - 520, m.y, 520, 560], [0, 300, 600, 900, 1300, 1700, 2300, 3200, 5000]);

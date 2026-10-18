@@ -19,8 +19,6 @@ const DOCK_ROOTS = ['dashtodockContainer', 'DhruvaContainer'];
 interface DockEntry {
   container: Clutter.Actor;
   manager: DashManager | DhruvaDock;
-  // Whether the icon styler restyles its icons; it knows only Dash to Dock's.
-  icons: boolean;
   destroyId: number;
 }
 
@@ -88,8 +86,8 @@ export class DockWatcher {
         ? new DhruvaDock(this._path, container, this._settings, this._logger)
         : new DashManager(this._path, container as St.Widget, this._settings, this._logger);
       manager.setup();
-      if (!dhruva) this._icons.watchDock(container);
-      const entry: DockEntry = { container, manager, icons: !dhruva, destroyId: 0 };
+      this._icons.watchDock(container);
+      const entry: DockEntry = { container, manager, destroyId: 0 };
       entry.destroyId = container.connect('destroy', () => {
         entry.destroyId = 0;
         this._release(entry);
@@ -107,7 +105,7 @@ export class DockWatcher {
     if (entry.destroyId) entry.container.disconnect(entry.destroyId);
     entry.destroyId = 0;
     entry.manager.cleanup();
-    if (entry.icons) this._icons.unwatchDock(entry.container);
+    this._icons.unwatchDock(entry.container);
   }
 
   // Keeps looking until RESCAN_IDLE_TICKS scans in a row find nothing new.

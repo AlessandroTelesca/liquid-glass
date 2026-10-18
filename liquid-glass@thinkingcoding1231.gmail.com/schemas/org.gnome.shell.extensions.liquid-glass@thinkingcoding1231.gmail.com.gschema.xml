@@ -388,6 +388,11 @@
       <default>true</default>
       <summary>Enable glass effect for Quick Settings</summary>
     </key>
+    <key name="quick-settings-toggle-animation" type="b">
+      <default>false</default>
+      <summary>Animate the buttons as Quick Settings opens in Individual buttons mode</summary>
+      <description>The buttons spring out of the middle of the menu, those nearest the panel button first. Follows the desktop's reduced motion setting.</description>
+    </key>
     <key name="enable-quick-settings-animation" type="b">
       <default>false</default>
       <summary>Enable quick settings animation</summary>

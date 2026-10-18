@@ -141,6 +141,8 @@ export class QuickSettingsManager {
     _springDamping;
     _springMass;
     _enableAnimation;
+    // Toggle mode's own animation; see _startIntro().
+    _toggleAnimation = false;
     _growFromButton = true;
     _morph = null;
     _morphTickId = 0;
@@ -244,6 +246,7 @@ export class QuickSettingsManager {
             return;
         this._bindSettings();
         this._enableAnimation = this._settings.get_boolean(this._animationKey());
+        this._toggleAnimation = this._settings.get_boolean(this._key('toggle-animation'));
         this._springStiffness = this._settings.get_double(this._key('spring-stiffness'));
         this._springDamping = this._settings.get_double(this._key('spring-damping'));
         this._springMass = this._settings.get_double(this._key('spring-mass'));
@@ -293,6 +296,9 @@ export class QuickSettingsManager {
         });
         connectSetting(this._animationKey(), () => {
             this._enableAnimation = this._settings.get_boolean(this._animationKey());
+        });
+        connectSetting(this._key('toggle-animation'), () => {
+            this._toggleAnimation = this._settings.get_boolean(this._key('toggle-animation'));
         });
         connectSetting(this._key('grow-from-button'), () => {
             this._growFromButton = this._settings.get_boolean(this._key('grow-from-button'));
@@ -727,10 +733,10 @@ export class QuickSettingsManager {
         this.glass.syncSources();
     }
 
-    // Toggle mode, with animations on: the buttons spring out as the menu opens.
+    // Toggle mode, with its animation on: the buttons spring out as the menu opens.
     _startIntro() {
         this._endIntro();
-        if (!this._enableAnimation || !St.Settings.get().enable_animations)
+        if (!this._toggleAnimation || !St.Settings.get().enable_animations)
             return;
         this._intro = { running: true, motion: null, pods: [], rest: [], saved: [], hidden: new Map(), startUs: 0, waitFrames: 0 };
         // The menu shows at once, so the buttons' glass does from the start; the

@@ -33,8 +33,10 @@ const smoothMotion = Object.fromEntries(['menu', 'panel-menu', 'quick-settings']
 ]));
 
 const MOTION = [
-  { title: 'Off', patch: { ...uniformPatch(MOTION_KEYS, false), 'desktop-widget-menu-animation': 'off' } },
-  { title: 'Smooth', patch: { ...smoothMotion, 'desktop-widget-menu-animation': 'morph' } },
+  { title: 'Off', patch: {
+    ...uniformPatch(MOTION_KEYS, false), 'quick-settings-toggle-animation': false, 'desktop-widget-menu-animation': 'off',
+  } },
+  { title: 'Smooth', patch: { ...smoothMotion, 'quick-settings-toggle-animation': true, 'desktop-widget-menu-animation': 'morph' } },
 ];
 
 const QUALITY = [
@@ -639,6 +641,10 @@ function addMotion(group, controls, surface) {
   const key = `enable-${surface}-animation`;
   const growKey = `${surface}-grow-from-button`;
   const toggle = controls.toggle(group, 'Animations', key);
+  // Individual buttons mode has an animation of its own, and nothing to tune.
+  const buttonsToggle = surface === 'quick-settings'
+    ? controls.toggle(group, 'Animations', 'quick-settings-toggle-animation', 'The buttons spring out of the middle of the menu as it opens')
+    : null;
   const branch = new Branch(toggle);
   const morphToggle = branch.add(controls.toggle(group, 'Grow from the button', growKey,
     'The glass leaves the button as a drop and stretches into the menu'));
@@ -650,6 +656,7 @@ function addMotion(group, controls, surface) {
   controls.watch(keys, () => {
     const panel = surface !== 'quick-settings' || controls.settings.get_value('quick-settings-apply-to').deep_unpack() === 0;
     toggle.visible = panel;
+    if (buttonsToggle) buttonsToggle.visible = !panel;
     branch.enabled = panel && controls.settings.get_boolean(key);
   });
   controls.watch([growKey], () => { morphBranch.switch = controls.settings.get_boolean(growKey) ? 0 : 1; });

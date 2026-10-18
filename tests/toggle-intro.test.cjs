@@ -32,7 +32,7 @@ test('the spring goes past the end once, a little, and does not swing back notic
 test('the buttons start small, gathered to the middle, with their content hidden, and end where they are', () => {
   const intro = new ToggleIntro(RECTS, ANCHOR, 0);
   const first = intro.frame(0);
-  first.rects.forEach((r, i) => assert.ok(r[2] < RECTS[i][2] * 0.6, `button ${i} starts at ${r[2]}`));
+  first.rects.forEach((r, i) => assert.ok(Math.abs(r[2] / RECTS[i][2] - 0.7) < 0.01, `button ${i} starts at ${r[2]}`));
   assert.deepEqual(first.opacity, RECTS.map(() => 0));
   assert.equal(first.done, false);
   const last = intro.frame(1);

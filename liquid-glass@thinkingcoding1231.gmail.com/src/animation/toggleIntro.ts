@@ -4,7 +4,7 @@
 // glass shows from the start; their labels and icons fade in as they go.
 
 // The size and spread the buttons start at, as a share of their own.
-const START_SCALE = 0.55;
+const START_SCALE = 0.7;
 // A spring that swings once just past the end and settles without a second
 // swing (about 6% over, then under 0.5%).
 const RESPONSE_S = 0.27;
