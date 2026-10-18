@@ -1609,6 +1609,60 @@ export default class LgDriver extends Extension {
   // Moves and resizes the clock through its menu and edit frame, with a
   // virtual pointer. With Desktop Icons (run-glass.sh with
   // LG_EXTRA_EXTENSIONS=ding@rastersoft.com) the clock has to be above its window.
+  // Clear glass icons on the launcher's pinned page while the page switches to
+  // it: every frame should draw them as glass (glass_ready), not first as
+  // icons without glass.
+  _iconStyler() {
+    const ext = Extension.lookupByUUID(LG_UUID);
+    return ext._iconStyler ?? null;
+  }
+
+  async _launcherGlass(settings) {
+    const ids = ['org.gnome.Settings.desktop', 'org.gnome.Nautilus.desktop', 'org.gnome.TextEditor.desktop', 'org.gnome.Calculator.desktop',
+      'yelp.desktop', 'org.gnome.Software.desktop', 'firefox_firefox.desktop', 'foot.desktop'];
+    const installed = ids.filter(id => Shell.AppSystem.get_default().lookup_app(id));
+    settings.set_value('launcher-pinned', new GLib.Variant('aa{ss}', installed.map(id => ({provider: 'applications', id, name: id, description: '', icon: ''}))));
+    settings.set_boolean('icon-style-launcher', true);
+    settings.set_boolean('icon-style-all-apps', true);
+    settings.set_string('icon-style-mode', 'clear');
+    settings.set_string('launcher-pinned-transition', 'morph');
+    await sleep(500);
+    const launcher = (await this._lgModule('launcher/launcher.js')).Launcher.instance;
+    for (let round = 0; round < 3; round++) {
+      launcher.open();
+      await sleep(1500);
+      const counts = {frames: 0, iconsDrawn: 0, glass: 0};
+      const id = global.stage.connect('after-paint', () => {
+        counts.frames++;
+        const box = launcher._pinnedBox;
+        // At opacity 0 the panel is not drawn, and the icons keep what they last drew with.
+        if (!box?.mapped || launcher._panel.opacity === 0) return;
+        for (const icon of findActors(box, a => a instanceof St.Icon && a.mapped)) {
+          const effect = icon.get_effect('liquid-glass-icon-style');
+          if (!effect?._values?.has('glass_ready')) continue;
+          counts.iconsDrawn++;
+          if (effect._values.get('glass_ready') === 1) counts.glass++;
+          else if (!counts.bad) {
+            const host = launcher._iconBackdropHost ?? launcher._panel;
+            const backdrop = [...(this._iconStyler()?._hosts?.values() ?? [])].find(h => h.icons.has(icon))?.backdrop;
+            const copier = backdrop?._copier;
+            counts.bad = `frame ${counts.frames} opacity ${launcher._panel.opacity} phase ${launcher._switch?.phase} ` +
+              `copies ${copier?.copyCount} reuses ${copier?.reuseCount} misses ${copier?.missCount} offStage ${copier?.offStageCount} ` +
+              `last ${JSON.stringify(copier?.lastCopy?.rect?.map(Math.round))} serialAtMap ${backdrop?._serialAtMap} serial ${copier?.lastCopy?.serial} ` +
+              `icon ${JSON.stringify([...icon.get_transformed_position(), ...icon.get_transformed_size()].map(Math.round))} host ${host?.get_name()}`;
+          }
+        }
+      });
+      launcher.showView('pinned');
+      await sleep(round === 0 ? 3000 : 1200);
+      global.stage.disconnect(id);
+      log(`launcherglass round ${round}: icon draws while switching ${counts.iconsDrawn}, as glass ${counts.glass} ` +
+        `over ${counts.frames} frames ${counts.iconsDrawn > 0 && counts.glass === counts.iconsDrawn ? 'OK' : `NG (first: ${counts.bad})`}`);
+      launcher.close();
+      await sleep(800);
+    }
+  }
+
   // An opaque window dragged off the glass clock. Mutter does not draw the
   // wallpaper under an opaque window, so a copy of the clock's backdrop taken
   // while the window covers it holds the window instead. The camera shows the
@@ -2521,9 +2575,11 @@ export default class LgDriver extends Extension {
     const launcher = Launcher.instance;
     launcher.open();
     launcher.setText(GLib.getenv('LG_DRV_LAUNCHER_QUERY') ?? 'set');
-    for (let i = 0; i < 20 && !launcher._panel?.get_effect(BACKDROP)?.current(); i++) await sleep(250);
+    // The clear icons copy their backdrop on an actor just below the panel.
+    const launcherHost = () => launcher._iconBackdropHost ?? launcher._panel;
+    for (let i = 0; i < 20 && !launcherHost()?.get_effect(BACKDROP)?.current(); i++) await sleep(250);
     await sleep(1500);
-    log(`icon glass launcher: ready=${launcher._panel ? ready(launcher._panel, launcher._panel) : '-'}`);
+    log(`icon glass launcher: ready=${launcher._panel ? ready(launcher._panel, launcherHost()) : "-"}`);
     await shot('icon-glass-launcher', [m.x, m.y, m.width, m.height]);
     launcher.close();
     await sleep(800);
@@ -2815,11 +2871,12 @@ export default class LgDriver extends Extension {
     }
     if (parts.includes('clockshot')) {
       // The clock alone, large, for a close look at its glass ($LG_DRV_CLOCK_SIZE,
-      // $LG_DRV_CLOCK_HEIGHT, $LG_DRV_CLOCK_FONT, $LG_DRV_CLOCK_TEXT).
+      // $LG_DRV_CLOCK_HEIGHT, $LG_DRV_CLOCK_STRETCH, $LG_DRV_CLOCK_FONT, $LG_DRV_CLOCK_TEXT).
       settings.set_boolean('output-logs', true);
       settings.set_string('glass-clock-position', 'center');
       settings.set_int('glass-clock-size', Number(GLib.getenv('LG_DRV_CLOCK_SIZE') ?? 240));
       settings.set_double('glass-clock-height', Number(GLib.getenv('LG_DRV_CLOCK_HEIGHT') ?? 1));
+      settings.set_double('glass-clock-stretch', Number(GLib.getenv('LG_DRV_CLOCK_STRETCH') ?? 1.3));
       const font = GLib.getenv('LG_DRV_CLOCK_FONT');
       if (font !== null) settings.set_string('glass-clock-font', font);
       settings.set_boolean('glass-clock-show-date', false);
@@ -2914,6 +2971,8 @@ export default class LgDriver extends Extension {
       }
       await this._editClock(settings, m);
     }
+    if (parts.includes('launcherglass'))
+      await this._launcherGlass(settings);
     if (parts.includes('clockcull'))
       await this._clockCull(settings, m);
     if (parts.includes('clockresize'))

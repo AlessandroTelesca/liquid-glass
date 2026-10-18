@@ -278,26 +278,31 @@ export function strokeWidths(alpha, w, h) {
 }
 
 /**
- * How wide and how tall the widest and tallest runs of ink in coverage
- * `alpha` (`w` x `h`) are, px: a dot's size.
+ * Coverage `alpha` (`w` x `h`) with each band of rows that has ink in it (a
+ * dot of a colon) moved down by `shift(y)` whole px, y being the band's middle
+ * row, so that the bands keep their shape. Also says how many rows were added
+ * above.
  */
-export function dotSize(alpha, w, h) {
-    let wide = 0, tall = 0;
+export function moveInkBands(alpha, w, h, shift) {
+    const inked = (y) => alpha.subarray(y * w, (y + 1) * w).some(v => v > 0);
+    const bands = [];
     for (let y = 0; y < h; y++) {
-        let run = 0;
-        for (let x = 0; x < w; x++) {
-            run = alpha[y * w + x] ? run + alpha[y * w + x] / 255 : 0;
-            wide = Math.max(wide, run);
-        }
+        if (!inked(y))
+            continue;
+        let last = y;
+        while (last + 1 < h && inked(last + 1))
+            last++;
+        bands.push([y, last, Math.round(shift((y + last) / 2))]);
+        y = last;
     }
-    for (let x = 0; x < w; x++) {
-        let run = 0;
-        for (let y = 0; y < h; y++) {
-            run = alpha[y * w + x] ? run + alpha[y * w + x] / 255 : 0;
-            tall = Math.max(tall, run);
-        }
-    }
-    return [wide, tall];
+    if (!bands.length)
+        return { alpha, height: h, above: 0 };
+    const above = Math.max(0, ...bands.map(([, , by]) => -by));
+    const height = h + above + Math.max(0, ...bands.map(([, , by]) => by));
+    const out = new Uint8Array(w * height);
+    for (const [first, last, by] of bands)
+        out.set(alpha.subarray(first * w, (last + 1) * w), (first + by + above) * w);
+    return { alpha: out, height, above };
 }
 
 /**
@@ -1247,12 +1252,11 @@ export class GlyphFields {
         return this._tall;
     }
 
-    // How thick the strokes of `text` are, px at the font's size (see
-    // strokeWidths()), or for dots how big the dots are.
-    async _pen(text, dots = false) {
+    // How thick the strokes of `text` are, px at the font's size (see strokeWidths()).
+    async _pen(text) {
         const scale = Math.min(MEASURE_HEIGHT / this.digitHeight, SUPERSAMPLE);
         const big = await rasterize(this._face, text, scale, this.stretch, null, 2, this.cancellable);
-        const [across, tall] = (dots ? dotSize : strokeWidths)(big.alpha, big.width, big.height);
+        const [across, tall] = strokeWidths(big.alpha, big.width, big.height);
         return [across / scale, tall / scale];
     }
 
@@ -1270,12 +1274,20 @@ export class GlyphFields {
     async _buildGlyph(ch) {
         const both = await this._tallness();
         const t = both && (ch === ':' ? both.colon : both.digits);
-        // The colon's dots keep their own shape, whatever the digits' strokes are.
-        const tall = t && scaledTall(t, SUPERSAMPLE, ch === ':' ? await this._pen(ch, true) : t.pen);
-        const big = await rasterize(this._face, ch, SUPERSAMPLE, this.stretch, tall?.even ? tall : null, this.range * SUPERSAMPLE, this.cancellable);
+        const tall = t && scaledTall(t, SUPERSAMPLE, t.pen);
+        // The colon's dots are not stretched and drawn back to a dot's thickness,
+        // which leaves a traced outline with corners on them: each is drawn as the
+        // font has it and moved to where the even stretch takes its middle.
+        const dots = ch === ':' && !!tall?.even;
+        const big = await rasterize(this._face, ch, SUPERSAMPLE, this.stretch, tall?.even && !dots ? tall : null, this.range * SUPERSAMPLE, this.cancellable);
         const { width } = big;
-        let { alpha, height } = big;
-        if (tall) {
+        let { alpha, height, originY } = big;
+        if (dots) {
+            const moved = moveInkBands(alpha, width, height, y => tallY(tall, y - big.originY) - (y - big.originY));
+            ({ alpha, height } = moved);
+            originY += moved.above;
+        }
+        else if (tall) {
             await this.pause();
             let loops = traceOutlines(alpha, width, height);
             let stretch = () => tall.even ? tall.scale : 1;
@@ -1296,7 +1308,7 @@ export class GlyphFields {
         const signed = signedDistances(alpha, width, height);
         await this.pause();
         const field = downsample({ data: signed, width, height }, SUPERSAMPLE);
-        return { ...field, originX: big.originX / SUPERSAMPLE, originY: big.originY / SUPERSAMPLE };
+        return { ...field, originX: big.originX / SUPERSAMPLE, originY: originY / SUPERSAMPLE };
     }
 
     /**

@@ -200,9 +200,12 @@ export class IconStyler {
         this._scanSoon();
     }
 
-    /** Styles a launcher result's icon, which goes away with its row; `panel` holds the rows over the glass. */
-    styleLauncherIcon(icon, appId, panel) {
-        this._style(icon, appId, 'launcher', null, panel);
+    /**
+     * Styles a launcher result's icon, which goes away with its row; `host` is painted just before the rows, over the
+     * glass, and covers them.
+     */
+    styleLauncherIcon(icon, appId, host) {
+        this._style(icon, appId, 'launcher', null, host);
     }
 
     // Before the next frame, so that icons a dock adds are not drawn as they are first.
@@ -276,18 +279,33 @@ export class IconStyler {
         this._leaveHost(icon, styled);
     }
 
+    /**
+     * Makes the backdrop of the clear icons the launcher is about to show over `host`, so that its shaders are loaded
+     * by the first frame they are shown in.
+     */
+    prepareLauncherHost(host) {
+        if (this._settings.get_boolean('icon-style-launcher') && this._settings.get_string('icon-style-mode') === 'clear')
+            this._hostFor(host, 'launcher');
+    }
+
     // The backdrop of `host`'s clear icons, made with its first.
     _backdropFor(icon, styled) {
         if (!styled.host)
             return null;
-        const { host, cached } = backdropHost(styled.host);
+        const { host, entry } = this._hostFor(styled.host, styled.surface);
         styled.backdropHost = host;
+        entry.icons.add(icon);
+        return entry.backdrop;
+    }
+
+    _hostFor(holder, surface) {
+        const { host, cached } = backdropHost(holder);
         let entry = this._hosts.get(host);
         if (!entry) {
             const icons = new Set();
             const backdrop = new IconBackdrop({
                 extensionPath: this._extensionPath, settings: this._settings, logger: this._logger,
-                prefix: styled.surface === 'launcher' ? 'launcher' : 'dock', rect: () => this._extentsOf(icons),
+                prefix: surface === 'launcher' ? 'launcher' : 'dock', rect: () => this._extentsOf(icons),
                 copied: () => {
                     if (cached)
                         for (const icon of icons)
@@ -298,8 +316,7 @@ export class IconStyler {
             entry = { backdrop, icons, destroyId: host.connect('destroy', () => this._dropHost(host)) };
             this._hosts.set(host, entry);
         }
-        entry.icons.add(icon);
-        return entry.backdrop;
+        return { host, entry };
     }
 
     _leaveHost(icon, styled) {

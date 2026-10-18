@@ -250,3 +250,16 @@ test('the parts above and below the join in the middle of a 3 grow alike', () =>
   const upper = (join - runs[0][0]) / (48 - 12), lower = (runs[2][runs[2].length - 1] + 1 - join) / (94 - 48);
   assert.ok(Math.abs(upper / lower - 1) < 0.12, `upper x${upper.toFixed(2)}, lower x${lower.toFixed(2)}`);
 });
+
+test('made taller, a colon moves its dots apart and keeps each one as it is drawn', () => {
+  const [w, h] = [40, 100];
+  const alpha = coverage(w, h, (x, y) => Math.hypot(x - 20, y - 30) < 8 || Math.hypot(x - 20, y - 70) < 8);
+  // About the middle (row 50), twice as far out.
+  const { alpha: moved, height, above } = glyphs.moveInkBands(alpha, w, h, y => y - 50);
+  assert.equal(above, 20);
+  assert.equal(height, h + 40);
+  const dot = (a, top) => Array.from(a.subarray(top * w, (top + 18) * w));
+  // The upper dot (rows 21-39) lands 20 rows higher, the lower one 20 rows lower, as they were.
+  assert.deepEqual(dot(moved, 21 - 20 + above), dot(alpha, 21));
+  assert.deepEqual(dot(moved, 61 + 20 + above), dot(alpha, 61));
+});

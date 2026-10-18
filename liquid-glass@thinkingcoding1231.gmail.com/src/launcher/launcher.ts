@@ -110,6 +110,8 @@ export class Launcher {
   private _keybinding = false;
   private _root: St.Widget | null = null;
   private _panel: St.BoxLayout | null = null;
+  // What the clear icons' glass copies the stage from: see open().
+  private _iconBackdropHost: St.Widget | null = null;
   private _entry: St.Entry | null = null;
   private _list: St.BoxLayout | null = null;
   private _resultsBox: St.ScrollView | null = null;
@@ -248,11 +250,18 @@ export class Launcher {
     });
     panel.add_child(searchBox);
     panel.add_child(pinnedBox);
+    // Painted just before the panel, which is drawn through an offscreen while
+    // it fades and bends to another page; the stage cannot be read in there, so
+    // the clear icons' backdrop is copied here and they stay glass meanwhile.
+    const iconBackdropHost = new St.Widget({ name: 'liquid-glass-launcher-icons', width: monitor.width, height: monitor.height });
+    root.add_child(iconBackdropHost);
+    this._icons.prepareLauncherHost(iconBackdropHost);
     root.add_child(panel);
     Main.layoutManager.uiGroup.add_child(root);
 
     this._root = root;
     this._panel = panel;
+    this._iconBackdropHost = iconBackdropHost;
     this._entry = entry;
     this._list = list;
     this._resultsBox = resultsBox;
@@ -310,6 +319,7 @@ export class Launcher {
     const glass = this._glass;
     this._glass = null;
     this._panel = null;
+    this._iconBackdropHost = null;
     this._entry = null;
     this._list = null;
     this._resultsBox = null;
@@ -750,7 +760,7 @@ export class Launcher {
     // A remote provider's result may come without an icon; its application's icon stands in.
     const gicon = result.provider?.appInfo?.get_icon();
     const icon = result.meta.createIcon(size) ?? (gicon ? new St.Icon({ gicon, icon_size: size }) : null);
-    if (icon instanceof St.Icon && result.provider?.id === 'applications') this._icons.styleLauncherIcon(icon, result.meta.id, this._panel!);
+    if (icon instanceof St.Icon && result.provider?.id === 'applications') this._icons.styleLauncherIcon(icon, result.meta.id, this._iconBackdropHost!);
     return icon;
   }
 
@@ -829,7 +839,7 @@ export class Launcher {
       const app = Shell.AppSystem.get_default().lookup_app(pin.id);
       if (app) {
         const icon = app.create_icon_texture(size) as St.Icon;
-        this._icons.styleLauncherIcon(icon, pin.id, this._panel!);
+        this._icons.styleLauncherIcon(icon, pin.id, this._iconBackdropHost!);
         return icon;
       }
     }
