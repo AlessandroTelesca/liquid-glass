@@ -35,6 +35,9 @@
 //              LG_DTD_SETTINGS="dock-position 'LEFT'", so Dash to Dock is out of the way)
 //   bms        blur-my-shell-override turning Blur my Shell's blur off and back on
 //              (run-glass.sh with LG_EXTRA_EXTENSIONS=blur-my-shell@aunetx)
+//   adaptiveflip  how often the text colour changes while the calendar and Quick Settings
+//              grow from their button and a notification slides in, on a wallpaper
+//              ($LG_DRV_WALLPAPER) that is bright at the top and dark lower down
 //   bench      global._lgBench.run() (run-glass.sh with LG_BENCH=1); LG_DRV_BENCH
 //              picks scenarios (comma separated, default all), LG_DRV_BENCH_SECONDS
 //              the seconds per scenario (default 3), LG_DRV_BENCH_AB=1 adds a run without UI glass,
@@ -323,6 +326,8 @@ export default class LgDriver extends Extension {
       await this._dhruvaScenario();
     else if (SCENARIO === 'bms')
       await this._bmsScenario();
+    else if (SCENARIO === 'adaptiveflip')
+      await this._adaptiveFlipScenario();
     log(`dump\n${lg().dump()}`);
   }
 
@@ -568,6 +573,68 @@ export default class LgDriver extends Extension {
     await this._shots('d7 rebuilt', region, owner);
   }
 
+  async _adaptiveFlipScenario() {
+    const ext = Extension.lookupByUUID(LG_UUID);
+    const settings = this._lgSettings();
+    const wallpaper = GLib.getenv('LG_DRV_WALLPAPER');
+    if (wallpaper) {
+      const bg = new Gio.Settings({schema_id: 'org.gnome.desktop.background'});
+      bg.set_string('picture-uri', `file://${wallpaper}`);
+      bg.set_string('picture-uri-dark', `file://${wallpaper}`);
+      bg.set_string('picture-options', 'stretched');
+      await sleep(2000);
+    }
+    for (const surface of ['menu', 'quick-settings', 'notification']) {
+      settings.set_boolean(`${surface}-enable-adaptive-text-color`, true);
+      settings.set_int(`${surface}-sample-interval-ms`, 100);
+    }
+    for (const surface of ['menu', 'quick-settings']) {
+      settings.set_boolean(`enable-${surface}-animation`, true);
+      settings.set_boolean(`${surface}-grow-from-button`, true);
+      settings.set_double(`${surface}-morph-speed`, 0.5);
+    }
+    settings.set_int('quick-settings-apply-to', 0);
+    await sleep(1500);
+    // Colour changes after an actor's first colour, while `open` shows the surface.
+    const count = async (tag, manager, open, close) => {
+      for (let round = 0; round < 3; round++) {
+        const seen = new Map();
+        let changes = 0;
+        const trail = [];
+        const t0 = GLib.get_monotonic_time();
+        const set = manager._setActorColor;
+        manager._setActorColor = function (actor, color, ...rest) {
+          const last = seen.get(actor);
+          if (last !== undefined && last !== color) {
+            changes++;
+            trail.push(`${Math.round((GLib.get_monotonic_time() - t0) / 1000)}ms:${color}`);
+          } else if (last === undefined && trail.length === 0) {
+            trail.push(`${Math.round((GLib.get_monotonic_time() - t0) / 1000)}ms:${color}`);
+          }
+          seen.set(actor, color);
+          return set.call(this, actor, color, ...rest);
+        };
+        open();
+        await sleep(2000);
+        manager._setActorColor = set;
+        log(`flip ${tag} round ${round}: changes=${changes} first+changes=${trail.slice(0, 8).join(' ')} ${changes === 0 ? 'OK' : 'NG'}`);
+        close();
+        await sleep(1500);
+      }
+    };
+    const ui = ext._uiManager;
+    const dateMenu = Main.panel.statusArea.dateMenu.menu;
+    await count('calendar', ui, () => dateMenu.open(true), () => dateMenu.close(true));
+    const qs = ext._quickSettingsManager;
+    const qsMenu = Main.panel.statusArea.quickSettings.menu;
+    if (qs) await count('quick-settings', qs, () => qsMenu.open(true), () => qsMenu.close(true));
+    const notifications = ext._notificationManager;
+    let n = 0;
+    await count('notification', notifications,
+      () => Main.notify(`Liquid Glass driver ${++n}`, 'A banner sliding in over a wallpaper bright at the top'),
+      () => Main.messageTray.getSources().forEach(source => source.destroy()));
+  }
+
   async _bmsScenario() {
     const bms = Extension.lookupByUUID('blur-my-shell@aunetx');
     if (!bms) {
@@ -676,6 +743,27 @@ export default class LgDriver extends Extension {
       log(`dhruva icons ${mode}: styled ${styled()}`);
       await this._shots(`dhruva-icons-${mode}`, region, 'dock:dhruva');
     }
+    // Dhruva rebuilds every button when an indicator changes; no frame may show a new one without its glass.
+    const dockUI = container._dockUI;
+    let bare = 0, frames = 0;
+    const appIcons = () => findActors(container, a => a instanceof St.Icon && a.mapped)
+      .filter(i => [...Array(6).keys()].some(k => { let p = i; for (let j = 0; j <= k && p; j++) p = p.get_parent(); return p?._delegate?.app instanceof Shell.App; }));
+    let example = '';
+    const paintId = global.stage.connect('after-paint', () => {
+      frames++;
+      const unstyled = appIcons().filter(i => !i.get_effect('liquid-glass-icon-style'));
+      if (unstyled.length) bare++;
+      if (unstyled.length && !example) {
+        example = unstyled.map(i => `${i.gicon?.to_string?.() ?? i.icon_name} ${i.get_parent()?.constructor.name}/` +
+          `${i.get_parent()?.get_parent()?.constructor.name}`).join(', ');
+      }
+    });
+    for (let i = 0; i < 6; i++) {
+      dockUI?.queueRender(true);
+      await sleep(200);
+    }
+    global.stage.disconnect(paintId);
+    log(`dhruva icons rebuilt: frames=${frames} frames with an unstyled app icon=${bare} ${bare === 0 ? 'OK' : `NG (${example})`}`);
     settings.set_boolean('icon-style-dock', false);
     await sleep(1000);
     log(`dhruva icons off: styled ${styled()}`);
@@ -797,6 +885,27 @@ export default class LgDriver extends Extension {
     };
     settings.set_boolean('quick-settings-toggle-animation', true);
     const m = Main.layoutManager.primaryMonitor;
+    // The first frames of openings whose buttons have to be laid out again
+    // first: none may show their glass at rest size.
+    const toggleGlass = this._glass('quick-settings-toggles');
+    let restFrames = 0, introFrames = 0;
+    const firstWidths = [];
+    for (let round = 0; round < 4; round++) {
+      for (const pod of findActors(qs.actor, a => a.has_style_class_name?.('quick-toggle')))
+        pod.queue_relayout();
+      let frames = 0;
+      const id = global.stage.connect('after-paint', () => {
+        if (frames++ >= 3 || !toggleGlass?.visible) return;
+        firstWidths.push(toggleGlass._renderer.geometry.regions.map(r => Math.round(r[2])).join('/'));
+        introFrames++;
+      });
+      qs.open(true);
+      await sleep(900);
+      global.stage.disconnect(id);
+      qs.close(true);
+      await sleep(600);
+    }
+    log(`t4 intro first frames: ${firstWidths.join(' | ')}`);
     qs.open(true);
     await this._timedShots('t3-intro', [m.x + m.width - 520, m.y, 520, 560], [0, 300, 600, 900, 1300, 1700, 2300, 3200, 5000]);
     qs.close(true);

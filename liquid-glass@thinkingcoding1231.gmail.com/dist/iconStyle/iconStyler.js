@@ -81,6 +81,7 @@ export class IconStyler {
     _logger;
     _maps;
     _shader;
+    _shaderSource = null;
     _pipeline = null;
     _glassPipeline = null;
     _hosts = new Map();
@@ -115,6 +116,7 @@ export class IconStyler {
                 }
             });
         });
+        this._shader.then(source => { this._shaderSource = source; }, () => { });
         this._shader.catch(e => {
             if (!(e instanceof GLib.Error && e.matches(Gio.IOErrorEnum, Gio.IOErrorEnum.CANCELLED)))
                 this._logger.error(`[Liquid Glass] Could not read the icon shader: ${e}`);
@@ -428,30 +430,40 @@ export class IconStyler {
             this._unstyle(icon, styled);
             return;
         }
-        Promise.all([this._maps.get(file), this._shader]).then(([textures, shader]) => {
+        // A dock that rebuilds its buttons (Dhruva does whenever an indicator changes) would show each new icon
+        // unstyled for a frame if styling waited for the promises, which resolve after the frame is drawn.
+        const textures = this._maps.loaded(file);
+        if (textures && this._shaderSource) {
+            this._applyMaps(icon, styled, textures, this._shaderSource);
+            return;
+        }
+        Promise.all([this._maps.get(file), this._shader]).then(([maps, shader]) => {
             if (this._styled.get(icon) !== styled || styled.serial !== serial)
                 return;
-            const colors = this._colors();
-            const clear = this._settings.get_string('icon-style-mode') === 'clear';
-            let pipeline;
-            if (clear)
-                pipeline = this._glassPipeline ??= iconStylePipeline(shader, true);
-            else
-                pipeline = this._pipeline ??= iconStylePipeline(shader);
-            const backdrop = clear ? this._backdropFor(icon, styled) : null;
-            if (!clear)
-                this._leaveHost(icon, styled);
-            const effect = styled.effect ?? new IconStyleEffect();
-            effect.prepare(pipeline.copy(), textures, colors, backdrop);
-            if (!styled.effect) {
-                styled.effect = effect;
-                icon.add_effect_with_name(EFFECT_NAME, effect);
-            }
-            this._resize(icon);
+            this._applyMaps(icon, styled, maps, shader);
         }).catch(e => {
             if (!(e instanceof GLib.Error && e.matches(Gio.IOErrorEnum, Gio.IOErrorEnum.CANCELLED)))
                 this._logger.log(`[Liquid Glass] Could not style the icon of ${styled.appId}: ${e}`);
         });
+    }
+
+    _applyMaps(icon, styled, textures, shader) {
+        const clear = this._settings.get_string('icon-style-mode') === 'clear';
+        let pipeline;
+        if (clear)
+            pipeline = this._glassPipeline ??= iconStylePipeline(shader, true);
+        else
+            pipeline = this._pipeline ??= iconStylePipeline(shader);
+        const backdrop = clear ? this._backdropFor(icon, styled) : null;
+        if (!clear)
+            this._leaveHost(icon, styled);
+        const effect = styled.effect ?? new IconStyleEffect();
+        effect.prepare(pipeline.copy(), textures, this._colors(), backdrop);
+        if (!styled.effect) {
+            styled.effect = effect;
+            icon.add_effect_with_name(EFFECT_NAME, effect);
+        }
+        this._resize(icon);
     }
 
     // Scaled as an actor rather than drawn past its box, so that Clutter keeps what it redraws and culls right.

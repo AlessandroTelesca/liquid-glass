@@ -65,6 +65,8 @@ export class IconMaps {
     _workers;
     // By icon file: its map's, tones' and lens map's textures.
     _maps = new Map();
+    // The maps already loaded, for an icon that has to be drawn styled in the frame it appears in.
+    _loaded = new Map();
     // By cache file: the map being made into it.
     _making = new Map();
     _jobs = 0;
@@ -87,11 +89,17 @@ export class IconMaps {
         let map = this._maps.get(path);
         if (!map) {
             map = this._load(path);
+            map.then(textures => this._loaded.set(path, textures),
             // A failure is not kept: the file may be readable later.
-            map.catch(() => this._maps.delete(path));
+            () => this._maps.delete(path));
             this._maps.set(path, map);
         }
         return map;
+    }
+
+    /** The map of the icon in `path` if it is loaded already. */
+    loaded(path) {
+        return this._loaded.get(path) ?? null;
     }
 
     /**
@@ -180,6 +188,7 @@ export class IconMaps {
         for (const worker of this._workers)
             worker.destroy();
         this._maps.clear();
+        this._loaded.clear();
         this._making.clear();
     }
 }

@@ -352,6 +352,9 @@ export class NotificationManager {
         }
         this.glass.opacity = opacity;
         this.glass.show();
+        // The first colors, as soon as the banner is laid out; see _updateAdaptiveTextColors().
+        if (this._isFirstAdaptiveRun)
+            this._updateAdaptiveTextColors();
         const bgW = w + this._glassExpand * 2 + SHADER_PADDING * 2;
         const bgH = h + this._glassExpand * 2 + SHADER_PADDING * 2;
         const bgX_abs = absX - this._glassExpand - SHADER_PADDING;
@@ -549,24 +552,71 @@ export class NotificationManager {
         return foundActors;
     }
 
+    // The banner's rect once the shell has slid it in: its bin comes down from
+    // above to its final y and grows from 90% to its size.
+    _restRect() {
+        const banner = this.currentBanner;
+        // @ts-expect-error: shell-owned container
+        const bin = this.tray._bannerBin;
+        const parent = bin.get_parent();
+        if (!banner || !parent || !banner.has_allocation())
+            return null;
+        const [px, py] = parent.get_transformed_position();
+        const box = banner.get_allocation_box();
+        const y = Number(bin.get_transition('y')?.get_interval().peek_final_value() ?? bin.y);
+        const rect = { x: px + bin.x + bin.translation_x + box.x1, y: py + y + bin.translation_y + box.y1,
+            width: box.get_width(), height: box.get_height() };
+        return [rect.x, rect.y].every(Number.isFinite) && rect.width > 0 && rect.height > 0 ? rect : null;
+    }
+
+    _bannerSliding() {
+        // @ts-expect-error: shell-owned container
+        const bin = this.tray._bannerBin;
+        return !!(bin.get_transition('y') || bin.get_transition('scale-x'));
+    }
+
+    /**
+     * The first colors are chosen where the banner will stay, before it has
+     * slid in, and applied without a tween; the banner is not measured again
+     * while it moves, where it would be over something else on every sample.
+     */
     _updateAdaptiveTextColors() {
         if (!this._adaptiveConfig.enabled || this._adaptiveInFlight)
-            return;
-        let [, absY] = this.currentBanner?.get_transformed_position() ?? [0, 0];
-        if (absY < 0)
             return;
         const targets = this._collectAdaptiveTextTargets();
         if (targets.length === 0)
             return;
-        this._adaptiveInFlight = true;
         const generation = this._bannerGeneration;
+        if (this._isFirstAdaptiveRun) {
+            const rest = this._restRect();
+            if (!rest)
+                return;
+            this._adaptiveInFlight = true;
+            this._contrastSampler.chooseColorFor(rest, this._adaptiveConfig, this.glass ? [this.glass] : [])
+                .then(color => {
+                if (generation !== this._bannerGeneration || !this.currentBanner)
+                    return;
+                this._isFirstAdaptiveRun = false;
+                if (color)
+                    this._applyAdaptiveColorMap(new Map(targets.map(actor => [actor, color])), true);
+            })
+                .catch(e => {
+                this._logger.error(`[Liquid Glass] Notification adaptive color update failed: ${e}`);
+            })
+                .finally(() => {
+                this._adaptiveInFlight = false;
+            });
+            return;
+        }
+        if (this._bannerSliding())
+            return;
+        this._adaptiveInFlight = true;
         this._contrastSampler
             .chooseColorsForActors(targets, this._adaptiveConfig, this.currentBanner, () => this.glass?.paintCount ?? NaN, () => this.glass ? [this.glass] : [])
             .then(colorMap => {
             if (generation !== this._bannerGeneration || !this.currentBanner)
                 return;
-            this._applyAdaptiveColorMap(colorMap, this._isFirstAdaptiveRun);
-            this._isFirstAdaptiveRun = false;
+            this._applyAdaptiveColorMap(colorMap);
         })
             .catch(e => {
             this._logger.error(`[Liquid Glass] Notification adaptive color update failed: ${e}`);

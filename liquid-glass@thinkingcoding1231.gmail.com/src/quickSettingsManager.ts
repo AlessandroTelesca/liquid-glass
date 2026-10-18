@@ -840,6 +840,12 @@ export class QuickSettingsManager {
 
     const toggles = this._toggleStyles.sync(this.menu?.actor);
     this._stepIntro(toggles);
+    // Until the buttons are laid out and start small, their glass would show
+    // them at rest (or as the last open left them), and then jump to the start.
+    if (this._intro?.running && !this._intro.motion) {
+      this.glass.hide();
+      return;
+    }
 
     if (toggles.length === 0 && !this._canReuseLastRegions()) {
       this.glass.hide();
@@ -869,6 +875,7 @@ export class QuickSettingsManager {
     this._endIntro();
     if (!this._toggleAnimation || !St.Settings.get().enable_animations) return;
     this._intro = { running: true, motion: null, pods: [], rest: [], saved: [], hidden: new Map(), startUs: 0, waitFrames: 0 };
+    this._lastGoodRegions = null;
     // The menu shows at once, so the buttons' glass does from the start; the
     // shell's easing still runs to its end and lets the menu take input.
     const boxPointer = this.targetActor.get_first_child();
@@ -1338,7 +1345,8 @@ export class QuickSettingsManager {
           this._adaptiveTimerId = 0;
           return GLib.SOURCE_REMOVE;
         }
-        const opening = this._tickId !== 0;
+        // The colors measured as the menu opened are kept while it moves.
+        const opening = this._tickId !== 0 || this._morphTickId !== 0 || !!this._intro?.running;
         if (!opening || this._awaitingOpenColors)
           this._updateAdaptiveTextColors(this._awaitingOpenColors);
         return GLib.SOURCE_CONTINUE;

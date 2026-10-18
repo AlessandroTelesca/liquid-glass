@@ -16,7 +16,7 @@ import type { Logger } from '../logger.js';
 import { hexToColorArray } from '../animation/colors.js';
 import { accentColors, watchAccentColor } from '../shellVersion.js';
 import { IconBackdrop } from './iconBackdrop.js';
-import { IconStyleEffect, iconStylePipeline } from './iconEffect.js';
+import { IconStyleEffect, type IconStyleTextures, iconStylePipeline } from './iconEffect.js';
 import { IconMaps } from './iconMaps.js';
 import { iconStyleColors, type IconStyleColors, type IconStyleMode } from './styleColors.js';
 
@@ -103,6 +103,7 @@ function folderAppIdOf(icon: St.Icon): string | null {
 export class IconStyler {
   private _maps: IconMaps;
   private _shader: Promise<string>;
+  private _shaderSource: string | null = null;
   private _pipeline: Cogl.Pipeline | null = null;
   private _glassPipeline: Cogl.Pipeline | null = null;
   private _hosts = new Map<Clutter.Actor, Host>();
@@ -133,6 +134,7 @@ export class IconStyler {
         }
       });
     });
+    this._shader.then(source => { this._shaderSource = source; }, () => {});
     this._shader.catch(e => {
       if (!(e instanceof GLib.Error && e.matches(Gio.IOErrorEnum, Gio.IOErrorEnum.CANCELLED)))
         this._logger.error(`[Liquid Glass] Could not read the icon shader: ${e}`);
@@ -418,26 +420,36 @@ export class IconStyler {
       this._unstyle(icon, styled);
       return;
     }
-    Promise.all([this._maps.get(file), this._shader]).then(([textures, shader]) => {
+    // A dock that rebuilds its buttons (Dhruva does whenever an indicator changes) would show each new icon
+    // unstyled for a frame if styling waited for the promises, which resolve after the frame is drawn.
+    const textures = this._maps.loaded(file);
+    if (textures && this._shaderSource) {
+      this._applyMaps(icon, styled, textures, this._shaderSource);
+      return;
+    }
+    Promise.all([this._maps.get(file), this._shader]).then(([maps, shader]) => {
       if (this._styled.get(icon) !== styled || styled.serial !== serial) return;
-      const colors = this._colors();
-      const clear = this._settings.get_string('icon-style-mode') === 'clear';
-      let pipeline: Cogl.Pipeline;
-      if (clear) pipeline = this._glassPipeline ??= iconStylePipeline(shader, true);
-      else pipeline = this._pipeline ??= iconStylePipeline(shader);
-      const backdrop = clear ? this._backdropFor(icon, styled) : null;
-      if (!clear) this._leaveHost(icon, styled);
-      const effect = styled.effect ?? new IconStyleEffect();
-      effect.prepare(pipeline.copy(), textures, colors, backdrop);
-      if (!styled.effect) {
-        styled.effect = effect;
-        icon.add_effect_with_name(EFFECT_NAME, effect);
-      }
-      this._resize(icon);
+      this._applyMaps(icon, styled, maps, shader);
     }).catch(e => {
       if (!(e instanceof GLib.Error && e.matches(Gio.IOErrorEnum, Gio.IOErrorEnum.CANCELLED)))
         this._logger.log(`[Liquid Glass] Could not style the icon of ${styled.appId}: ${e}`);
     });
+  }
+
+  private _applyMaps(icon: St.Icon, styled: Styled, textures: IconStyleTextures, shader: string): void {
+    const clear = this._settings.get_string('icon-style-mode') === 'clear';
+    let pipeline: Cogl.Pipeline;
+    if (clear) pipeline = this._glassPipeline ??= iconStylePipeline(shader, true);
+    else pipeline = this._pipeline ??= iconStylePipeline(shader);
+    const backdrop = clear ? this._backdropFor(icon, styled) : null;
+    if (!clear) this._leaveHost(icon, styled);
+    const effect = styled.effect ?? new IconStyleEffect();
+    effect.prepare(pipeline.copy(), textures, this._colors(), backdrop);
+    if (!styled.effect) {
+      styled.effect = effect;
+      icon.add_effect_with_name(EFFECT_NAME, effect);
+    }
+    this._resize(icon);
   }
 
   // Scaled as an actor rather than drawn past its box, so that Clutter keeps what it redraws and culls right.

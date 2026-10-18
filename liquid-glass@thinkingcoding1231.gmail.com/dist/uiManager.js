@@ -1079,7 +1079,8 @@ export class UIManager {
                 this._adaptiveTimerId = 0;
                 return GLib.SOURCE_REMOVE;
             }
-            const opening = this._tickId !== 0;
+            // The colors measured as the menu opened are kept while it grows.
+            const opening = this._tickId !== 0 || this._morphTickId !== 0;
             if (!opening || this._awaitingOpenColors)
                 this._updateAdaptiveTextColors(this._awaitingOpenColors);
             return GLib.SOURCE_CONTINUE;
