@@ -12,6 +12,7 @@ import {OsdManager} from './dist/osdManager.js';
 import {ApplicationManager} from './dist/applicationManager.js';
 import {WindowListService} from './dist/windowListService.js';
 import {TopBarManager} from './dist/topBarManager.js';
+import {ExtraTopBarManager} from './dist/extraTopBarManager.js';
 import {DesktopLayer} from './dist/desktop/desktopLayer.js';
 import {Launcher} from './dist/launcher/launcher.js';
 import {IconStyler} from './dist/iconStyle/iconStyler.js';
@@ -42,6 +43,9 @@ export default class LiquidGlassExtension extends Extension {
 
     this._topBarManager = new TopBarManager(path, this._settings, this._logger);
     this._topBarManager.setup();
+
+    this._extraTopBarManager = new ExtraTopBarManager(path, this._settings, this._logger);
+    this._extraTopBarManager.setup();
 
     this._desktopLayer = new DesktopLayer(path, this._settings, this._logger, () => this.openPreferences());
     this._desktopLayer.setup();
@@ -102,6 +106,9 @@ export default class LiquidGlassExtension extends Extension {
 
     this._topBarManager.cleanup();
     this._topBarManager = null;
+
+    this._extraTopBarManager.cleanup();
+    this._extraTopBarManager = null;
 
     this._desktopLayer.cleanup();
     this._desktopLayer = null;
