@@ -922,9 +922,11 @@ export class UIManager {
 
   private _resolveMenuOrigin(w: number): [number, number] {
     return resolveGlassOrigin(this.animActor, this as any, () => {
-      const monitor = Main.layoutManager.primaryMonitor;
+      // A calendar on another monitor's top bar opens on that monitor.
+      const monitor = this._getMenuMonitorGeometry();
       if (!monitor) return [0, 0];
-      return [(monitor.width / 2) - (w / 2) + this._menuXoffset, (Main.panel.height || 27) + this._menuYoffset];
+      return [monitor.x + (monitor.width / 2) - (w / 2) + this._menuXoffset,
+        monitor.y + (Main.panel.height || 27) + this._menuYoffset];
     });
   }
 
