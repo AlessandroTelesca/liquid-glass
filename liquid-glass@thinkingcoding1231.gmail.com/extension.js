@@ -4,6 +4,7 @@ import {Extension} from 'resource:///org/gnome/shell/extensions/extension.js';
 
 import {UIManager} from './dist/uiManager.js';
 import {PanelMenuManager} from './dist/panelMenuManager.js';
+import {ExtraDateMenuManager} from './dist/extraDateMenuManager.js';
 import {BlurMyShellWatch} from './dist/blurMyShell.js';
 import {DockWatcher} from './dist/dockWatcher.js';
 import {NotificationManager} from './dist/notificationManager.js';
@@ -36,6 +37,9 @@ export default class LiquidGlassExtension extends Extension {
 
     this._uiManager = new UIManager(path, this._settings, this._logger);
     this._uiManager.setup();
+
+    this._extraDateMenuManager = new ExtraDateMenuManager(path, this._settings, this._logger);
+    this._extraDateMenuManager.setup();
 
     this._panelMenuManager = new PanelMenuManager(path, this._settings, this._logger);
     this._panelMenuManager.setup();
@@ -114,6 +118,9 @@ export default class LiquidGlassExtension extends Extension {
 
     this._uiManager.cleanup();
     this._uiManager = null;
+
+    this._extraDateMenuManager.cleanup();
+    this._extraDateMenuManager = null;
 
     this._quickSettingsManager?.cleanup();
     this._quickSettingsManager = null;
