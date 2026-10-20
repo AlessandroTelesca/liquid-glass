@@ -35,6 +35,7 @@ const MENU_WINDOW_TYPES = [
 // Bound on the transient_for walk, so a cycle cannot hang the first-frame
 // handler. A desktop menu is one hop from the desktop, submenus a few more.
 const MAX_TRANSIENT_DEPTH = 8;
+
 export class ApplicationManager {
     _extensionPath;
     _settings;
@@ -49,11 +50,13 @@ export class ApplicationManager {
     _glassMargin = GLASS_MIN_MARGIN;
     _cornerOnMaximized = false;
     _glassOnMaximized = true;
+
     constructor(extensionPath, settings, logger) {
         this._extensionPath = extensionPath;
         this._settings = settings;
         this._logger = logger;
     }
+
     setup() {
         this._glassMargin = this._computeGlassMargin();
         this._bindSettings();
@@ -61,6 +64,7 @@ export class ApplicationManager {
         if (this._isEffectEnabled())
             this._applyEffects();
     }
+
     cleanup() {
         for (const id of this._displaySignals)
             global.display.disconnect(id);
@@ -72,6 +76,7 @@ export class ApplicationManager {
         this._settingsSignals = [];
         this._removeAllEffects();
     }
+
     // A window can only be dressed once it has painted. The handlers are
     // dropped after the first frame, when the window goes away first, or on
     // cleanup.
@@ -88,6 +93,7 @@ export class ApplicationManager {
             actor.connect('destroy', () => this._forgetNewWindow(actor)),
         ]);
     }
+
     _forgetNewWindow(actor) {
         const ids = this._newWindows.get(actor);
         if (!ids)
@@ -96,6 +102,7 @@ export class ApplicationManager {
         for (const id of ids)
             actor.disconnect(id);
     }
+
     _bindSettings() {
         const connectSetting = (key, callback) => {
             this._settingsSignals.push(this._settings.connect(`changed::${key}`, callback));
@@ -124,31 +131,38 @@ export class ApplicationManager {
         connectSetting('shadow-radius', () => this._updateGlassMargin());
         connectSetting('shadow-intensity', () => this._updateGlassMargin());
     }
+
     _getContentOpacity(profile = 'application') {
         return this._settings.get_double(this._profileKey(profile, 'content-opacity'));
     }
+
     _updateWindowOpacities() {
         for (const state of this._states.values()) {
             if (isActorValid(state.surfaceActor))
                 state.surfaceActor.opacity = Math.round(this._getContentOpacity(state.profile) * 255);
         }
     }
+
     /** Appearance key in a profile's namespace, e.g. `desktop-menu-tint-color`. */
     _profileKey(profile, suffix) {
         return `${profile}-${suffix}`;
     }
+
     /** The switch that turns one profile on, e.g. `enable-desktop-menu-glass`. */
     _profileEnableKey(profile) {
         return `enable-${profile}-glass`;
     }
+
     _isProfileEnabled(profile) {
         return this._settings.get_boolean(this._profileEnableKey(profile));
     }
+
     // Whether any profile wants glass. The per-window decision is made in
     // _profileForWindow().
     _isEffectEnabled() {
         return this._isProfileEnabled('application') || this._isProfileEnabled('desktop-menu');
     }
+
     // WM_CLASS casing differs between toolkits, and the preferences promise a
     // case-insensitive match.
     _listContainsClass(list, wmClass) {
@@ -157,14 +171,17 @@ export class ApplicationManager {
         const normalized = wmClass.toLowerCase();
         return list.some(entry => entry.toLowerCase() === normalized);
     }
+
     _windowMatchesWhitelist(metaWindow) {
         const whitelist = this._settings.get_strv('application-window-whitelist');
         return this._listContainsClass(whitelist, metaWindow.get_wm_class());
     }
+
     _windowMatchesBlacklist(metaWindow) {
         const blacklist = this._settings.get_strv('application-window-blacklist');
         return this._listContainsClass(blacklist, metaWindow.get_wm_class());
     }
+
     /**
      * Whether this is the menu the desktop itself puts up (right-click on the
      * wallpaper). On GNOME 50 / Wayland with Desktop Icons NG it is a
@@ -190,6 +207,7 @@ export class ApplicationManager {
         }
         return false;
     }
+
     /**
      * The profile that should dress this window, or null to leave it alone.
      * _shouldApplyToWindow() and _setupWindow() both use it so they agree.
@@ -217,19 +235,23 @@ export class ApplicationManager {
         }
         return this._windowMatchesWhitelist(metaWindow) ? 'application' : null;
     }
+
     _shouldApplyToWindow(windowActor) {
         return this._profileForWindow(windowActor) !== null;
     }
+
     _applyEffects() {
         this._buildForExistingWindows();
         this._startFrameSync();
     }
+
     _removeAllEffects() {
         this._stopFrameSync();
         for (const state of this._states.values())
             this._cleanupState(state);
         this._states.clear();
     }
+
     _syncWhitelist() {
         if (!this._isEffectEnabled()) {
             this._removeAllEffects();
@@ -248,6 +270,7 @@ export class ApplicationManager {
                 this._setupWindow(actor);
         }
     }
+
     // The margin the shadow settings need. Without a shadow the glass keeps the
     // minimum, so its framebuffers are not enlarged for nothing.
     _computeGlassMargin() {
@@ -257,6 +280,7 @@ export class ApplicationManager {
             return GLASS_MIN_MARGIN;
         return Math.min(GLASS_MAX_MARGIN, Math.max(GLASS_MIN_MARGIN, Math.ceil(radius) + SHADOW_MARGIN_HEADROOM));
     }
+
     // Pushes a changed margin into every glass. The margin is part of the
     // geometry signature, so the next frame resizes the glass.
     _updateGlassMargin() {
@@ -270,11 +294,13 @@ export class ApplicationManager {
             state.glass.setShadowMaxRadius(shadowRoom);
         }
     }
+
     _updateEffectParams() {
         for (const state of this._states.values())
             this._applyAppearance(state.glass, state.profile);
         this._updateMaximized();
     }
+
     _applyAppearance(glass, profile) {
         const k = (suffix) => this._profileKey(profile, suffix);
         glass.setTintColor(...hexToColorArray(this._settings.get_string(k('tint-color'))));
@@ -285,6 +311,7 @@ export class ApplicationManager {
         glass.setContrast(this._settings.get_double(k('contrast')));
         glass.setSaturation(this._settings.get_double(k('saturation')));
     }
+
     // The sync runs from the stage's 'before-update', i.e. only on frames the
     // compositor paints anyway, and never requests frames of its own.
     _startFrameSync() {
@@ -293,18 +320,21 @@ export class ApplicationManager {
         this._frameSignalId = global.stage.connect('before-update', () => this._frameTick());
         this._frameTick();
     }
+
     _stopFrameSync() {
         if (!this._frameSignalId)
             return;
         global.stage.disconnect(this._frameSignalId);
         this._frameSignalId = 0;
     }
+
     _buildForExistingWindows() {
         for (const actor of getWindowActors()) {
             if (this._shouldApplyToWindow(actor))
                 this._setupWindow(actor);
         }
     }
+
     _setupWindow(windowActor) {
         if (this._states.has(windowActor))
             return;
@@ -388,6 +418,7 @@ export class ApplicationManager {
             }),
         });
     }
+
     // The frame rect's origin inside the buffer rect, i.e. the invisible CSD
     // border. It only changes with the decorations, but during a drag the frame
     // rect trails the buffer rect by a frame, so the difference jumps by the
@@ -407,6 +438,7 @@ export class ApplicationManager {
         }
         return state.frameLocal ?? [0, 0];
     }
+
     _updateMaximized(state = null) {
         const apply = (state) => {
             const metaWin = state.windowActor.get_meta_window();
@@ -431,12 +463,14 @@ export class ApplicationManager {
             apply(state);
         }
     }
+
     // Hides the glass while its window is not shown on this workspace. The
     // geometry signature is dropped so the next sync places it again.
     _hideGlass(state) {
         setActorVisible(state.glass, false);
         state.geomSig = undefined;
     }
+
     // Returns whether the window moved since the last sync.
     _syncState(state) {
         const actor = state.windowActor;
@@ -456,6 +490,7 @@ export class ApplicationManager {
             state.glass.endBatch();
         }
     }
+
     /**
      * Places the glass on the frame rect, in the window actor's coordinates.
      * GNOME animates a window (open, close, minimise, resize) through the
@@ -505,6 +540,7 @@ export class ApplicationManager {
         state.glass.syncSources(moved);
         return moved;
     }
+
     // Stores `values` as the geometry signature and returns whether it was
     // unchanged. A new signature starts as NaN, which never compares equal.
     _updateGeometrySignature(state, values) {
@@ -522,6 +558,7 @@ export class ApplicationManager {
         }
         return unchanged;
     }
+
     _frameTick() {
         // Diagnostic switch that freezes the sync so its cost can be measured.
         if (isFrameSyncFrozen())
@@ -541,6 +578,7 @@ export class ApplicationManager {
             }
         }
     }
+
     _syncFrameState(state) {
         const metaWin = state.windowActor.get_meta_window();
         if (!metaWin)
@@ -563,6 +601,7 @@ export class ApplicationManager {
             this._logStrand(state, metaWin, title, rescue);
         ensureGlassAllocated(state.glass);
     }
+
     _logStrand(state, metaWin, title, rescue) {
         const wa = state.windowActor;
         const parent = wa.get_parent();
@@ -575,6 +614,7 @@ export class ApplicationManager {
             `glass(mapped=${state.glass.mapped},vis=${state.glass.visible},alloc=${state.glass.has_allocation()}) ` +
             `min=${metaWin.minimized}`);
     }
+
     /**
      * Re-allocates the glass once its window actor is mapped again, after a
      * restore from minimise. clutter_actor_allocate() skips unmapped actors, so
@@ -595,6 +635,7 @@ export class ApplicationManager {
             return GLib.SOURCE_REMOVE;
         });
     }
+
     _cleanupState(state) {
         if (state.remapReallocLaterId) {
             global.compositor.get_laters().remove(state.remapReallocLaterId);

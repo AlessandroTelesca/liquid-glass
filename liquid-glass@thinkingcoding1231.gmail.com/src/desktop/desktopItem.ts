@@ -97,7 +97,7 @@ export abstract class GlassCard implements DesktopItem {
     this.actor = new St.Widget({ name: `liquid-glass-desktop-${id}`, reactive: true, track_hover: true });
     this.glass = new BackdropGlass({
       extensionPath: env.path, settings: env.settings, logger: env.logger, owner: `desktop-${id}`,
-      outline: 'desktop-widget',
+      outline: 'desktop-widget', underWindows: true,
     } as any);
     this.glass.setPadding(SHADER_PADDING);
     this.glass.setIsDock(false);
@@ -128,7 +128,7 @@ export abstract class GlassCard implements DesktopItem {
   set shown(shown: boolean) {
     if (shown === this._shown) return;
     this._shown = shown;
-    this.env.relayout();
+    this.env.relayout(); // defined in desktopLayer.ts (connects to the _queueLayout() in the DesktopLayer)
   }
 
   private _applyMaterial(): void {

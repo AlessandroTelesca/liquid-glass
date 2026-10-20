@@ -4,9 +4,10 @@
 // {path, width, height, band, digitHeight}.
 import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
-import { DigitsMaker } from './digits.js';
+import { DigitsMaker, fontKey } from './digits.js';
 import { serveRequests } from '../workers/workerProcess.js';
 const maker = new DigitsMaker();
+
 function save(bytes) {
     const [fd, path] = GLib.file_open_tmp('liquid-glass-digits-XXXXXX');
     GLib.close(fd);
@@ -23,8 +24,17 @@ function save(bytes) {
         });
     });
 }
+
+// The font the newest request is for. A request for another font waiting
+// behind it, or being worked on, is given up: only the newest is shown.
+let newest = '';
 await serveRequests(async (request) => {
+    if (fontKey(request) !== newest)
+        throw new Error('a newer font was asked for');
     const digits = await maker.make(request);
     const path = await save(digits.bytes);
     return { path, width: digits.width, height: digits.height, band: digits.band, digitHeight: digits.digitHeight };
+}, request => {
+    newest = fontKey(request);
+    maker.keepOnly(request);
 });

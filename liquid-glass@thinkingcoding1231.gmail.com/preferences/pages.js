@@ -33,8 +33,12 @@ const smoothMotion = Object.fromEntries(['menu', 'panel-menu', 'quick-settings']
 ]));
 
 const MOTION = [
-  { title: 'Off', patch: uniformPatch(MOTION_KEYS, false) },
-  { title: 'Smooth', patch: smoothMotion },
+  {
+    title: 'Off', patch: {
+      ...uniformPatch(MOTION_KEYS, false), 'quick-settings-toggle-animation': false, 'desktop-widget-menu-animation': 'off',
+    }
+  },
+  { title: 'Smooth', patch: { ...smoothMotion, 'quick-settings-toggle-animation': true, 'desktop-widget-menu-animation': 'morph' } },
 ];
 
 const QUALITY = [
@@ -152,7 +156,15 @@ const LEGACY_MENUS = {
 };
 
 const BMS_UUID = 'blur-my-shell@aunetx';
-const BMS_POPUP_SCHEMA = 'org.gnome.shell.extensions.blur-my-shell.popup';
+const BMS_SCHEMA = 'org.gnome.shell.extensions.blur-my-shell';
+
+// The parts of Blur my Shell that Liquid Glass can override.
+const BMS_PARTS = [
+  ['popups', 'Menus and popups', 'Blur my Shell blurs dialogs and switchers with the same setting'],
+  ['panel', 'Top bar', ''],
+  ['dock', 'Dock', ''],
+  ['applications', 'Application windows', 'All of its window blur, on windows without glass too'],
+];
 
 const GEOCODING = 'https://geocoding-api.open-meteo.com/v1/search';
 const USER_AGENT = 'Liquid Glass GNOME Shell extension (https://github.com/ryohsuke1231/liquid-glass)';
@@ -179,9 +191,11 @@ const WEIGHTS = ['Light', 'Regular', 'SemiBold', 'Bold'];
 const SCRIPTS = [[/[぀-ヿ]/, ['ja']], [/[一-鿿]/, ['ja', 'zh']], [/[가-힯]/, ['ko']],
 [/[Ѐ-ӿ]/, ['ru', 'uk']]];
 
-// Blur my Shell's popup settings, from the schemas it ships in the user's or a
-// system extension directory, as its own getSettings() reads them.
-function blurMyShellPopupSettings() {
+// Blur my Shell's settings for `part` (such as "popup"), from the schemas it
+// ships in the user's or a system extension directory, as its own
+// getSettings() reads them.
+function blurMyShellSettings(part) {
+  const id = `${BMS_SCHEMA}.${part}`;
   const defaultSource = Gio.SettingsSchemaSource.get_default();
   const dirs = [GLib.get_user_data_dir(), ...GLib.get_system_data_dirs()]
     .map(dir => GLib.build_filenamev([dir, 'gnome-shell', 'extensions', BMS_UUID, 'schemas']));
@@ -189,13 +203,13 @@ function blurMyShellPopupSettings() {
     if (!GLib.file_test(GLib.build_filenamev([dir, 'gschemas.compiled']), GLib.FileTest.EXISTS)) continue;
     // Loading a compiled schema file throws a GError when it is unreadable.
     try {
-      const schema = Gio.SettingsSchemaSource.new_from_directory(dir, defaultSource, false).lookup(BMS_POPUP_SCHEMA, false);
+      const schema = Gio.SettingsSchemaSource.new_from_directory(dir, defaultSource, false).lookup(id, false);
       if (schema) return new Gio.Settings({ settings_schema: schema });
     } catch {
       continue;
     }
   }
-  const schema = defaultSource?.lookup(BMS_POPUP_SCHEMA, true);
+  const schema = defaultSource?.lookup(id, true);
   return schema ? new Gio.Settings({ settings_schema: schema }) : null;
 }
 
@@ -203,22 +217,67 @@ function blurMyShellPopupSettings() {
 // menus, notifications and OSDs under the glass, where it shows through.
 function addBlurMyShellWarning(page, controls) {
   const group = new Adw.PreferencesGroup();
-  const row = new Adw.ActionRow({
-    title: 'Blur my Shell is blurring popups',
-    subtitle: 'Its blur shows through the glass on menus, notifications and OSDs. Turn off Popups in Blur my Shell.',
+  const check = (keys) => {
+    if (!keys) return false;
+    return keys.some(key => controls.settings.get_boolean(key));
+  };
+  const bmsKeys = ['panel', 'dock', 'applications'].map(part => `blur-my-shell-${part}-blur`);
+
+  const overrideRow = new Adw.ActionRow({ title: 'Possible Blur My Shell conflict' });
+  overrideRow.add_prefix(new Gtk.Image({ icon_name: 'dialog-warning-symbolic' }));
+  const overrideButton = new Gtk.Button({ label: 'Go to override settings', valign: Gtk.Align.CENTER });
+  overrideRow.add_suffix(overrideButton);
+  // go to the override settings
+  overrideButton.connect('clicked', () => {
+    const window = page.get_root();
+    window.visible_page_name = 'rendering';
+    GLib.idle_add(GLib.PRIORITY_LOW, () => {
+      const targetGroup = findWidgetByName(window, 'blur-my-shell-override');
+      if (targetGroup) {
+        targetGroup.grab_focus();
+      }
+      return GLib.SOURCE_REMOVE;
+    });
   });
-  row.add_prefix(new Gtk.Image({ icon_name: 'dialog-warning-symbolic' }));
-  const popup = blurMyShellPopupSettings();
-  if (popup) {
-    const button = new Gtk.Button({ label: 'Turn Off', valign: Gtk.Align.CENTER });
-    button.connect('clicked', () => popup.set_boolean('blur', false));
-    row.add_suffix(button);
-  }
-  group.add(row);
+  group.add(overrideRow);
   page.add(group);
-  controls.watch(['blur-my-shell-popup-blur'], () => {
-    group.visible = controls.settings.get_boolean('blur-my-shell-popup-blur');
+  controls.watch(bmsKeys, () => {
+    group.visible = check(bmsKeys);
   });
+  group.visible = check(bmsKeys);
+}
+
+function findWidgetByName(parent, name) {
+  if (!parent) return null;
+  if (parent.name === name) return parent;
+  for (let child = parent.get_first_child(); child !== null; child = child.get_next_sibling()) {
+    const found = findWidgetByName(child, name);
+    if (found) return found;
+  }
+  return null;
+}
+
+// Shown while Blur my Shell is installed.
+function addCompatibility(page, controls) {
+  if (!blurMyShellSettings('popup')) return;
+  const settings = controls.settings;
+  const group = controls.group(page, 'Compatibility', '');
+  const override = controls.toggle(group, 'Override Blur my Shell', 'blur-my-shell-override',
+    'Turns off Blur my Shell\'s blur where there is glass, and back on when this is off or Liquid Glass is turned off', 'blur-my-shell-override');
+  const branch = new Branch(override);
+  for (const [part, title, subtitle] of BMS_PARTS) {
+    const row = branch.add(new Adw.SwitchRow({ title, subtitle }));
+    group.add(row);
+    row.connect('notify::active', () => {
+      const parts = settings.get_strv('blur-my-shell-override-parts');
+      if (row.active === parts.includes(part)) return;
+      settings.set_strv('blur-my-shell-override-parts', row.active ? [...parts, part] : parts.filter(p => p !== part));
+    });
+    controls.watch(['blur-my-shell-override-parts'], () => {
+      row.active = settings.get_strv('blur-my-shell-override-parts').includes(part);
+    });
+  }
+  controls.watch(['blur-my-shell-override'], () => { branch.enabled = settings.get_boolean('blur-my-shell-override'); });
 }
 
 function addBackup(page, controls, window) {
@@ -606,6 +665,10 @@ function addMotion(group, controls, surface) {
   const key = `enable-${surface}-animation`;
   const growKey = `${surface}-grow-from-button`;
   const toggle = controls.toggle(group, 'Animations', key);
+  // Individual buttons mode has an animation of its own, and nothing to tune.
+  const buttonsToggle = surface === 'quick-settings'
+    ? controls.toggle(group, 'Animations', 'quick-settings-toggle-animation', 'The buttons spring out of the middle of the menu as it opens')
+    : null;
   const branch = new Branch(toggle);
   const morphToggle = branch.add(controls.toggle(group, 'Grow from the button', growKey,
     'The glass leaves the button as a drop and stretches into the menu'));
@@ -617,6 +680,7 @@ function addMotion(group, controls, surface) {
   controls.watch(keys, () => {
     const panel = surface !== 'quick-settings' || controls.settings.get_value('quick-settings-apply-to').deep_unpack() === 0;
     toggle.visible = panel;
+    if (buttonsToggle) buttonsToggle.visible = !panel;
     branch.enabled = panel && controls.settings.get_boolean(key);
   });
   controls.watch([growKey], () => { morphBranch.switch = controls.settings.get_boolean(growKey) ? 0 : 1; });
@@ -656,7 +720,7 @@ function addLayout(group, controls, surface, appearance) {
 
 function addClockShape(group, controls) {
   placeRow(group, controls, 'Place', 'glass-clock-position', 'clock');
-  controls.number(group, 'Size', ['glass-clock-size'], 48, 480, 1, '', { slider: true });
+  controls.number(group, 'Size', ['glass-clock-size'], 48, 960, 1, '', { slider: true });
   controls.number(group, 'Width', ['glass-clock-stretch'], 0.3, 4, 0.01, '', { slider: true });
   controls.number(group, 'Height', ['glass-clock-height'], 1, 3, 0.01, '', { slider: true });
   controls.choice(group, 'Taller digits', [
@@ -714,6 +778,13 @@ function addSurface(page, controls, surface, title) {
   if (['menu', 'panel-menu', 'quick-settings'].includes(surface)) addMotion(group, controls, surface);
   if (clock) addClockShape(group, controls);
   if (surface === 'launcher') addLauncherLayout(group, controls);
+  if (surface === 'desktop-widget') {
+    controls.choice(group, 'Menu animation', [
+      { title: 'Morph', patch: { 'desktop-widget-menu-animation': 'morph' } },
+      { title: 'Spring', patch: { 'desktop-widget-menu-animation': 'spring' } },
+      { title: 'Off', patch: { 'desktop-widget-menu-animation': 'off' } },
+    ], 'The right-click menu of the widgets and the clock. Its speed and springs are those of Other top bar menus', false);
+  }
   if (ADAPTIVE_SURFACES.includes(surface)) addAdaptiveColor(group, controls, surface);
   return group;
 }
@@ -794,8 +865,8 @@ export function buildPreferences(window, settings) {
   window.set_default_size(720, 720);
   window.search_enabled = true;
   const controls = new PreferenceControls(settings, window);
-  const page = (title, icon_name) => {
-    const result = new Adw.PreferencesPage({ title, icon_name });
+  const page = (title, icon_name, name = '') => {
+    const result = new Adw.PreferencesPage({ title, icon_name, name: name || null });
     window.add(result);
     return result;
   };
@@ -803,7 +874,7 @@ export function buildPreferences(window, settings) {
   const appearance = page('Appearance', 'preferences-desktop-appearance-symbolic');
   const effects = page('Effects', 'preferences-other-symbolic');
   const desktop = page('Desktop', 'user-desktop-symbolic');
-  const advanced = page('Rendering', 'applications-engineering-symbolic');
+  const advanced = page('Rendering', 'applications-engineering-symbolic', 'rendering');
   addBlurMyShellWarning(appearance, controls);
   const view = controls.group(appearance, 'Settings');
   controls.choice(view, 'Settings view', [
@@ -861,6 +932,7 @@ export function buildPreferences(window, settings) {
   });
 
   const renderingTail = collectGroups(advanced, () => {
+    addCompatibility(advanced, controls);
     const diagnostics = controls.group(advanced, 'Troubleshooting');
     controls.toggle(diagnostics, 'Logging', 'output-logs');
     controls.toggle(diagnostics, 'Render diagnostics', 'glass-debug-diagnostics', 'Adds rendering overhead; leave off for normal use.');

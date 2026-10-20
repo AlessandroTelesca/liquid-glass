@@ -1,4 +1,4 @@
-// Redraws application icons in the dock (Dash to Dock), the launcher and the
+// Redraws application icons in the dock (Dash to Dock or Dhruva), the launcher and the
 // overview's app grid as glass plates under a symbol (see iconEffect.ts), for
 // the applications the settings pick. Clear icons read what is behind them
 // from one backdrop per actor that holds them (iconBackdrop.ts).
@@ -25,6 +25,10 @@ const EFFECT_NAME = 'liquid-glass-icon-style';
 // so that the session's start is not slowed.
 const PREPARE_DELAY_S = 5;
 const FALLBACK_ICON = 'application-x-executable';
+// How long a clear icons' backdrop is kept once its last icon has gone. Dhruva rebuilds every button whenever an
+// indicator changes; a new backdrop would leave the new icons without glass until it has loaded and copied.
+const HOST_KEEP_MS = 1000;
+
 // The actor a backdrop goes on for icons in `holder`. One painted into an ancestor's offscreen, which Dash to Dock
 // keeps its dash in, cannot read the stage, so it goes above that ancestor. The offscreen keeps what was drawn
 // until something in it changes, so `cached` says the icons have to be redrawn whenever the backdrop is copied again.
@@ -39,21 +43,25 @@ function backdropHost(holder) {
     }
     return { host, cached };
 }
+
 // Keys that decide which icons are styled, and keys that only change how they look.
 const KEYS = ['icon-style-dock', 'icon-style-launcher', 'icon-style-app-grid', 'icon-style-all-apps', 'icon-style-whitelist', 'icon-style-blacklist'];
 const COLOR_KEYS = ['icon-style-use-accent', 'icon-style-color', 'icon-style-tint-variant',
     'icon-style-tint-strength', 'icon-style-symbol-opacity', 'icon-style-tuning'];
+
 function appIdOf(icon) {
     // The shell's and Dash to Dock's Show Apps buttons, whatever icon they show.
     if (icon.has_style_class_name('show-apps-icon'))
         return SHOW_APPS_ID;
     for (let actor = icon.get_parent(); actor; actor = actor.get_parent()) {
-        const app = actor.app;
+        // Dhruva keeps a button's app on its delegate.
+        const app = actor.app ?? actor._delegate?.app;
         if (app instanceof Shell.App)
             return app.get_id();
     }
     return folderAppIdOf(icon);
 }
+
 // A folder's icon shows its first apps in a grid of bins, one icon each, laid out in the folder's order.
 function folderAppIdOf(icon) {
     const bin = icon.get_parent();
@@ -69,12 +77,14 @@ function folderAppIdOf(icon) {
     }
     return null;
 }
+
 export class IconStyler {
     _extensionPath;
     _settings;
     _logger;
     _maps;
     _shader;
+    _shaderSource = null;
     _pipeline = null;
     _glassPipeline = null;
     _hosts = new Map();
@@ -92,6 +102,7 @@ export class IconStyler {
     _themeId = 0;
     _unwatchAccent = () => { };
     _cancellable = new Gio.Cancellable();
+
     constructor(_extensionPath, _settings, _logger) {
         this._extensionPath = _extensionPath;
         this._settings = _settings;
@@ -108,11 +119,13 @@ export class IconStyler {
                 }
             });
         });
+        this._shader.then(source => { this._shaderSource = source; }, () => { });
         this._shader.catch(e => {
             if (!(e instanceof GLib.Error && e.matches(Gio.IOErrorEnum, Gio.IOErrorEnum.CANCELLED)))
                 this._logger.error(`[Liquid Glass] Could not read the icon shader: ${e}`);
         });
     }
+
     setup() {
         this._settingsIds = [
             ...KEYS.map(key => this._settings.connect(`changed::${key}`, () => {
@@ -133,6 +146,7 @@ export class IconStyler {
         this._watch(Main.overview._overview.controls._appDisplay, 'app-grid');
         this._prepareSoon();
     }
+
     cleanup() {
         this._cancellable.cancel();
         for (const id of this._settingsIds)
@@ -163,10 +177,12 @@ export class IconStyler {
         this._pipeline = null;
         this._glassPipeline = null;
     }
-    /** Styles the application icons in a Dash to Dock dock, and those it adds later. */
+
+    /** Styles the application icons in a Dash to Dock or Dhruva dock, and those it adds later. */
     watchDock(dock) {
         this._watch(dock, 'dock');
     }
+
     unwatchDock(root) {
         const entry = this._roots.get(root);
         if (!entry)
@@ -179,16 +195,22 @@ export class IconStyler {
                 this._forget(icon);
         }
     }
+
     _watch(root, surface) {
         if (this._roots.has(root))
             return;
         this._roots.set(root, { surface, watched: new Map() });
         this._scanSoon();
     }
-    /** Styles a launcher result's icon, which goes away with its row; `panel` holds the rows over the glass. */
-    styleLauncherIcon(icon, appId, panel) {
-        this._style(icon, appId, 'launcher', null, panel);
+
+    /**
+     * Styles a launcher result's icon, which goes away with its row; `host` is painted just before the rows, over the
+     * glass, and covers them.
+     */
+    styleLauncherIcon(icon, appId, host) {
+        this._style(icon, appId, 'launcher', null, host);
     }
+
     // Before the next frame, so that icons a dock adds are not drawn as they are first.
     _scanSoon() {
         if (this._scanId)
@@ -200,6 +222,7 @@ export class IconStyler {
             return GLib.SOURCE_REMOVE;
         });
     }
+
     _scan(actor, root, surface, watched) {
         if (actor instanceof St.Icon) {
             const appId = appIdOf(actor);
@@ -222,6 +245,7 @@ export class IconStyler {
             this._scan(folder, root, surface, watched);
         }
     }
+
     _style(icon, appId, surface, root = null, host = root) {
         if (!this._styled.has(icon)) {
             const restyle = () => this._apply(icon);
@@ -240,6 +264,7 @@ export class IconStyler {
         }
         this._apply(icon);
     }
+
     _forget(icon) {
         const styled = this._styled.get(icon);
         if (!styled)
@@ -248,6 +273,7 @@ export class IconStyler {
         styled.ids.forEach(id => icon.disconnect(id));
         this._unstyle(icon, styled);
     }
+
     _dropIcon(icon) {
         const styled = this._styled.get(icon);
         if (!styled)
@@ -255,18 +281,34 @@ export class IconStyler {
         this._styled.delete(icon);
         this._leaveHost(icon, styled);
     }
+
+    /**
+     * Makes the backdrop of the clear icons the launcher is about to show over `host`, so that its shaders are loaded
+     * by the first frame they are shown in.
+     */
+    prepareLauncherHost(host) {
+        if (this._settings.get_boolean('icon-style-launcher') && this._settings.get_string('icon-style-mode') === 'clear')
+            this._hostFor(host, 'launcher');
+    }
+
     // The backdrop of `host`'s clear icons, made with its first.
     _backdropFor(icon, styled) {
         if (!styled.host)
             return null;
-        const { host, cached } = backdropHost(styled.host);
+        const { host, entry } = this._hostFor(styled.host, styled.surface);
         styled.backdropHost = host;
+        entry.icons.add(icon);
+        return entry.backdrop;
+    }
+
+    _hostFor(holder, surface) {
+        const { host, cached } = backdropHost(holder);
         let entry = this._hosts.get(host);
         if (!entry) {
             const icons = new Set();
             const backdrop = new IconBackdrop({
                 extensionPath: this._extensionPath, settings: this._settings, logger: this._logger,
-                prefix: styled.surface === 'launcher' ? 'launcher' : 'dock', rect: () => this._extentsOf(icons),
+                prefix: surface === 'launcher' ? 'launcher' : 'dock', rect: () => this._extentsOf(icons),
                 copied: () => {
                     if (cached)
                         for (const icon of icons)
@@ -274,12 +316,12 @@ export class IconStyler {
                 },
             });
             backdrop.attach(host);
-            entry = { backdrop, icons, destroyId: host.connect('destroy', () => this._dropHost(host)) };
+            entry = { backdrop, icons, destroyId: host.connect('destroy', () => this._dropHost(host)), dropId: 0 };
             this._hosts.set(host, entry);
         }
-        entry.icons.add(icon);
-        return entry.backdrop;
+        return { host, entry };
     }
+
     _leaveHost(icon, styled) {
         const host = styled.backdropHost;
         styled.backdropHost = null;
@@ -287,17 +329,29 @@ export class IconStyler {
         if (!entry)
             return;
         entry.icons.delete(icon);
-        if (!entry.icons.size)
-            this._dropHost(host);
+        if (entry.icons.size)
+            return;
+        if (entry.dropId)
+            GLib.Source.remove(entry.dropId);
+        entry.dropId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, HOST_KEEP_MS, () => {
+            entry.dropId = 0;
+            if (!entry.icons.size)
+                this._dropHost(host);
+            return GLib.SOURCE_REMOVE;
+        });
     }
+
     _dropHost(host) {
         const entry = this._hosts.get(host);
         if (!entry)
             return;
         this._hosts.delete(host);
+        if (entry.dropId)
+            GLib.Source.remove(entry.dropId);
         host.disconnect(entry.destroyId);
         entry.backdrop.cleanup();
     }
+
     // The stage rect [x0, y0, x1, y1] the shown icons of a backdrop cover, as drawn (scaled) now.
     _extentsOf(icons) {
         let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
@@ -312,18 +366,22 @@ export class IconStyler {
         }
         return x1 > x0 && y1 > y0 ? [x0, y0, x1, y1] : null;
     }
+
     _wanted(styled) {
         return this._settings.get_boolean(`icon-style-${styled.surface}`) && this._wantedApp(styled.appId);
     }
+
     _wantedApp(appId) {
         const s = this._settings;
         return s.get_boolean('icon-style-all-apps') ? !s.get_strv('icon-style-blacklist').includes(appId)
             : s.get_strv('icon-style-whitelist').includes(appId);
     }
+
     _file(icon) {
         const named = (name) => (name ? new Gio.ThemedIcon({ name }) : null);
         return this._fileOf([icon.gicon ?? named(icon.icon_name), icon.fallback_gicon ?? named(icon.fallback_icon_name)]);
     }
+
     // The file an icon is drawn from, falling back the way St.Icon does when its own icon is not in the theme.
     _fileOf(gicons) {
         for (const gicon of gicons) {
@@ -335,6 +393,7 @@ export class IconStyler {
         }
         return null;
     }
+
     _prepareSoon() {
         if (this._prepareId)
             GLib.Source.remove(this._prepareId);
@@ -344,6 +403,7 @@ export class IconStyler {
             return GLib.SOURCE_REMOVE;
         });
     }
+
     // Makes the maps of every installed application's icon that will be styled, before any is shown.
     _prepare() {
         const s = this._settings;
@@ -358,6 +418,7 @@ export class IconStyler {
             .filter((file) => !!file);
         this._maps.prepare(files);
     }
+
     _notify(busy) {
         this._notification?.destroy();
         this._notification = null;
@@ -377,6 +438,7 @@ export class IconStyler {
         }
         notification.source.addNotification(notification);
     }
+
     _colors() {
         const s = this._settings;
         const accent = s.get_boolean('icon-style-use-accent') ? accentColors() : null;
@@ -387,6 +449,7 @@ export class IconStyler {
         const tuning = s.get_value('icon-style-tuning').deep_unpack();
         return iconStyleColors((['mono', 'clear'].includes(mode) ? mode : 'tinted'), tint, s.get_double('icon-style-tint-strength'), s.get_double('icon-style-symbol-opacity'), variant, tuning);
     }
+
     _apply(icon) {
         const styled = this._styled.get(icon);
         if (!styled)
@@ -397,43 +460,56 @@ export class IconStyler {
             this._unstyle(icon, styled);
             return;
         }
-        Promise.all([this._maps.get(file), this._shader]).then(([textures, shader]) => {
+        // A dock that rebuilds its buttons (Dhruva does whenever an indicator changes) would show each new icon
+        // unstyled for a frame if styling waited for the promises, which resolve after the frame is drawn.
+        const textures = this._maps.loaded(file);
+        if (textures && this._shaderSource) {
+            this._applyMaps(icon, styled, textures, this._shaderSource);
+            return;
+        }
+        Promise.all([this._maps.get(file), this._shader]).then(([maps, shader]) => {
             if (this._styled.get(icon) !== styled || styled.serial !== serial)
                 return;
-            const colors = this._colors();
-            const clear = this._settings.get_string('icon-style-mode') === 'clear';
-            let pipeline;
-            if (clear)
-                pipeline = this._glassPipeline ??= iconStylePipeline(shader, true);
-            else
-                pipeline = this._pipeline ??= iconStylePipeline(shader);
-            const backdrop = clear ? this._backdropFor(icon, styled) : null;
-            if (!clear)
-                this._leaveHost(icon, styled);
-            const effect = styled.effect ?? new IconStyleEffect();
-            effect.prepare(pipeline.copy(), textures, colors, backdrop);
-            if (!styled.effect) {
-                styled.effect = effect;
-                icon.add_effect_with_name(EFFECT_NAME, effect);
-            }
-            this._resize(icon);
+            this._applyMaps(icon, styled, maps, shader);
         }).catch(e => {
             if (!(e instanceof GLib.Error && e.matches(Gio.IOErrorEnum, Gio.IOErrorEnum.CANCELLED)))
                 this._logger.log(`[Liquid Glass] Could not style the icon of ${styled.appId}: ${e}`);
         });
     }
+
+    _applyMaps(icon, styled, textures, shader) {
+        const clear = this._settings.get_string('icon-style-mode') === 'clear';
+        let pipeline;
+        if (clear)
+            pipeline = this._glassPipeline ??= iconStylePipeline(shader, true);
+        else
+            pipeline = this._pipeline ??= iconStylePipeline(shader);
+        const backdrop = clear ? this._backdropFor(icon, styled) : null;
+        if (!clear)
+            this._leaveHost(icon, styled);
+        const effect = styled.effect ?? new IconStyleEffect();
+        effect.prepare(pipeline.copy(), textures, this._colors(), backdrop);
+        if (!styled.effect) {
+            styled.effect = effect;
+            icon.add_effect_with_name(EFFECT_NAME, effect);
+        }
+        this._resize(icon);
+    }
+
     // Scaled as an actor rather than drawn past its box, so that Clutter keeps what it redraws and culls right.
     _resize(icon) {
         const size = this._settings.get_double('icon-style-size');
         icon.set_pivot_point(0.5, 0.5);
         icon.set_scale(size, size);
     }
+
     _resizeAll() {
         for (const [icon, styled] of this._styled) {
             if (styled.effect)
                 this._resize(icon);
         }
     }
+
     _unstyle(icon, styled) {
         this._leaveHost(icon, styled);
         if (!styled.effect)
@@ -442,10 +518,12 @@ export class IconStyler {
         icon.set_scale(1, 1);
         styled.effect = null;
     }
+
     _restyleAll() {
         for (const icon of [...this._styled.keys()])
             this._apply(icon);
     }
+
     _recolorAll() {
         const colors = this._colors();
         for (const styled of this._styled.values())

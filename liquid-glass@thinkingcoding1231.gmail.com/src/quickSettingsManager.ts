@@ -3,6 +3,7 @@ import { stepMenuSpring, applyMenuFrame, showMenuAtRest } from './animation/menu
 import { addFrameTicker, removeFrameTicker, normalizeAnimationIntervalMs } from './animation/frameTicker.js';
 import { Spring } from './animation/spring.js';
 import { MenuMorphMotion, type MorphFrame } from './animation/menuMorph.js';
+import { ToggleIntro } from './animation/toggleIntro.js';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import Clutter from 'gi://Clutter';
 import St from 'gi://St';
@@ -42,6 +43,9 @@ interface CustomBannerActor extends St.Widget {
 
 // Frames to wait for an opening menu to get its size before it just appears.
 const MORPH_WAIT_FRAMES = 30;
+// The most the toggle-mode opening moves on from one frame to the next (s): after its first frame, and later.
+const INTRO_FIRST_STEP_S = 1 / 60;
+const INTRO_MAX_STEP_S = 1 / 30;
 // The menu's own open and close animations, which the morph replaces. Its
 // closing fade would hide the items and then the menu long before the glass is
 // back in the button, so the fade is held and the menu is hidden by the morph.
@@ -117,6 +121,23 @@ function _findSubmenuGap(n: Clutter.Actor, submenu: Clutter.Actor, root: Clutter
   for (let child of n.get_children()) _findSubmenuGap(child, submenu, root, gap);
 }
 
+// Toggle mode's opening (see animation/toggleIntro.ts). The buttons are moved
+// with transforms, which their glass follows; `rest` is each one's rect in the
+// menu box as laid out, and `saved` what the animation changes on it.
+interface ToggleIntroState {
+  running: boolean;
+  motion: ToggleIntro | null;
+  pods: Clutter.Actor[];
+  rest: number[][];
+  saved: { pivot: [number, number], scale: [number, number], translation: [number, number], opacity: number }[];
+  // Buttons kept out of sight until the menu is laid out, and their opacity.
+  hidden: Map<Clutter.Actor, number>;
+  // The motion's time (s), and the frame time it was last moved at.
+  elapsed: number;
+  lastUs: number;
+  waitFrames: number;
+}
+
 type ToggleRegionLayout = {
   regions: { x: number; y: number; w: number; h: number; tintR: number; tintG: number; tintB: number; baseStrength: number }[];
   minX: number; minY: number; maxX: number; maxY: number;
@@ -175,6 +196,8 @@ export class QuickSettingsManager {
   private _springMass: number;
 
   private _enableAnimation: boolean;
+  // Toggle mode's own animation; see _startIntro().
+  private _toggleAnimation = false;
 
   private _growFromButton: boolean = true;
   private _morph: MenuMorph | null = null;
@@ -234,6 +257,9 @@ export class QuickSettingsManager {
 
   private _actorDestroyed = false;
   private _destroySignalId = 0;
+
+  // Toggle mode's opening, while it runs and until the menu is hidden.
+  private _intro: ToggleIntroState | null = null;
 
   // The last non-empty region set and how many frames it has been reused;
   // see _resolveToggleRegions().
@@ -298,11 +324,13 @@ export class QuickSettingsManager {
     this._bindSettings();
 
     this._enableAnimation = this._settings.get_boolean(this._animationKey());
+    this._toggleAnimation = this._settings.get_boolean(this._key('toggle-animation'));
     this._springStiffness = this._settings.get_double(this._key('spring-stiffness'));
     this._springDamping = this._settings.get_double(this._key('spring-damping'));
     this._springMass = this._settings.get_double(this._key('spring-mass'));
     this._springScale.updateParams(this._springStiffness, this._springDamping, this._springMass);
     this._growFromButton = this._settings.get_boolean(this._key('grow-from-button'));
+    this._morphSpeed = this._settings.get_double(this._key('morph-speed'));
 
     this._applyTo = this._settings.get_int(this._key('apply-to')) === 1 ? 'toggles' : 'background';
     this._toggleBaseStrength = this._settings.get_double(this._key('toggle-tint-strength'));
@@ -347,6 +375,10 @@ export class QuickSettingsManager {
 
     connectSetting(this._animationKey(), () => {
       this._enableAnimation = this._settings.get_boolean(this._animationKey());
+    });
+
+    connectSetting(this._key('toggle-animation'), () => {
+      this._toggleAnimation = this._settings.get_boolean(this._key('toggle-animation'));
     });
 
     connectSetting(this._key('grow-from-button'), () => {
@@ -700,17 +732,21 @@ export class QuickSettingsManager {
 
     this._signals = [];
 
-    // No transparent panel, offsets, animation or button dimming here: the
-    // panel keeps its own look, and ToggleStyles owns the toggles' styles.
+    // No transparent panel, offsets or button dimming here: the panel keeps
+    // its own look, and ToggleStyles owns the toggles' styles. The menu
+    // closes with the shell's own animation.
     this._animSignalId = this.menu.connect('open-state-changed', (menu, isOpen: boolean) => {
       if (isOpen) {
         this._forgetSubmenus();
+        this._startIntro();
         startFrameSync();
         this._startAdaptiveColorSampling(true);
         this._toggleStyles.start();
         return;
       }
 
+      // The buttons stay where the opening had got them while the menu fades.
+      if (this._intro) this._intro.running = false;
       this._stopAdaptiveColorSampling();
       this._toggleStyles.stop();
     });
@@ -720,6 +756,7 @@ export class QuickSettingsManager {
       id: this.menu.actor.connect('notify::mapped', () => {
         if (!this.menu.actor.mapped) {
           stopFrameSync();
+          this._endIntro();
           this._forgetSubmenus();
           if (this.glass) {
             this.glass.hide();
@@ -807,6 +844,13 @@ export class QuickSettingsManager {
     setPositionIfChanged(this.glass, bgPosX, bgPosY);
 
     const toggles = this._toggleStyles.sync(this.menu?.actor);
+    this._stepIntro(toggles);
+    // Until the buttons are laid out and start small, their glass would show
+    // them at rest (or as the last open left them), and then jump to the start.
+    if (this._intro?.running && !this._intro.motion) {
+      this.glass.hide();
+      return;
+    }
 
     if (toggles.length === 0 && !this._canReuseLastRegions()) {
       this.glass.hide();
@@ -820,8 +864,8 @@ export class QuickSettingsManager {
     }
 
     if (!this.glass.visible) this.glass.show();
-    // Fade with the menu, which the shell animates on menu.actor's first child.
-    this.glass.opacity = this.targetActor.get_first_child()?.opacity ?? 255;
+    // The glass is inside the menu, so it fades with it already.
+    this.glass.opacity = 255;
 
     this.glass.setGlassRegions(layout.regions);
 
@@ -829,6 +873,91 @@ export class QuickSettingsManager {
       bgPosX, bgPosY, screenW, screenH);
     // After the geometry setters, so the relays cover this frame's rect.
     this.glass.syncSources();
+  }
+
+  // Toggle mode, with its animation on: the buttons spring out as the menu opens.
+  private _startIntro(): void {
+    this._endIntro();
+    if (!this._toggleAnimation || !St.Settings.get().enable_animations) return;
+    this._intro = { running: true, motion: null, pods: [], rest: [], saved: [], hidden: new Map(), elapsed: 0, lastUs: 0, waitFrames: 0 };
+    this._lastGoodRegions = null;
+    // The menu shows at once, so the buttons' glass does from the start; the
+    // shell's easing still runs to its end and lets the menu take input.
+    const boxPointer = this.targetActor.get_first_child();
+    for (const name of BOXPOINTER_EASED) {
+      const ease = boxPointer?.get_transition(name);
+      ease?.set_from(ease.get_interval().peek_final_value());
+    }
+  }
+
+  // Moves the buttons for this frame, before their rects are read for the glass.
+  private _stepIntro(toggles: Clutter.Actor[]): void {
+    const intro = this._intro;
+    if (!intro?.running) return;
+    const now = GLib.get_monotonic_time();
+    if (!intro.motion) {
+      // Until the menu is laid out the buttons are kept out of sight, so they
+      // do not show at rest for a frame first.
+      const shown = toggles.filter(t => t.visible);
+      const rest = shown.map(pod => {
+        const origin = pod.has_allocation() ? _layoutOrigin(pod, this.animActor) : null;
+        const [w, h] = getAllocatedSize(pod);
+        return origin && w > 0 && h > 0 ? [origin[0], origin[1], w, h] : null;
+      });
+      if (shown.length === 0 || rest.some(r => !r)) {
+        for (const pod of shown) {
+          if (!intro.hidden.has(pod)) intro.hidden.set(pod, pod.opacity);
+          pod.opacity = 0;
+        }
+        if (++intro.waitFrames >= MORPH_WAIT_FRAMES) this._endIntro();
+        return;
+      }
+      const button = this._buttonRect();
+      const anchor = button ? this.animActor.transform_stage_point(button[0] + button[2] / 2, button[1] + button[3] / 2) : null;
+      const right = Math.max(...rest.map(r => r![0] + r![2]));
+      intro.motion = new ToggleIntro(rest as number[][], anchor?.[0] ? [anchor[1], anchor[2]] : [right, 0], this._glassExpand);
+      intro.pods = shown;
+      intro.rest = rest as number[][];
+      intro.saved = shown.map(pod => ({
+        pivot: pod.get_pivot_point() as [number, number], scale: pod.get_scale() as [number, number],
+        translation: [pod.translation_x, pod.translation_y], opacity: intro.hidden.get(pod) ?? pod.opacity,
+      }));
+      for (const pod of shown) pod.set_pivot_point(0.5, 0.5);
+    } else {
+      // The frame that first draws the buttons small can be slow (the menu and its glass are drawn for the first
+      // time). Taken as it is, that wait would leave them still and then make them jump; it counts as one frame.
+      const step = (now - intro.lastUs) / 1e6;
+      intro.elapsed += Math.min(step, intro.elapsed === 0 ? INTRO_FIRST_STEP_S : INTRO_MAX_STEP_S);
+    }
+    intro.lastUs = now;
+    const frame = intro.motion.frame(intro.elapsed);
+    intro.pods.forEach((pod, i) => {
+      if (!isActorValid(pod)) return;
+      const [x, y, w, h] = intro.rest[i];
+      const r = frame.rects[i];
+      pod.set_scale(r[2] / w, r[3] / h);
+      pod.set_translation(r[0] + r[2] / 2 - (x + w / 2), r[1] + r[3] / 2 - (y + h / 2), 0);
+      pod.opacity = Math.round(intro.saved[i].opacity * frame.opacity[i]);
+    });
+    if (frame.done) this._endIntro();
+  }
+
+  // Puts the buttons back as they were.
+  private _endIntro(): void {
+    const intro = this._intro;
+    this._intro = null;
+    if (!intro) return;
+    for (const [pod, opacity] of intro.hidden) {
+      if (isActorValid(pod)) pod.opacity = opacity;
+    }
+    intro.pods.forEach((pod, i) => {
+      if (!isActorValid(pod)) return;
+      const saved = intro.saved[i];
+      pod.set_pivot_point(...saved.pivot);
+      pod.set_scale(...saved.scale);
+      pod.set_translation(...saved.translation, 0);
+      pod.opacity = saved.opacity;
+    });
   }
 
   /**
@@ -1226,7 +1355,8 @@ export class QuickSettingsManager {
           this._adaptiveTimerId = 0;
           return GLib.SOURCE_REMOVE;
         }
-        const opening = this._tickId !== 0;
+        // The colors measured as the menu opened are kept while it moves.
+        const opening = this._tickId !== 0 || this._morphTickId !== 0 || !!this._intro?.running;
         if (!opening || this._awaitingOpenColors)
           this._updateAdaptiveTextColors(this._awaitingOpenColors);
         return GLib.SOURCE_CONTINUE;
@@ -1700,7 +1830,7 @@ export class QuickSettingsManager {
         this._endMorph();
         return false;
       }
-      m.motion = new MenuMorphMotion(m.opening, m.button, menu, this._cornerRadius);
+      m.motion = new MenuMorphMotion(m.opening, m.button, menu, this._cornerRadius, m.from, m.velocities);
     } else {
       m.motion.retarget(m.button, menu, this._cornerRadius);
     }
@@ -1835,6 +1965,7 @@ export class QuickSettingsManager {
     this._clearAdaptiveStyles();
     this._clearButtonStyles();
     this._clearSubmenuFix();
+    this._endIntro();
     this._toggleStyles.clear();
 
     this._disconnectEffectSignals();

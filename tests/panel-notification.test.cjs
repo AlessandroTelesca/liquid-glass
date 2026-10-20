@@ -129,7 +129,10 @@ test('notification glass follows transformed dimensions and inherited opacity on
   const { manager: m } = notificationFixture();
   m.currentBanner = { rect: [2100, 250, 360, 90], mapped: true, get_paint_opacity: () => 80 };
   m.glass = actorStub();
+  let colored = 0;
+  m._updateAdaptiveTextColors = () => colored++;
   m._syncGeometry();
+  assert.equal(colored, 1, 'the first colors are chosen on the first frame the banner is shown');
   assert.deepEqual(m.glass.position, [1920, 200]);
   assert.deepEqual(m.glass.geometry, [148, 18, 424, 154]);
   assert.equal(m.glass.opacity, 80);

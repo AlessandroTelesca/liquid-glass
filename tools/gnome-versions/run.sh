@@ -52,6 +52,11 @@ if ! in_box; then
   # Dash to Dock comes from the host's own extensions; the box only sees its
   # own home under ~.
   export LGTEST_DTD_DIR="$HOME/.local/share/gnome-shell/extensions/$DTD_UUID"
+  # podman starts the box through the systemd user manager over the session
+  # bus; a desktop started with its own dbus-daemon (/tmp/dbus-...) has no
+  # systemd on it, so point podman at systemd's bus.
+  user_bus="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/bus"
+  [ -S "$user_bus" ] && export DBUS_SESSION_BUS_ADDRESS="unix:path=$user_bus"
   exec distrobox enter "$BOX" -- "$here/run.sh" "$version" "${args[@]}"
 fi
 

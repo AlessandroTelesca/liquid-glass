@@ -10,7 +10,36 @@ import { isActorValid } from './actors/lifecycle.js';
 import { hexToColorArray } from './animation/colors.js';
 import { clipDockBounds, dockEdges, balanceDockBounds, insetDockBounds, visibleDockSize } from './actors/dockGeometry.js';
 // Room around the glass rect for the shader's edge effects.
-const SHADER_PADDING = 20;
+export const SHADER_PADDING = 20;
+// The dock glass's look, from the dock-* settings, for every kind of dock.
+const DOCK_MATERIAL = [
+    ['dock-tint-color', (g, s) => g.setTintColor(...hexToColorArray(s.get_string('dock-tint-color')))],
+    ['dock-tint-strength', (g, s) => g.setTintStrength(s.get_double('dock-tint-strength'))],
+    ['dock-blur-radius', (g, s) => g.setBlurRadius(s.get_int('dock-blur-radius'))],
+    ['dock-corner-radius', (g, s) => g.setCornerRadius(s.get_double('dock-corner-radius'))],
+    ['dock-brightness', (g, s) => g.setBrightness(s.get_double('dock-brightness'))],
+    ['dock-contrast', (g, s) => g.setContrast(s.get_double('dock-contrast'))],
+    ['dock-saturation', (g, s) => g.setSaturation(s.get_double('dock-saturation'))],
+];
+
+export function createDockGlass(extensionPath, settings, logger, owner) {
+    const glass = new BackdropGlass({ extensionPath, settings, logger, owner, outline: 'dock' });
+    glass.setPadding(SHADER_PADDING);
+    for (const [, apply] of DOCK_MATERIAL)
+        apply(glass, settings);
+    glass.setIsDock(true);
+    return glass;
+}
+
+/** Keeps the glass `glass()` returns, if any, in the dock's look. Returns the ids of the signals on `settings`. */
+export function followDockMaterial(settings, glass) {
+    return DOCK_MATERIAL.map(([key, apply]) => settings.connect(`changed::${key}`, () => {
+        const current = glass();
+        if (current)
+            apply(current, settings);
+    }));
+}
+
 export class DashManager {
     extensionPath;
     targetActor;
@@ -48,6 +77,7 @@ export class DashManager {
     // _syncGlassGeometryLive().
     _liveRef = null;
     _logger;
+
     constructor(extensionPath, targetActor, settings, logger) {
         this.extensionPath = extensionPath;
         this.targetActor = targetActor;
@@ -60,6 +90,7 @@ export class DashManager {
         this._frameSyncId = 0;
         this._isEffectActive = false;
     }
+
     setup() {
         if (!this.targetActor || !this._settings)
             return;
@@ -68,6 +99,7 @@ export class DashManager {
             this._applyEffect();
         }
     }
+
     _bindSettings() {
         const connectSetting = (key, callback) => {
             let id = this._settings.connect(`changed::${key}`, callback.bind(this));
@@ -93,43 +125,9 @@ export class DashManager {
                 this._applyMargin();
             this._marginValue = this._settings.get_int('dock-margin-bottom') || 0;
         });
-        connectSetting('dock-tint-color', () => {
-            if (this.glass && this._isEffectActive) {
-                let colorArray = hexToColorArray(this._settings.get_string('dock-tint-color'));
-                this.glass.setTintColor(...colorArray);
-            }
-        });
-        connectSetting('dock-tint-strength', () => {
-            if (this.glass && this._isEffectActive) {
-                this.glass.setTintStrength(this._settings.get_double('dock-tint-strength'));
-            }
-        });
-        connectSetting('dock-blur-radius', () => {
-            const radius = this._settings.get_int('dock-blur-radius');
-            if (this.glass && this._isEffectActive)
-                this.glass.setBlurRadius(radius);
-        });
-        connectSetting('dock-corner-radius', () => {
-            if (this.glass && this._isEffectActive) {
-                this.glass.setCornerRadius(this._settings.get_double('dock-corner-radius'));
-            }
-        });
-        connectSetting('dock-brightness', () => {
-            if (this.glass && this._isEffectActive) {
-                this.glass.setBrightness(this._settings.get_double('dock-brightness'));
-            }
-        });
-        connectSetting('dock-contrast', () => {
-            if (this.glass && this._isEffectActive) {
-                this.glass.setContrast(this._settings.get_double('dock-contrast'));
-            }
-        });
-        connectSetting('dock-saturation', () => {
-            if (this.glass && this._isEffectActive) {
-                this.glass.setSaturation(this._settings.get_double('dock-saturation'));
-            }
-        });
+        this._settingsSignals.push(...followDockMaterial(this._settings, () => this.glass));
     }
+
     // Moves the dock away from the screen edge it is closest to by
     // dock-margin-bottom.
     _applyMargin() {
@@ -166,6 +164,7 @@ export class DashManager {
         this._currentMarginStyle = marginStyle;
         this.targetActor.set_style(`${this._originalStyle} ${marginStyle}`);
     }
+
     _applyEffect() {
         if (this._isEffectActive)
             return;
@@ -183,9 +182,7 @@ export class DashManager {
         if (this._dockParent) {
             this._dockParent.add_style_class_name('liquid-glass-transparent');
         }
-        const glass = new BackdropGlass({
-            extensionPath: this.extensionPath, settings: this._settings, logger: this._logger, owner: 'dock', outline: 'dock',
-        });
+        const glass = createDockGlass(this.extensionPath, this._settings, this._logger, 'dock');
         this.glass = glass;
         glass.set_size(1.0, 1.0);
         this._applyMargin();
@@ -205,22 +202,6 @@ export class DashManager {
         else {
             Main.layoutManager.uiGroup.add_child(glass);
         }
-        let blurRadius = this._settings.get_int('dock-blur-radius');
-        let tintColorStr = this._settings.get_string('dock-tint-color');
-        let tintStrength = this._settings.get_double('dock-tint-strength');
-        let cornerRadius = this._settings.get_double('dock-corner-radius');
-        let brightness = this._settings.get_double('dock-brightness');
-        let contrast = this._settings.get_double('dock-contrast');
-        let saturation = this._settings.get_double('dock-saturation');
-        glass.setPadding(SHADER_PADDING);
-        glass.setTintColor(...hexToColorArray(tintColorStr));
-        glass.setTintStrength(tintStrength);
-        glass.setCornerRadius(cornerRadius);
-        glass.setBrightness(brightness);
-        glass.setContrast(contrast);
-        glass.setSaturation(saturation);
-        glass.setBlurRadius(blurRadius);
-        glass.setIsDock(true);
         // Dash to Dock slides by relayout, so the frame tick sees last frame's
         // position; the paint-time hook corrects it.
         glass.setLiveGeometryHook(() => this._syncGlassGeometryLive());
@@ -268,6 +249,7 @@ export class DashManager {
             startFrameSync();
         }
     }
+
     // Runs at paint time (see GlassActor.setLiveGeometryHook()), when the
     // dock's allocation is current. _syncGeometry() keeps per-frame state and
     // must run once per frame, so only the glass rect's position is corrected
@@ -283,6 +265,7 @@ export class DashManager {
             return;
         this.glass.setGlassGeometry(ref.rect[0] + (nx - ref.rawX), ref.rect[1] + (ny - ref.rawY), ref.rect[2], ref.rect[3]);
     }
+
     _syncGeometry() {
         if (!this.glass || !this.targetActor || !this.targetActor.mapped)
             return;
@@ -310,12 +293,15 @@ export class DashManager {
         this._syncDockVisibility(bounds, monitor);
         this._syncDockGlass(bounds, monitor);
     }
+
     _actorBounds(actor) {
         const [baseW, baseH] = actor.get_size();
         const [absX, absY] = actor.get_transformed_position();
         return { absX, absY, baseW, baseH };
     }
+
     _liveSource = null;
+
     _readDockBounds() {
         let sourceActor = this.targetActor;
         let children = this.targetActor.get_children();
@@ -334,6 +320,7 @@ export class DashManager {
         const bounds = { absX, absY, baseW, baseH };
         return sourceActor === this.targetActor ? bounds : clipDockBounds(bounds, this._actorBounds(this.targetActor));
     }
+
     _stabilizeDockBounds(bounds, edges) {
         let { baseW, baseH } = bounds;
         const { minCenterDist, distTopCenter, distBottomCenter } = edges;
@@ -354,6 +341,7 @@ export class DashManager {
         this._lastBaseH = baseH;
         return { ...bounds, baseW, baseH };
     }
+
     _applyDockMargin(bounds, monitor, edges) {
         const marginValue = this._marginValue || 0;
         if (!monitor || !(marginValue > 0))
@@ -383,6 +371,7 @@ export class DashManager {
         let stableBaseH = tH + this._stableDeltaH;
         return isMoving ? bounds : insetDockBounds(bounds, monitor, edges, marginValue, stableBaseW, stableBaseH);
     }
+
     _syncDockVisibility(bounds, monitor) {
         const { absX, absY, baseW, baseH } = bounds;
         const [visibleW, visibleH] = visibleDockSize(bounds, monitor);
@@ -406,6 +395,7 @@ export class DashManager {
             this.glass.opacity = this.targetActor.opacity;
         }
     }
+
     _syncDockGlass(bounds, monitor) {
         const { absX, absY, baseW, baseH } = bounds;
         const w = Math.max(1.0, baseW), h = Math.max(1.0, baseH);
@@ -454,12 +444,15 @@ export class DashManager {
         // After the geometry setters, so the relays cover this frame's rect.
         this.glass.syncSources();
     }
+
     get _frameSlot() {
         return { get: () => this._frameSyncId, set: (id) => { this._frameSyncId = id; } };
     }
+
     get _frameSignalSlot() {
         return { get: () => this._frameSignalId, set: (id) => { this._frameSignalId = id; } };
     }
+
     // The next sync shows it again and updates everything.
     _hideGlass() {
         this.glass?.hide();
@@ -468,9 +461,11 @@ export class DashManager {
         this._lastBgX = undefined;
         this._lastBgY = undefined;
     }
+
     _stopFrameSync() {
         stopStageLoop(this._frameSignalSlot, this._frameSlot);
     }
+
     _removeEffect() {
         if (!this._isEffectActive)
             return;
@@ -505,6 +500,7 @@ export class DashManager {
                 glass.destroy();
         }
     }
+
     cleanup() {
         this._liveRef = null;
         this._stopFrameSync();
@@ -513,6 +509,7 @@ export class DashManager {
             this._settings.disconnect(id);
         this._settingsSignals = [];
     }
+
     // The first running-app indicator inside the dock (Dash to Dock's
     // IndicatorDrawingArea), used to balance the gaps around the icons.
     _findReferenceActor(actor) {

@@ -547,3 +547,24 @@ test('exported settings are a dconf dump, and an import keeps only valid values 
   assert.deepEqual(result.changes, [['dock-blur-radius', {type: 'i', text: '9'}]]);
   assert.equal(result.skipped, 4);
 });
+
+test('Individual buttons mode has its own animation switch in the quick settings surface, set with Animations too', () => {
+  const f = fixture({'preferences-advanced': true});
+  f.row('Surface').selected = 4;
+  const group = f.window.children[0].children.find(group => group.title === 'Quick settings');
+  const switches = () => group.children.filter(row => row.title === 'Animations');
+  const shown = () => switches().filter(row => row.visible);
+  assert.equal(switches().length, 2);
+  assert.equal(shown().length, 1);
+  assert.equal(shown()[0].subtitle, '', 'the whole menu has the spring and morph switch');
+  f.controls.write({'quick-settings-apply-to': 1});
+  assert.equal(shown().length, 1);
+  assert.match(shown()[0].subtitle, /spring out/);
+  assert.equal(group.children.find(row => row.title === 'Grow from the button').visible, false);
+
+  const simple = fixture();
+  simple.row('Animations').selected = 1;
+  assert.equal(simple.values.get('quick-settings-toggle-animation'), true);
+  simple.row('Animations').selected = 0;
+  assert.equal(simple.values.get('quick-settings-toggle-animation'), false);
+});

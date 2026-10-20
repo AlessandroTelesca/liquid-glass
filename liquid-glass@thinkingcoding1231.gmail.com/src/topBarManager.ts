@@ -27,6 +27,15 @@ function sanitizeStyle(value: string): TopBarStyle {
   return value === 'pill' || value === 'islands' ? value : 'off';
 }
 
+/** The shell's top bar, or one that another extension builds the same way for a further monitor. */
+export interface TopBarPanel extends St.Widget {
+  _leftBox: St.BoxLayout;
+  _centerBox: St.BoxLayout;
+  _rightBox: St.BoxLayout;
+  // Multi Monitors Bar lines its center items up in a row inside _centerBox.
+  _centerBin?: St.BoxLayout;
+}
+
 /** Glass behind the top bar: one pill or separate islands for its three button groups. */
 export class TopBarManager {
   private _style: TopBarStyle = 'off';
@@ -51,7 +60,12 @@ export class TopBarManager {
   private _stagePointerSignalId = 0;
   private _applyingLayout = false;
 
-  constructor(private _path: string, private _settings: Gio.Settings, private _logger: Logger) {
+  constructor(private _path: string, private _settings: Gio.Settings, private _logger: Logger,
+    // The panel's boxes are not part of the shell's typings.
+    private _panel: TopBarPanel = Main.panel as unknown as TopBarPanel,
+    private _panelBox: St.Widget = Main.layoutManager.panelBox,
+    // Names this glass in diagnostics.
+    private _owner: string = 'top-bar') {
     this._text = new AdaptiveTextColor(() => this._textRoots(), () => (this._glass ? [this._glass] : []),
       _logger, 'top bar');
   }
@@ -84,12 +98,12 @@ export class TopBarManager {
   }
 
   private _create(): void {
-    const panel = Main.panel as any;
-    const panelBox = Main.layoutManager.panelBox;
+    const panel = this._panel;
+    const panelBox = this._panelBox;
     panel.add_style_class_name('liquid-glass-transparent');
 
     const glass = new BackdropGlass({
-      extensionPath: this._path, settings: this._settings, logger: this._logger, owner: 'top-bar', outline: 'top-bar',
+      extensionPath: this._path, settings: this._settings, logger: this._logger, owner: this._owner, outline: 'top-bar',
     } as any);
     this._glass = glass;
     glass.reactive = false;
@@ -103,7 +117,8 @@ export class TopBarManager {
     this._lastKey = '';
     this._lastIslandRects = [];
     this._islandGeometryHoldFrames = 0;
-    this._savedStyles = [panel, panel._leftBox, panel._centerBox, panel._rightBox].map(actor => [actor, actor.get_style()]);
+    const styled = new Set<St.Widget>([panel, panel._leftBox, panel._centerBox, ...this._sections()]);
+    this._savedStyles = [...styled].map(actor => [actor, actor.get_style()]);
     this._childrenStyles = [];
     // Reapply layout when the theme changes the bar height.
     this._panelStyleId = panel.connect('style-changed', () => this._applyLayout());
@@ -127,13 +142,18 @@ export class TopBarManager {
   }
 
   private _connectBoxSignals(): void {
-    const panel = Main.panel as any;
-    for (const box of [panel._leftBox, panel._centerBox, panel._rightBox]) {
+    for (const box of this._sections()) {
       const addedId = box.connect('child-added', () => this._applyLayout());
       // A removed button may be re-added elsewhere, so it gets its own styles back.
       const removedId = box.connect('child-removed', (_box: St.Widget, child: Clutter.Actor) => this._releaseChild(child));
       this._boxSignalIds.push([box, addedId], [box, removedId]);
     }
+  }
+
+  // The boxes the buttons sit in.
+  private _sections(): St.BoxLayout[] {
+    const panel = this._panel;
+    return [panel._leftBox, panel._centerBin ?? panel._centerBox, panel._rightBox];
   }
 
   private _releaseChild(child: Clutter.Actor): void {
@@ -337,7 +357,8 @@ export class TopBarManager {
     if (!this._glass || this._applyingLayout) return;
     this._applyingLayout = true;
     try {
-      const panel = Main.panel as any;
+      const panel = this._panel;
+      const sections: St.Widget[] = this._sections();
       const margin = this._margin = this._insets('margin');
       const padding = this._padding = this._insets('padding');
       const top = margin.top + padding.top;
@@ -354,13 +375,18 @@ export class TopBarManager {
 
       for (const [actor, original] of this._savedStyles) {
         if (actor === panel) {
-          actor.set_style(withOwn(original, `height: ${totalHeight}px; min-height: ${totalHeight}px; padding-top: 0px; padding-bottom: 0px;`));
+          // Inline styles win over the stylesheet's transparent background, and Multi Monitors Bar
+          // colours its bars with one.
+          actor.set_style(withOwn(original, `height: ${totalHeight}px; min-height: ${totalHeight}px; padding-top: 0px; ` +
+            'padding-bottom: 0px; background-color: transparent !important;'));
           continue;
         }
         const leftInset = actor === panel._leftBox ? margin.left + padding.left : 0;
         const rightInset = actor === panel._rightBox ? margin.right + padding.right : 0;
         actor.set_style(withOwn(original, `height: ${totalHeight}px; padding: 0px ${rightInset}px 0px ${leftInset}px;`));
 
+        // Multi Monitors Bar's _centerBox only holds the row its buttons are in.
+        if (!sections.includes(actor)) continue;
         for (const child of actor.get_children()) {
           if (!(child instanceof St.Widget)) continue;
           const target = this._findPanelButton(child) ?? child;
@@ -407,14 +433,16 @@ export class TopBarManager {
   }
 
   private _textRoots(): Clutter.Actor[] {
-    const panel = Main.panel as any;
-    return [panel._leftBox, panel._centerBox, panel._rightBox].filter(box => box && box.mapped);
+    return this._sections().filter(box => box.mapped);
   }
 
   // Visible child extent in bar coordinates.
   private _boxExtent(box: Clutter.Actor): number[] | null {
     let x0 = Infinity, x1 = -Infinity;
-    const [bx] = box.get_position();
+    // A section may sit inside another box (Multi Monitors Bar's center row).
+    let bx = 0;
+    for (let actor: Clutter.Actor | null = box; actor && actor !== this._panel; actor = actor.get_parent())
+      bx += actor.get_position()[0];
     for (const child of box.get_children()) {
       if (!child.visible || child.width < 1) continue;
       const alloc = child.get_allocation_box();
@@ -429,8 +457,8 @@ export class TopBarManager {
     // Modal overlays may suppress leave-event; reconcile hover each frame.
     this._syncForwardedHover();
     const glass = this._glass!;
-    const panelBox = Main.layoutManager.panelBox;
-    const panel = Main.panel as any;
+    const panelBox = this._panelBox;
+    const panel = this._panel;
     const shown = panelBox.visible && panelBox.mapped && panel.mapped;
     if (!shown) {
       if (glass.visible) glass.hide();
@@ -458,7 +486,7 @@ export class TopBarManager {
       // Text tweens can briefly disturb allocations; hold island geometry steady until they settle.
       rects.push(...this._lastIslandRects.map(rect => [...rect]));
     } else {
-      for (const box of [panel._leftBox, panel._centerBox, panel._rightBox]) {
+      for (const box of this._sections()) {
         const extent = this._boxExtent(box);
         if (!extent) continue;
         const x0 = Math.max(extent[0] - this._padding.left, left);
@@ -504,9 +532,9 @@ export class TopBarManager {
     if (glass) {
       glass.cleanup();
       if (isActorValid(glass)) glass.destroy();
-      (Main.panel as any).remove_style_class_name('liquid-glass-transparent');
+      this._panel.remove_style_class_name('liquid-glass-transparent');
     }
-    if (this._panelStyleId) Main.panel.disconnect(this._panelStyleId);
+    if (this._panelStyleId) this._panel.disconnect(this._panelStyleId);
     this._panelStyleId = 0;
     for (const [actor, style] of this._savedStyles)
       if (isActorValid(actor)) actor.set_style(style);

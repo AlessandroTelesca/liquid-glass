@@ -38,6 +38,8 @@ const MIN_MENU_SCALE = 0.5;
 
 // Frames to wait for an opening menu to get its size before it just appears.
 const MORPH_WAIT_FRAMES = 30;
+// Logical size of the drop a menu opened at a point grows out of.
+const POINT_DROP_SIZE = 20;
 // The menu's own open and close animations, which the morph replaces. Its
 // closing fade would hide the items and then the menu long before the glass is
 // back in the button, so the fade is held and the menu is hidden by the morph.
@@ -188,7 +190,10 @@ export class UIManager {
     private _keyPrefix: string = 'menu',
     // Names this glass in logs, dumps and actor names.
     private _label: string = 'menu',
-    private _ownsSettingsNamespace: boolean = true) {
+    private _ownsSettingsNamespace: boolean = true,
+    // A key holding "off", "spring" or "morph", which then decides the
+    // animation instead of the namespace's animation and grow switches.
+    private _motionKey: string | null = null) {
     this.extensionPath = extensionPath;
     this._settings = settings;
     this._logger = logger;
@@ -245,8 +250,7 @@ export class UIManager {
     if (!this._settings) return;
     this._bindSettings();
 
-    this._enableAnimation = this._settings.get_boolean(this._animationKey());
-    this._growFromButton = this._settings.get_boolean(this._key('grow-from-button'));
+    this._readMotion();
     this._morphSpeed = this._settings.get_double(this._key('morph-speed'));
     this._menuScale = this._settings.get_double(this._key('scale'));
     this._matchQuickSettingsHeight = this._settings.get_boolean(this._key('match-quick-settings-height'));
@@ -583,6 +587,17 @@ export class UIManager {
     return `enable-${this._keyPrefix}-animation`;
   }
 
+  private _readMotion(): void {
+    if (this._motionKey) {
+      const motion = this._settings.get_string(this._motionKey);
+      this._enableAnimation = motion !== 'off';
+      this._growFromButton = motion === 'morph';
+    } else {
+      this._enableAnimation = this._settings.get_boolean(this._animationKey());
+      this._growFromButton = this._settings.get_boolean(this._key('grow-from-button'));
+    }
+  }
+
   _bindSettings() {
     const connectSetting = (key: string, callback: Function) => {
       let id = this._settings.connect(`changed::${key}`, callback.bind(this));
@@ -595,13 +610,8 @@ export class UIManager {
       else if (!enabled && this._isEffectActive) this._removeEffect();
     });
 
-    connectSetting(this._animationKey(), () => {
-      this._enableAnimation = this._settings.get_boolean(this._animationKey());
-    });
-
-    connectSetting(this._key('grow-from-button'), () => {
-      this._growFromButton = this._settings.get_boolean(this._key('grow-from-button'));
-    });
+    const motionKeys = this._motionKey ? [this._motionKey] : [this._animationKey(), this._key('grow-from-button')];
+    for (const key of motionKeys) connectSetting(key, () => this._readMotion());
 
     connectSetting(this._key('morph-speed'), () => {
       this._morphSpeed = this._settings.get_double(this._key('morph-speed'));
@@ -931,9 +941,11 @@ export class UIManager {
 
   private _resolveMenuOrigin(w: number): [number, number] {
     return resolveGlassOrigin(this.animActor, this as any, () => {
-      const monitor = Main.layoutManager.primaryMonitor;
+      // A calendar on another monitor's top bar opens on that monitor.
+      const monitor = this._getMenuMonitorGeometry();
       if (!monitor) return [0, 0];
-      return [(monitor.width / 2) - (w / 2) + this._menuXoffset, (Main.panel.height || 27) + this._menuYoffset];
+      return [monitor.x + (monitor.width / 2) - (w / 2) + this._menuXoffset,
+        monitor.y + (Main.panel.height || 27) + this._menuYoffset];
     });
   }
 
@@ -1178,7 +1190,8 @@ export class UIManager {
           return GLib.SOURCE_REMOVE;
         }
 
-        const opening = this._tickId !== 0;
+        // The colors measured as the menu opened are kept while it grows.
+        const opening = this._tickId !== 0 || this._morphTickId !== 0;
         if (!opening || this._awaitingOpenColors)
           this._updateAdaptiveTextColors(this._awaitingOpenColors);
         return GLib.SOURCE_CONTINUE;
@@ -1383,7 +1396,13 @@ export class UIManager {
     const actor: St.Widget = label instanceof St.Widget && label.mapped ? label : source;
     const [x, y] = actor.get_transformed_position();
     const [w, h] = actor.get_transformed_size();
-    if (!Number.isFinite(x) || !Number.isFinite(y) || !(w >= 1) || !(h >= 1)) return null;
+    if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
+    // A menu opened at a point (the dummy cursor) grows out of a drop there.
+    if (w < 1 && h < 1) {
+      const size = POINT_DROP_SIZE * St.ThemeContext.get_for_stage(global.stage).scale_factor;
+      return [x - size / 2, y - size / 2, size, size];
+    }
+    if (!(w >= 1) || !(h >= 1)) return null;
     const node = actor.get_theme_node();
     const [sx, sy] = actor.get_transformed_size().map((v, i) => v / Math.max(i ? actor.height : actor.width, 1));
     const left = node.get_border_width(St.Side.LEFT) * sx, right = node.get_border_width(St.Side.RIGHT) * sx;

@@ -777,6 +777,7 @@ test('the menu keeps its open colours while the open animation runs', () => {
   manager._updateAdaptiveTextColors = skip => rounds.push(skip);
 
   manager._openSampleId = 0;
+  manager._morphTickId = 0;
   manager._tickId = 5;
   manager._startAdaptiveColorSampling(true);
   assert.deepEqual(rounds, [], 'not inside open-state-changed, which GNOME 51 emits before showing the menu');
@@ -787,6 +788,10 @@ test('the menu keeps its open colours while the open animation runs', () => {
   timers[0]();
   assert.deepEqual(rounds, [true], 'held while the spring runs');
   manager._tickId = 0;
+  manager._morphTickId = 7;
+  timers[0]();
+  assert.deepEqual(rounds, [true], 'held while the glass grows from the button');
+  manager._morphTickId = 0;
   timers[0]();
   assert.deepEqual(rounds, [true, false], 'sampled again once it has settled');
 

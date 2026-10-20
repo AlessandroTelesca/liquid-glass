@@ -164,6 +164,36 @@
       <summary>Blur my Shell is blurring popups</summary>
       <description>Written by the shell at runtime so the preferences window can warn that Blur my Shell's popup blur shows through the glass.</description>
     </key>
+    <key name="blur-my-shell-panel-blur" type="b">
+      <default>false</default>
+      <summary>Blur my Shell is blurring the panel</summary>
+      <description>Written by the shell at runtime so the preferences window can warn that Blur my Shell's panel blur shows through the glass.</description>
+    </key>
+    <key name="blur-my-shell-dock-blur" type="b">
+      <default>false</default>
+      <summary>Blur my Shell is blurring the dock</summary>
+      <description>Written by the shell at runtime so the preferences window can warn that Blur my Shell's dock blur shows through the glass.</description>
+    </key>
+    <key name="blur-my-shell-applications-blur" type="b">
+      <default>false</default>
+      <summary>Blur my Shell is blurring the applications</summary>
+      <description>Written by the shell at runtime so the preferences window can warn that Blur my Shell's applications blur shows through the glass.</description>
+    </key>
+    <key name="blur-my-shell-override" type="b">
+      <default>false</default>
+      <summary>Turn off Blur my Shell's blur where there is glass</summary>
+      <description>While Liquid Glass runs, it turns off Blur my Shell's blur for the parts listed in blur-my-shell-override-parts that also have glass, and turns it back on when this is off, when they lose their glass, or when Liquid Glass is turned off.</description>
+    </key>
+    <key name="blur-my-shell-override-parts" type="as">
+      <default>['popups', 'panel', 'dock']</default>
+      <summary>Parts of Blur my Shell to override</summary>
+      <description>Any of "popups" (menus, Quick Settings, notifications and OSDs; Blur my Shell blurs dialogs and switchers with the same setting), "panel" (the top bar), "dock" (Dash to Dock) and "applications" (application windows).</description>
+    </key>
+    <key name="blur-my-shell-overridden" type="as">
+      <default>[]</default>
+      <summary>Blur my Shell parts turned off by Liquid Glass</summary>
+      <description>Written by the shell at runtime: the parts whose blur Liquid Glass turned off and turns back on, kept here so that a restart of the shell still turns them back on.</description>
+    </key>
     <key name="detected-extra-menus" type="as">
       <default>[]</default>
       <summary>Detected optional panel menus</summary>
@@ -372,6 +402,11 @@
     <key name="enable-quick-settings-glass" type="b">
       <default>true</default>
       <summary>Enable glass effect for Quick Settings</summary>
+    </key>
+    <key name="quick-settings-toggle-animation" type="b">
+      <default>false</default>
+      <summary>Animate the buttons as Quick Settings opens in Individual buttons mode</summary>
+      <description>The buttons spring out of the middle of the menu, those nearest the panel button first. Follows the desktop's reduced motion setting.</description>
     </key>
     <key name="enable-quick-settings-animation" type="b">
       <default>false</default>
@@ -936,6 +971,16 @@
       <summary>Temperature unit</summary>
       <description>"auto", "celsius" or "fahrenheit".</description>
     </key>
+    <key name="desktop-widget-menu-animation" type="s">
+      <choices>
+        <choice value="off"/>
+        <choice value="spring"/>
+        <choice value="morph"/>
+      </choices>
+      <default>"off"</default>
+      <summary>How the menu of the desktop items opens</summary>
+      <description>"morph": the glass grows out of a drop where you clicked; "spring": the menu scales up on a spring; "off": it just appears. The speed and springs are those of the other top bar menus.</description>
+    </key>
     <key name="desktop-widget-tint-color" type="s">
       <default>"#ffffff"</default>
       <summary>Tint color (Hex)</summary>
@@ -992,7 +1037,7 @@
       <description>A font description without a size, such as "Cantarell Bold": one of the fonts the extension ships (Antonio, Barlow Condensed, Saira Extra Condensed, Sofia Sans Extra Condensed) with a weight (Light, Regular, SemiBold, Bold), or any installed font. Empty uses the interface font in bold.</description>
     </key>
     <key name="glass-clock-size" type="i">
-      <range min="48" max="480"/>
+      <range min="48" max="960"/>
       <default>400</default>
       <summary>Size of the glass clock's digits (px)</summary>
     </key>

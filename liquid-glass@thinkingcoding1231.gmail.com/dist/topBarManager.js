@@ -14,14 +14,19 @@ const SHADER_PADDING = 20;
 // Space for the pill shadow.
 const SHADOW_ROOM = 48;
 const SIDES = ['top', 'bottom', 'left', 'right'];
+
 function sanitizeStyle(value) {
     return value === 'pill' || value === 'islands' ? value : 'off';
 }
+
 /** Glass behind the top bar: one pill or separate islands for its three button groups. */
 export class TopBarManager {
     _path;
     _settings;
     _logger;
+    _panel;
+    _panelBox;
+    _owner;
     _style = 'off';
     _glass = null;
     _settingsIds = [];
@@ -43,12 +48,21 @@ export class TopBarManager {
     _forwardedPresses = new Map();
     _stagePointerSignalId = 0;
     _applyingLayout = false;
-    constructor(_path, _settings, _logger) {
+
+    constructor(_path, _settings, _logger,
+    // The panel's boxes are not part of the shell's typings.
+    _panel = Main.panel, _panelBox = Main.layoutManager.panelBox,
+    // Names this glass in diagnostics.
+    _owner = 'top-bar') {
         this._path = _path;
         this._settings = _settings;
         this._logger = _logger;
+        this._panel = _panel;
+        this._panelBox = _panelBox;
+        this._owner = _owner;
         this._text = new AdaptiveTextColor(() => this._textRoots(), () => (this._glass ? [this._glass] : []), _logger, 'top bar');
     }
+
     setup() {
         const watch = (key, fn) => this._settingsIds.push(this._settings.connect(`changed::${key}`, fn));
         watch('top-bar-style', () => this._apply());
@@ -62,9 +76,11 @@ export class TopBarManager {
         }
         this._apply();
     }
+
     _key(suffix) {
         return `top-bar-${suffix}`;
     }
+
     _apply() {
         const style = sanitizeStyle(this._settings.get_string('top-bar-style'));
         if (style === this._style)
@@ -74,12 +90,13 @@ export class TopBarManager {
         if (style !== 'off')
             this._create();
     }
+
     _create() {
-        const panel = Main.panel;
-        const panelBox = Main.layoutManager.panelBox;
+        const panel = this._panel;
+        const panelBox = this._panelBox;
         panel.add_style_class_name('liquid-glass-transparent');
         const glass = new BackdropGlass({
-            extensionPath: this._path, settings: this._settings, logger: this._logger, owner: 'top-bar', outline: 'top-bar',
+            extensionPath: this._path, settings: this._settings, logger: this._logger, owner: this._owner, outline: 'top-bar',
         });
         this._glass = glass;
         glass.reactive = false;
@@ -93,7 +110,8 @@ export class TopBarManager {
         this._lastKey = '';
         this._lastIslandRects = [];
         this._islandGeometryHoldFrames = 0;
-        this._savedStyles = [panel, panel._leftBox, panel._centerBox, panel._rightBox].map(actor => [actor, actor.get_style()]);
+        const styled = new Set([panel, panel._leftBox, panel._centerBox, ...this._sections()]);
+        this._savedStyles = [...styled].map(actor => [actor, actor.get_style()]);
         this._childrenStyles = [];
         // Reapply layout when the theme changes the bar height.
         this._panelStyleId = panel.connect('style-changed', () => this._applyLayout());
@@ -114,15 +132,22 @@ export class TopBarManager {
         this._sync();
         this._syncText();
     }
+
     _connectBoxSignals() {
-        const panel = Main.panel;
-        for (const box of [panel._leftBox, panel._centerBox, panel._rightBox]) {
+        for (const box of this._sections()) {
             const addedId = box.connect('child-added', () => this._applyLayout());
             // A removed button may be re-added elsewhere, so it gets its own styles back.
             const removedId = box.connect('child-removed', (_box, child) => this._releaseChild(child));
             this._boxSignalIds.push([box, addedId], [box, removedId]);
         }
     }
+
+    // The boxes the buttons sit in.
+    _sections() {
+        const panel = this._panel;
+        return [panel._leftBox, panel._centerBin ?? panel._centerBox, panel._rightBox];
+    }
+
     _releaseChild(child) {
         const target = this._containerTargets.find(([container]) => container === child)?.[1];
         for (const [actor, style] of this._childrenStyles) {
@@ -143,6 +168,7 @@ export class TopBarManager {
         target.remove_style_pseudo_class('hover');
         target.remove_style_pseudo_class('active');
     }
+
     _disconnectBoxSignals() {
         for (const [box, id] of this._boxSignalIds) {
             if (isActorValid(box)) {
@@ -151,6 +177,7 @@ export class TopBarManager {
         }
         this._boxSignalIds = [];
     }
+
     _applyMaterial() {
         const glass = this._glass;
         if (!glass)
@@ -163,15 +190,18 @@ export class TopBarManager {
         glass.setContrast(this._settings.get_double(this._key('contrast')));
         glass.setSaturation(this._settings.get_double(this._key('saturation')));
     }
+
     _insets(kind) {
         return Object.fromEntries(SIDES.map(side => [side, this._settings.get_int(this._key(`${kind}-${side}`))]));
     }
+
     // Buttons made without a menu carry a dummy one and act on their own handlers.
     _targetMenu(target) {
         const anyTarget = target;
         const menu = anyTarget.menu ?? anyTarget._delegate?.menu;
         return menu instanceof PopupMenu.PopupMenuBase ? menu : null;
     }
+
     _eventComesFromTarget(target, event) {
         let source = event.get_source();
         while (source) {
@@ -181,6 +211,7 @@ export class TopBarManager {
         }
         return false;
     }
+
     // A bounds test rather than a pick: this runs every frame and a pick walks the whole stage.
     _pointerIsOverContainer(container) {
         if (!container.mapped)
@@ -190,6 +221,7 @@ export class TopBarManager {
         const [w, h] = container.get_transformed_size();
         return px >= x && px < x + w && py >= y && py < y + h;
     }
+
     _syncForwardedHover() {
         for (const [container, target] of this._containerTargets) {
             if (!isActorValid(container) || !isActorValid(target))
@@ -205,16 +237,19 @@ export class TopBarManager {
             }
         }
     }
+
     _isPress(event) {
         const type = event.type();
         if (type === Clutter.EventType.TOUCH_BEGIN)
             return true;
         return type === Clutter.EventType.BUTTON_PRESS && event.get_button() === Clutter.BUTTON_PRIMARY;
     }
+
     _toggleOverview() {
         if (Main.overview.shouldToggleByCornerOrButton())
             Main.overview.toggle();
     }
+
     // A press on the wrapper above or below the button. Menus open on press, as the panel's own
     // buttons do, so their release needs no handling; Activities and plain buttons act on release.
     _onWrapperPress(container, target, event) {
@@ -237,6 +272,7 @@ export class TopBarManager {
         this._forwardedPresses.set(container, { touch, native: false });
         return Clutter.EVENT_STOP;
     }
+
     // The stage sees every release first, also one that ends outside the wrapper.
     _onStageEvent(event) {
         const type = event.type();
@@ -276,6 +312,7 @@ export class TopBarManager {
         }
         return Clutter.EVENT_PROPAGATE;
     }
+
     _setupContainerForwarding(container, target) {
         if (this._containerTargets.some(([actor]) => actor === container))
             return;
@@ -301,6 +338,7 @@ export class TopBarManager {
         this._containerTargets.push([container, target]);
         this._containerSignalIds.push([container, enterId], [container, leaveId], [target, targetLeaveId], [container, pressId]);
     }
+
     _disconnectContainerSignals() {
         // The panel's wrappers are not reactive on their own.
         for (const [container] of this._containerTargets) {
@@ -318,6 +356,7 @@ export class TopBarManager {
             global.stage.disconnect(this._stagePointerSignalId);
         this._stagePointerSignalId = 0;
     }
+
     // The bar grows by the margin and padding while each button keeps the theme's height. The
     // wrappers around the buttons fill the whole bar, so a press at the screen edge still lands.
     _applyLayout() {
@@ -326,7 +365,8 @@ export class TopBarManager {
             return;
         this._applyingLayout = true;
         try {
-            const panel = Main.panel;
+            const panel = this._panel;
+            const sections = this._sections();
             const margin = this._margin = this._insets('margin');
             const padding = this._padding = this._insets('padding');
             const top = margin.top + padding.top;
@@ -342,12 +382,18 @@ export class TopBarManager {
             const totalHeight = baseHeight + top + bottom;
             for (const [actor, original] of this._savedStyles) {
                 if (actor === panel) {
-                    actor.set_style(withOwn(original, `height: ${totalHeight}px; min-height: ${totalHeight}px; padding-top: 0px; padding-bottom: 0px;`));
+                    // Inline styles win over the stylesheet's transparent background, and Multi Monitors Bar
+                    // colours its bars with one.
+                    actor.set_style(withOwn(original, `height: ${totalHeight}px; min-height: ${totalHeight}px; padding-top: 0px; ` +
+                        'padding-bottom: 0px; background-color: transparent !important;'));
                     continue;
                 }
                 const leftInset = actor === panel._leftBox ? margin.left + padding.left : 0;
                 const rightInset = actor === panel._rightBox ? margin.right + padding.right : 0;
                 actor.set_style(withOwn(original, `height: ${totalHeight}px; padding: 0px ${rightInset}px 0px ${leftInset}px;`));
+                // Multi Monitors Bar's _centerBox only holds the row its buttons are in.
+                if (!sections.includes(actor))
+                    continue;
                 for (const child of actor.get_children()) {
                     if (!(child instanceof St.Widget))
                         continue;
@@ -365,6 +411,7 @@ export class TopBarManager {
             this._applyingLayout = false;
         }
     }
+
     _findPanelButton(root) {
         const queue = [root];
         while (queue.length > 0) {
@@ -375,6 +422,7 @@ export class TopBarManager {
         }
         return null;
     }
+
     _setChildStyle(actor, extra) {
         let entry = this._childrenStyles.find(([a]) => a === actor);
         if (!entry) {
@@ -384,6 +432,7 @@ export class TopBarManager {
         const own = entry[1]?.trim().replace(/;$/, '');
         actor.set_style(own ? `${own}; ${extra}` : extra);
     }
+
     _syncText() {
         if (!this._glass || !this._settings.get_boolean(this._key('enable-adaptive-text-color'))) {
             this._text.clear();
@@ -391,14 +440,18 @@ export class TopBarManager {
         }
         this._text.start(this._settings.get_int(this._key('sample-interval-ms')), sanitizeColorPreference(this._settings.get_string(this._key('adaptive-text-preference'))));
     }
+
     _textRoots() {
-        const panel = Main.panel;
-        return [panel._leftBox, panel._centerBox, panel._rightBox].filter(box => box && box.mapped);
+        return this._sections().filter(box => box.mapped);
     }
+
     // Visible child extent in bar coordinates.
     _boxExtent(box) {
         let x0 = Infinity, x1 = -Infinity;
-        const [bx] = box.get_position();
+        // A section may sit inside another box (Multi Monitors Bar's center row).
+        let bx = 0;
+        for (let actor = box; actor && actor !== this._panel; actor = actor.get_parent())
+            bx += actor.get_position()[0];
         for (const child of box.get_children()) {
             if (!child.visible || child.width < 1)
                 continue;
@@ -408,13 +461,14 @@ export class TopBarManager {
         }
         return x1 > x0 ? [x0, x1] : null;
     }
+
     // Sync the glass beneath the panel, hiding it with the bar.
     _sync() {
         // Modal overlays may suppress leave-event; reconcile hover each frame.
         this._syncForwardedHover();
         const glass = this._glass;
-        const panelBox = Main.layoutManager.panelBox;
-        const panel = Main.panel;
+        const panelBox = this._panelBox;
+        const panel = this._panel;
         const shown = panelBox.visible && panelBox.mapped && panel.mapped;
         if (!shown) {
             if (glass.visible)
@@ -447,7 +501,7 @@ export class TopBarManager {
             rects.push(...this._lastIslandRects.map(rect => [...rect]));
         }
         else {
-            for (const box of [panel._leftBox, panel._centerBox, panel._rightBox]) {
+            for (const box of this._sections()) {
                 const extent = this._boxExtent(box);
                 if (!extent)
                     continue;
@@ -485,6 +539,7 @@ export class TopBarManager {
         }
         glass.syncSources();
     }
+
     _remove() {
         stopStageLoop(this._frameSignalSlot, this._frameSlot);
         this._text.clear();
@@ -496,10 +551,10 @@ export class TopBarManager {
             glass.cleanup();
             if (isActorValid(glass))
                 glass.destroy();
-            Main.panel.remove_style_class_name('liquid-glass-transparent');
+            this._panel.remove_style_class_name('liquid-glass-transparent');
         }
         if (this._panelStyleId)
-            Main.panel.disconnect(this._panelStyleId);
+            this._panel.disconnect(this._panelStyleId);
         this._panelStyleId = 0;
         for (const [actor, style] of this._savedStyles)
             if (isActorValid(actor))
@@ -513,15 +568,18 @@ export class TopBarManager {
         this._islandGeometryHoldFrames = 0;
         this._style = 'off';
     }
+
     cleanup() {
         for (const id of this._settingsIds)
             this._settings.disconnect(id);
         this._settingsIds = [];
         this._remove();
     }
+
     get _frameSlot() {
         return { get: () => this._frameSyncId, set: (id) => { this._frameSyncId = id; } };
     }
+
     get _frameSignalSlot() {
         return { get: () => this._frameSignalId, set: (id) => { this._frameSignalId = id; } };
     }

@@ -18,8 +18,9 @@ import { coglContext } from '../shellVersion.js';
 
 // The drop shadow's reach (px), a little inside the distance field's.
 const SHADOW_REACH = 40;
-// Font changes are applied once the preferences stop changing them.
-const FONT_DELAY_MS = 300;
+// New digits are made once the preferences stop changing them; until then
+// the digits shown are stretched to the new size.
+const FONT_DELAY_MS = 120;
 // The date sits this far (px) above the glass digits' outline.
 const DATE_GAP = 6;
 
@@ -63,7 +64,12 @@ export class GlassClock implements DesktopItem {
   private _text = '';
   // The digits' height in the font as it is (px), once known.
   private _digitHeight = 0;
+  // The font the digits shown were made in, and their field's size.
+  private _shownFont: Omit<DigitsRequest, 'text'> | null = null;
+  private _shownSize: [number, number] = [1, 1];
+  // The field's size on screen, and how much it is stretched to get there.
   private _fieldSize: [number, number] = [1, 1];
+  private _fieldScale: [number, number] = [1, 1];
   private _size: [number, number] = [1, 1];
   private _bounds: [number, number, number, number] = [0, 0, 1, 1];
   private _sizeChanged = true;
@@ -78,7 +84,7 @@ export class GlassClock implements DesktopItem {
     this._env = env;
     this.actor = new St.Widget({ name: 'liquid-glass-desktop-clock', reactive: true });
     this._glass = new BackdropGlass({
-      extensionPath: env.path, settings: env.settings, logger: env.logger, owner: 'desktop-clock', shapeTexture: true,
+      extensionPath: env.path, settings: env.settings, logger: env.logger, owner: 'desktop-clock', shapeTexture: true, underWindows: true,
     } as any);
     this._glass.setPadding(0);
     this._glass.setIsDock(false);
@@ -87,12 +93,15 @@ export class GlassClock implements DesktopItem {
     this._date = new St.Label({ style_class: 'liquid-glass-clock-date' });
     this.actor.add_child(this._glass);
     this.actor.add_child(this._date);
-    connectClicks(this.actor, () => {}, (x, y) => env.menu(this, x, y));
+    connectClicks(this.actor, () => { }, (x, y) => env.menu(this, x, y));
 
     this._adaptive = new AdaptiveTextColor(() => [this._date], () => [this._glass], env.logger, 'clock');
     const watch = (key: string, fn: () => void) => this._settingsIds.push(env.settings.connect(`changed::${key}`, fn));
     for (const key of ['glass-clock-font', 'glass-clock-size', 'glass-clock-stretch', 'glass-clock-height', 'glass-clock-tall-style'])
-      watch(key, () => this._queueFont());
+      watch(key, () => {
+        this._fitShown();
+        this._queueFont();
+      });
     watch('glass-clock-format', () => this._tick());
     watch('glass-clock-show-date', () => this._tick());
     for (const key of ['tint-color', 'tint-strength', 'blur-radius', 'brightness', 'contrast', 'saturation'])
@@ -145,18 +154,40 @@ export class GlassClock implements DesktopItem {
     });
   }
 
-  private _loadFont(): void {
+  private _wantedFont(): Omit<DigitsRequest, 'text'> {
     const s = this._env.settings;
-    const font = this._fontDescription();
-    const size = s.get_int('glass-clock-size');
-    const stretch = s.get_double('glass-clock-stretch');
-    const height = s.get_double('glass-clock-height');
     const style: TallStyle = s.get_string('glass-clock-tall-style') === 'upright' ? 'upright' : 'even';
-    const next = { extensionPath: this._env.path, font, size, stretch, height, style };
+    return {
+      extensionPath: this._env.path, font: this._fontDescription(), size: s.get_int('glass-clock-size'),
+      stretch: s.get_double('glass-clock-stretch'), height: s.get_double('glass-clock-height'), style,
+    };
+  }
+
+  // Stretches the digits shown to about the size the settings ask for, so a
+  // change shows at once; the new digits take a while to make.
+  private _fitShown(): void {
+    const shown = this._shownFont;
+    if (!shown) return;
+    const wanted = this._wantedFont();
+    let grow = [1, 1];
+    if (wanted.font === shown.font && wanted.style === shown.style) // Only when the font and style (along upright or just stretch) are the same
+      grow = [wanted.size * wanted.stretch / (shown.size * shown.stretch), wanted.size * wanted.height / (shown.size * shown.height)];
+    // The field's margin for the shadow stays as wide. result = ((width, height) - shadow margin * 2) * scale + shadow margin
+    const size = this._shownSize.map((v, i) => Math.max(v - 2 * FIELD_RANGE, 1) * grow[i] + 2 * FIELD_RANGE) as [number, number];
+    if (size[0] === this._fieldSize[0] && size[1] === this._fieldSize[1]) return;
+    this._fieldScale = [size[0] / this._shownSize[0], size[1] / this._shownSize[1]];
+    this._fieldSize = size;
+    // The glass keeps drawing at the resolution of its field, stretched to its size.
+    this._glass.set_size(...size);
+    this._sizeChanged = true;
+  }
+
+  private _loadFont(): void {
+    const next = this._wantedFont();
     if (this._font && JSON.stringify(next) === JSON.stringify(this._font)) return;
     this._font = next;
     this._prepared.clear();
-    this._date.set_style(`font-size: ${Math.max(11, Math.round(size * 0.13))}px;`);
+    this._date.set_style(`font-size: ${Math.max(11, Math.round(next.size * 0.13))}px;`);
     this._text = '';
     this._tick();
   }
@@ -242,6 +273,8 @@ export class GlassClock implements DesktopItem {
       glass = await this._glassFor(text);
       if (font !== this._font || text !== this._text) return;
     } catch (e) {
+      // Given up for newer digits.
+      if (font !== this._font || text !== this._text) return;
       if (!(e instanceof GLib.Error && e.matches(Gio.IOErrorEnum, Gio.IOErrorEnum.CANCELLED)))
         this._env.logger.error(`[Liquid Glass] Could not draw the clock's digits: ${e}`);
       // Tried again at the next minute.
@@ -249,7 +282,10 @@ export class GlassClock implements DesktopItem {
       return;
     }
     const { texture, band, width, height } = glass;
+    this._shownFont = font;
+    this._shownSize = [width, height];
     this._fieldSize = [width, height];
+    this._fieldScale = [1, 1];
     this._glass.set_size(width, height);
     this._glass.setResolution(width, height);
     this._glass.setGlassGeometry(0, 0, width, height);
@@ -261,27 +297,27 @@ export class GlassClock implements DesktopItem {
       if (key !== text) this._prepared.delete(key);
     }
     // A failure shows when that minute comes and the digits are made again.
-    this._glassFor(this._timeText(GLib.DateTime.new_now_local().add_minutes(1)!)).catch(() => {});
+    this._glassFor(this._timeText(GLib.DateTime.new_now_local().add_minutes(1)!)).catch(() => { });
   }
 
   // The date above the digits; the field's margin is mostly empty, so the
   // label goes into it.
   private _layout(): void {
     const [fw, fh] = this._fieldSize;
+    const [rx, ry] = this._fieldScale.map(k => FIELD_RANGE * k); // Scale the margins
     const [, dateH] = this._date.visible ? this._date.get_preferred_height(-1) : [0, 0];
     const [, dateW] = this._date.visible ? this._date.get_preferred_width(-1) : [0, 0];
-    const glassY = Math.max(dateH + DATE_GAP - FIELD_RANGE, 0);
+    const glassY = Math.max(dateH + DATE_GAP - ry, 0);
     const width = Math.max(fw, dateW);
     const glassX = Math.round((width - fw) / 2);
     this._glass.set_position(glassX, glassY);
     const dateX = Math.round((width - dateW) / 2);
-    const dateY = Math.max(glassY + FIELD_RANGE - DATE_GAP - dateH, 0);
+    const dateY = Math.max(glassY + ry - DATE_GAP - dateH, 0); // Ususally 0
     this._date.set_position(dateX, dateY);
     this._size = [Math.ceil(width), Math.ceil(glassY + fh)];
     this.actor.set_size(...this._size);
 
-    const r = FIELD_RANGE;
-    let [x0, y0, x1, y1] = [glassX + r, glassY + r, glassX + fw - r, glassY + fh - r];
+    let [x0, y0, x1, y1] = [glassX + rx, glassY + ry, glassX + fw - rx, glassY + fh - ry];
     if (this._date.visible) {
       x0 = Math.min(x0, dateX);
       x1 = Math.max(x1, dateX + dateW);
@@ -322,6 +358,7 @@ export class GlassClock implements DesktopItem {
     this._adaptive.clear();
     this._source.destroy();
     this._font = null;
+    this._shownFont = null;
     this._prepared.clear();
     this._glass.cleanup();
     if (isActorValid(this.actor)) this.actor.destroy();
