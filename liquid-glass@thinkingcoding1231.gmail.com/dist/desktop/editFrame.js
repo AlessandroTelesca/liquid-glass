@@ -55,8 +55,10 @@ export class EditFrame {
         this._layer.add_child(this._frame);
         if (_callbacks.resized) {
             for (const [, , cursor] of HANDLES) {
-                const handle = new St.Widget({ style_class: 'liquid-glass-edit-handle', reactive: true,
-                    width: HANDLE_SIZE, height: HANDLE_SIZE });
+                const handle = new St.Widget({
+                    style_class: 'liquid-glass-edit-handle', reactive: true,
+                    width: HANDLE_SIZE, height: HANDLE_SIZE
+                });
                 setHoverCursor(handle, cursor);
                 this._layer.add_child(handle);
                 this._handles.push(handle);
@@ -94,11 +96,11 @@ export class EditFrame {
     _frameRect() {
         const r = this._resizing ?? itemRect(this.item);
         const g = FRAME_GAP;
-        return { x: r.x - g, y: r.y - g, width: r.width + g * 2, height: r.height + g * 2 };
+        return { x: r.x - g, y: r.y - g, width: r.width + g * 2, height: r.height + g * 2 }; // Rect that includes FRAME_GAP
     }
 
     _handleCenter(f, hx, hy) {
-        return [f.x + (hx + 1) / 2 * f.width, f.y + (hy + 1) / 2 * f.height];
+        return [f.x + (hx + 1) / 2 * f.width, f.y + (hy + 1) / 2 * f.height]; // Maps handle side (-1, 0, 1) to position ratio (0, 0.5, 1). And then calculates the center of the handle.
     }
 
     sync() {
@@ -182,11 +184,12 @@ export class EditFrame {
         return layout.getWorkAreaForMonitor(monitor?.index ?? layout.primaryIndex);
     }
 
-    // Dash to Dock's docks. One that hides itself leaves the work area as it is
+    // Returns the docks' rects. One that hides itself leaves the work area as it is
     // but still covers the Done button when it slides in.
     _docks() {
+        const dockNames = ['dashtodockContainer', 'DhruvaContainer'];
         return Main.layoutManager.uiGroup.get_children()
-            .filter(actor => actor.get_name() === 'dashtodockContainer' && actor.visible)
+            .filter(actor => dockNames.includes(actor.get_name() ?? '') && actor.visible)
             .map(actor => {
             const [x, y] = actor.get_transformed_position();
             const [width, height] = actor.get_transformed_size();

@@ -1,6 +1,7 @@
 import Adw from 'gi://Adw';
 import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
+import Graphene from 'gi://Graphene';
 import Gtk from 'gi://Gtk';
 import Pango from 'gi://Pango';
 import Soup from 'gi://Soup?version=3.0';
@@ -219,6 +220,8 @@ function addBlurMyShellWarning(page, controls) {
   const group = new Adw.PreferencesGroup();
   const check = (keys) => {
     if (!keys) return false;
+    const enabled = controls.settings.get_boolean('enable-blur-my-shell');
+    if (!enabled) return false;
     return keys.some(key => controls.settings.get_boolean(key));
   };
   const bmsKeys = ['panel', 'dock', 'applications'].map(part => `blur-my-shell-${part}-blur`);
@@ -227,15 +230,23 @@ function addBlurMyShellWarning(page, controls) {
   overrideRow.add_prefix(new Gtk.Image({ icon_name: 'dialog-warning-symbolic' }));
   const overrideButton = new Gtk.Button({ label: 'Go to override settings', valign: Gtk.Align.CENTER });
   overrideRow.add_suffix(overrideButton);
-  // go to the override settings
+  let scrollTick = 0;
   overrideButton.connect('clicked', () => {
     const window = page.get_root();
+    const targetGroup = findWidgetByName(window, 'compatibility-group');
+    if (!targetGroup) return;
     window.visible_page_name = 'rendering';
-    GLib.idle_add(GLib.PRIORITY_LOW, () => {
-      const targetGroup = findWidgetByName(window, 'blur-my-shell-override');
-      if (targetGroup) {
-        targetGroup.grab_focus();
-      }
+    if (scrollTick) targetGroup.remove_tick_callback(scrollTick);
+    // A page that has never been shown has no allocation yet, so wait for a frame where it has one.
+    scrollTick = targetGroup.add_tick_callback(() => {
+      const scrolled = targetGroup.get_ancestor(Gtk.ScrolledWindow);
+      if (targetGroup.get_height() === 0 || scrolled.get_height() === 0) return GLib.SOURCE_CONTINUE;
+      scrollTick = 0;
+      // Focusing the row alone only scrolls until it peeks in at the bottom edge.
+      // The point is relative to the viewport, so it is an offset from the current scroll position.
+      const [, point] = targetGroup.compute_point(scrolled.get_child(), new Graphene.Point({ x: 0, y: 0 }));
+      scrolled.vadjustment.value += point.y - 12;
+      findWidgetByName(targetGroup, 'blur-my-shell-override').grab_focus();
       return GLib.SOURCE_REMOVE;
     });
   });
@@ -261,7 +272,7 @@ function findWidgetByName(parent, name) {
 function addCompatibility(page, controls) {
   if (!blurMyShellSettings('popup')) return;
   const settings = controls.settings;
-  const group = controls.group(page, 'Compatibility', '');
+  const group = controls.group(page, 'Compatibility', '', 'compatibility-group');
   const override = controls.toggle(group, 'Override Blur my Shell', 'blur-my-shell-override',
     'Turns off Blur my Shell\'s blur where there is glass, and back on when this is off or Liquid Glass is turned off', 'blur-my-shell-override');
   const branch = new Branch(override);

@@ -96,7 +96,7 @@ export function parsePositions(json: string): Record<string, SavedPosition> {
   if (!parsed || typeof parsed !== 'object') return out;
   for (const [id, value] of Object.entries(parsed as Record<string, unknown>)) {
     if (Array.isArray(value) && (value.length === 2 || value.length === 3) &&
-        value.every(v => typeof v === 'number' && Number.isFinite(v)))
+      value.every(v => typeof v === 'number' && Number.isFinite(v)))
       out[id] = value.length === 2 ? [value[0], value[1]] : [value[0], value[1], value[2]];
   }
   return out;
@@ -138,7 +138,7 @@ export function placeBeside(frame: Rect, size: [number, number], gap: number, ar
     [frame.x + frame.width + gap, cy],
     [frame.x - gap - w, cy],
   ];
-  const fits = ([x, y]: [number, number]) => {
+  const fits = ([x, y]: [number, number]) => { // Check if the candicates fit within the area and doesn't overlap with obstacles.
     const r = { x, y, width: w, height: h };
     return x >= area.x && y >= area.y && x + w <= area.x + area.width && y + h <= area.y + area.height &&
       !obstacles.some(o => overlaps(r, o));

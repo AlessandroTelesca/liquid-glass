@@ -123,6 +123,7 @@ export class BlurMyShellWatch {
 
     _update() {
         const active = Main.extensionManager.lookup(UUID)?.state === ACTIVE;
+        this._settings.set_boolean('enable-blur-my-shell', active);
         const blurring = active && (this._parts.get('popups')?.get_boolean('blur') ?? false);
         if (blurring === this._blurring)
             return;
