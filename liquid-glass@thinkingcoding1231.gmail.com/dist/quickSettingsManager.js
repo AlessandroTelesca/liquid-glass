@@ -417,10 +417,11 @@ export class QuickSettingsManager {
         this._isEffectActive = true;
         if (!this.targetActor)
             return;
+        // The x-offset moves the menu's parent, which the BoxPointer's placement already sees. In toggle mode the
+        // glass is only on the toggles, which sit inside the menu.
         this._undoEdgeInset = keepGlassInWorkArea(this.menu._boxPointer, () => {
-            // In toggle mode the glass is only on the toggles, which sit inside the menu.
             const overhang = this._activeMode === 'toggles' ? 0 : this._glassExpand;
-            return [overhang - this._menuXoffset, overhang + this._menuXoffset];
+            return [overhang, overhang];
         });
         this._activeMode = this._applyTo;
         this._tintColorArray = hexToColorArray(this._settings.get_string(this._key('tint-color')));

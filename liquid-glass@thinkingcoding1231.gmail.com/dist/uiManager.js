@@ -647,6 +647,7 @@ export class UIManager {
         this.animActor.translation_x = this._menuXoffset;
         this.animActor.translation_y = this._menuYoffset;
         this._glassExpand = this._settings.get_int(this._key('glass-expand'));
+        // The x-offset moves the box inside the BoxPointer, so the glass reaches that much further out on one side.
         this._undoEdgeInset = keepGlassInWorkArea(this.menu._boxPointer, () => [this._glassExpand - this._menuXoffset, this._glassExpand + this._menuXoffset]);
         this._animationInterval = this._settings.get_int(this._key('animation-interval-ms'));
         this._adaptiveConfig = {
