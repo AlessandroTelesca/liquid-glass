@@ -17,6 +17,7 @@ import { resolveMonitorGeometry, getAllocatedSize } from './actors/geometry.js';
 import { isActorValid } from './actors/lifecycle.js';
 import { startSyncLoop, stopStageLoop } from './animation/frameLoops.js';
 import { placeScreenGlass, resolveGlassOrigin, applyGlassScale, GLASS_SHADOW_MAX_RADIUS } from './actors/glassBounds.js';
+import { keepGlassInWorkArea } from './actors/menuEdge.js';
 import { resolveCrossFade, adaptiveColorTweener, hexToColorArray, hexToRgb, rgbToHex } from './animation/colors.js';
 
 import { MENU_NO_ANIMATION, accentColors } from './shellVersion.js';
@@ -114,6 +115,7 @@ export class UIManager {
   private _ownOpenHeight: number = 0;
   private _measureLaterIds: Set<number> = new Set();
   private _restoreQuickSettings: (() => void) | null = null;
+  private _undoEdgeInset: (() => void) | null = null;
   private _tickId: number;
   private _contrastSampler: StageContrastSampler;
   private _adaptiveTimerId: number;
@@ -673,6 +675,7 @@ export class UIManager {
     connectSetting(this._key('glass-expand'), () => {
       if (this.glass) {
         this._glassExpand = this._settings.get_int(this._key('glass-expand'));
+        this.targetActor.queue_relayout();
       }
     });
 
@@ -680,6 +683,7 @@ export class UIManager {
       if (this.animActor) {
         this._menuXoffset = this._settings.get_int(this._key('x-offset'));
         this.animActor.translation_x = this._menuXoffset;
+        this.targetActor.queue_relayout();
       }
     });
 
@@ -735,6 +739,8 @@ export class UIManager {
     this.animActor.translation_y = this._menuYoffset;
 
     this._glassExpand = this._settings.get_int(this._key('glass-expand'));
+    this._undoEdgeInset = keepGlassInWorkArea(this.menu._boxPointer,
+      () => [this._glassExpand - this._menuXoffset, this._glassExpand + this._menuXoffset]);
     this._animationInterval = this._settings.get_int(this._key('animation-interval-ms'));
 
     this._adaptiveConfig = {
@@ -1644,7 +1650,11 @@ export class UIManager {
   }
 
   private _restoreMenuActors() {
-    if (!this._actorDestroyed) this.targetActor.remove_style_class_name('liquid-glass-transparent');
+    if (!this._actorDestroyed) {
+      this._undoEdgeInset?.();
+      this.targetActor.remove_style_class_name('liquid-glass-transparent');
+    }
+    this._undoEdgeInset = null;
     if (!this._actorDestroyed && this.animActor) {
       this.animActor.remove_style_class_name('liquid-glass-transparent');
       this.animActor.remove_style_class_name('liquid-glass-menu-root');

@@ -28,7 +28,8 @@
 //              also scale (the calendar, Quick Settings in both modes and the launcher
 //              on a small logical screen: run-glass.sh with LG_SPIKE_MONITOR=2256x1504 and
 //              LG_MONITORS_XML=tools/backdrop-spike/monitors-200.xml; LG_DRV_LIGHT=1 for the
-//              light shell theme) and widgetcolors (the weather card's text colours after rebuilds);
+//              light shell theme), widgetcolors (the weather card's text colours after rebuilds) and menuedge
+//              (whether the glass of menus at the screen's sides stays inside the work area);
 //              $LG_DRV_SETTINGS_DUMP (a dconf dump) and $LG_DRV_ICON_THEME set up the session first
 //   bench      global._lgBench.run() (run-glass.sh with LG_BENCH=1); LG_DRV_BENCH
 //              picks scenarios (comma separated, default all), LG_DRV_BENCH_SECONDS
@@ -2176,6 +2177,50 @@ export default class LgDriver extends Extension {
     log(`icon glass clear again: ready=${ready(dock, dock)}`);
   }
 
+  // Menus at the sides of the screen: their glass reaches glass-expand past the menu's box and is drawn only
+  // on the menu's monitor, so it has to stay as far inside the work area as the shell keeps the menu.
+  async _menuEdge(settings, m) {
+    const button = new PanelMenu.Button(0.5, 'lgdrv-edge');
+    button.add_child(new St.Label({text: 'Edge', y_align: Clutter.ActorAlign.CENTER}));
+    button.menu.addMenuItem(new PopupMenu.PopupMenuItem('A menu much wider than the room left of its button'));
+    Main.panel.addToStatusArea('lgdrv-edge', button, 0, 'left');
+    await sleep(2000);
+    const area = Main.layoutManager.getWorkAreaForMonitor(Main.layoutManager.primaryIndex);
+    const qs = Main.panel.statusArea.quickSettings.menu;
+    const leftRect = [m.x, m.y, 800, 400], rightRect = [m.x + m.width - 800, m.y, 800, 700];
+    // [tag, menu, glass px past the menu's box, rect, set up, whether the menu must stay where the shell put it]
+    const cases = [
+      ['left', button.menu, () => settings.get_int('panel-menu-glass-expand'), leftRect, null, false],
+      ['qs', qs, () => settings.get_int('quick-settings-glass-expand'), rightRect, null, false],
+      // The toggles' glass is inside the menu.
+      ['qs-toggles', qs, () => 0, rightRect, () => settings.set_int('quick-settings-apply-to', 1), true],
+      // With its glass off, the menu goes back to where the shell puts it.
+      ['left-off', button.menu, () => 0, leftRect, () => settings.set_boolean('enable-extra-menu-glass', false), true],
+    ];
+    for (const [tag, menu, expand, rect, setUp, exact] of cases) {
+      if (setUp) {
+        setUp();
+        await sleep(1500);
+      }
+      menu.open(false);
+      await sleep(2000);
+      const rise = menu._boxPointer.get_theme_node().get_length('-arrow-rise');
+      const box = menu.box.get_transformed_extents();
+      const left = Math.round(box.origin.x - expand() - area.x);
+      const right = Math.round(area.x + area.width - (box.origin.x + box.size.width + expand()));
+      const near = Math.min(left, right);
+      const ok = near >= rise - 1 && (!exact || near <= rise + 1);
+      log(`menuedge: ${tag} glass from the work area's sides left=${left} right=${right} ` +
+        `want ${exact ? '' : '>='}${rise} ${ok ? 'OK' : 'NG'}`);
+      await shot(`menuedge-${tag}`, rect);
+      menu.close(false);
+      await sleep(800);
+    }
+    settings.reset('quick-settings-apply-to');
+    settings.reset('enable-extra-menu-glass');
+    button.destroy();
+  }
+
   async _featuresScenario() {
     const parts = (GLib.getenv('LG_DRV_FEATURES') ?? 'morph,topbar,widgets,clock,launcher').split(',');
     const settings = this._lgSettings();
@@ -2643,6 +2688,8 @@ export default class LgDriver extends Extension {
       Launcher.instance?.close();
       await sleep(800);
     }
+    if (parts.includes('menuedge'))
+      await this._menuEdge(settings, m);
     if (parts.includes('launcher')) {
       settings.set_boolean('enable-launcher', true);
       await sleep(1000);

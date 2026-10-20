@@ -19,6 +19,7 @@ import { isActorValid } from './actors/lifecycle.js';
 import { resolveMonitorGeometry, getAllocatedSize, getTransformedRect } from './actors/geometry.js';
 import { startSyncLoop, stopStageLoop } from './animation/frameLoops.js';
 import { placeScreenGlass, resolveGlassOrigin, applyGlassScale, GLASS_SHADOW_MAX_RADIUS } from './actors/glassBounds.js';
+import { keepGlassInWorkArea } from './actors/menuEdge.js';
 import { setPositionIfChanged, setScaleIfChanged } from './actors/writes.js';
 import { resolveCrossFade, adaptiveColorTweener, hexToColorArray, hexToRgb } from './animation/colors.js';
 
@@ -168,6 +169,7 @@ export class QuickSettingsManager {
   private _glassExpand: number;
   private _menuXoffset: number;
   private _menuYoffset: number;
+  private _undoEdgeInset: (() => void) | null = null;
 
   private _springScale: Spring;
   private _springStiffness: number;
@@ -429,6 +431,7 @@ export class QuickSettingsManager {
     connectSetting(this._key('glass-expand'), () => {
       if (this.glass) {
         this._glassExpand = this._settings.get_int(this._key('glass-expand'));
+        this.targetActor.queue_relayout();
       }
     });
 
@@ -443,6 +446,7 @@ export class QuickSettingsManager {
       if (this.targetActor) {
         this._menuXoffset = this._settings.get_int(this._key('x-offset'));
         this._applyMenuOffsets();
+        this.targetActor.queue_relayout();
       }
     });
 
@@ -491,6 +495,11 @@ export class QuickSettingsManager {
     this._isEffectActive = true;
 
     if (!this.targetActor) return;
+    this._undoEdgeInset = keepGlassInWorkArea(this.menu._boxPointer, () => {
+      // In toggle mode the glass is only on the toggles, which sit inside the menu.
+      const overhang = this._activeMode === 'toggles' ? 0 : this._glassExpand;
+      return [overhang - this._menuXoffset, overhang + this._menuXoffset];
+    });
 
     this._activeMode = this._applyTo;
     this._tintColorArray = hexToColorArray(this._settings.get_string(this._key('tint-color')));
@@ -1886,6 +1895,8 @@ export class QuickSettingsManager {
   }
 
   private _restoreMenuActors(): void {
+    this._undoEdgeInset?.();
+    this._undoEdgeInset = null;
     this.targetActor.remove_style_class_name('liquid-glass-transparent');
     if (this.animActor) {
       this.animActor.remove_style_class_name('liquid-glass-transparent');
