@@ -7,6 +7,7 @@ import GLib from 'gi://GLib';
 import { DigitsMaker, fontKey } from './digits.js';
 import { serveRequests } from '../workers/workerProcess.js';
 const maker = new DigitsMaker();
+
 function save(bytes) {
     const [fd, path] = GLib.file_open_tmp('liquid-glass-digits-XXXXXX');
     GLib.close(fd);
@@ -23,6 +24,7 @@ function save(bytes) {
         });
     });
 }
+
 // The font the newest request is for. A request for another font waiting
 // behind it, or being worked on, is given up: only the newest is shown.
 let newest = '';

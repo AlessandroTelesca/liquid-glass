@@ -1,7 +1,9 @@
 import Meta from 'gi://Meta';
+
 export function getWindowActors() {
     return global.get_window_actors();
 }
+
 /**
  * Whether a window above `actor` (which is in the window group) may cover any
  * of the stage rect [x0, y0, x1, y1]. Mutter does not draw the wallpaper and

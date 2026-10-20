@@ -7,6 +7,7 @@ import { isActorValid } from './actors/lifecycle.js';
 import { isFrameSyncFrozen, SAME_FRAME_WINDOW_US } from './animation/frameSync.js';
 import { startStageLoop, stopStageLoop } from './animation/frameLoops.js';
 import { reportFrameLoopError } from './diagnostics/logging.js';
+
 /**
  * The glass of a Dhruva dock (dhruva@narkagni). Dhruva draws the dock's
  * background as one widget, DhruvaBackground, and while the pointer magnifies
@@ -26,12 +27,14 @@ export class DhruvaDock {
     _frameSyncId = 0;
     _frameSignalId = 0;
     _lastTickUs = 0;
+
     constructor(_path, _container, _settings, _logger) {
         this._path = _path;
         this._container = _container;
         this._settings = _settings;
         this._logger = _logger;
     }
+
     setup() {
         this._settingsIds.push(this._settings.connect('changed::enable-dock-glass', () => {
             if (this._settings.get_boolean('enable-dock-glass'))
@@ -44,6 +47,7 @@ export class DhruvaDock {
         if (this._settings.get_boolean('enable-dock-glass'))
             this._apply();
     }
+
     _apply() {
         if (this._glass)
             return;
@@ -75,6 +79,7 @@ export class DhruvaDock {
         else
             glass.hide();
     }
+
     _startFrameSync() {
         startStageLoop(this._frameSignalSlot, this._frameSlot, () => {
             const glass = this._glass;
@@ -94,6 +99,7 @@ export class DhruvaDock {
             }
         });
     }
+
     // Puts the glass where the background is on screen. With `sync`, also
     // places the glass on its monitor and its sample area, which must happen
     // in the frame tick; the paint-time call only moves the glass rect.
@@ -126,6 +132,7 @@ export class DhruvaDock {
         if (sync)
             glass.syncSources();
     }
+
     _remove() {
         stopStageLoop(this._frameSignalSlot, this._frameSlot);
         // Dhruva may have destroyed its dock already.
@@ -143,15 +150,18 @@ export class DhruvaDock {
                 glass.destroy();
         }
     }
+
     cleanup() {
         this._remove();
         for (const id of this._settingsIds)
             this._settings.disconnect(id);
         this._settingsIds = [];
     }
+
     get _frameSlot() {
         return { get: () => this._frameSyncId, set: (id) => { this._frameSyncId = id; } };
     }
+
     get _frameSignalSlot() {
         return { get: () => this._frameSignalId, set: (id) => { this._frameSignalId = id; } };
     }

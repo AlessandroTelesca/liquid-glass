@@ -20,6 +20,7 @@ const SETTLE_S = Math.log(500) / (DAMPING_FRACTION * 2 * Math.PI / RESPONSE_S);
 export const MIN_GLASS_GAP = 3;
 // How strongly the larger of two buttons that come too close is the one made smaller.
 const YIELD_POWER = 8;
+
 /** The spring's progress (0 to about 1.06, then 1) `t` seconds after it starts. */
 export function introProgress(t) {
     if (t <= 0)
@@ -30,6 +31,7 @@ export function introProgress(t) {
     const decay = Math.exp(-zeta * omega0 * t);
     return 1 - decay * (Math.cos(omegaD * t) + (zeta * omega0 - START_VELOCITY) / omegaD * Math.sin(omegaD * t)); // 1 - decay * wave * start velocity -> t
 }
+
 /**
  * The buttons' rects over time, from their rects at rest `rects` [x, y, w, h],
  * the point they come from first `anchor` (the panel button) and how far
@@ -41,6 +43,7 @@ export class ToggleIntro {
     _speeds;
     // Pairs of buttons and the least gap kept between them.
     _pairs = [];
+
     constructor(_rects, anchor, expand) {
         this._rects = _rects;
         const x0 = Math.min(..._rects.map(r => r[0]));
@@ -62,6 +65,7 @@ export class ToggleIntro {
             }
         }
     }
+
     frame(t) {
         const [cx, cy] = this._center;
         const progress = this._speeds.map(speed => introProgress(t * speed));
@@ -78,6 +82,7 @@ export class ToggleIntro {
             done: t >= SETTLE_S / SLOWEST_SPEED,
         };
     }
+
     // Buttons grow and swing at different speeds, so one can grow into its
     // neighbour; both are made smaller about their middles until their glass is
     // far enough apart, the larger (as a share of its size at rest) by most of
@@ -103,10 +108,12 @@ export class ToggleIntro {
         }
     }
 }
+
 // The gaps between two rects [x, y, w, h] across and down; negative where they overlap.
 function axisGaps(a, b) {
     return [Math.max(a[0], b[0]) - Math.min(a[0] + a[2], b[0] + b[2]), Math.max(a[1], b[1]) - Math.min(a[1] + a[3], b[1] + b[3])];
 }
+
 // How far apart two rects are: corner to corner when they are apart both ways.
 function distance(a, b) {
     const [gx, gy] = axisGaps(a, b);
