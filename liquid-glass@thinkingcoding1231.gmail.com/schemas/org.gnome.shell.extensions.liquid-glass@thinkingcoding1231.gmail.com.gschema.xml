@@ -30,7 +30,7 @@
       <summary>Tint strength</summary>
     </key>
     <key name="dock-blur-radius" type="i">
-      <default>4</default>
+      <default>2</default>
       <summary>Blur radius</summary>
     </key>
     <key name="dock-brightness" type="d">
@@ -66,14 +66,9 @@
       <summary>Enable menu animation</summary>
     </key>
     <key name="menu-grow-from-button" type="b">
-      <default>true</default>
+      <default>false</default>
       <summary>Grow the menu out of its button</summary>
       <description>While animations are on, the glass leaves the button as a drop and stretches into the menu, and goes back into the button when the menu closes.</description>
-    </key>
-    <key name="menu-morph-speed" type="d">
-      <default>1.0</default>
-      <summary>Menu morph speed</summary>
-      <description>How fast the menu grows out of the button, and how fast it shrinks back into it. Default speed is 1.0</description>
     </key>
     <key name="menu-spring-stiffness" type="d">
       <default>120.0</default>
@@ -170,18 +165,13 @@
       <description>Written by the shell at runtime so the preferences window can offer a toggle only for menus that actually exist.</description>
     </key>
     <key name="enable-panel-menu-animation" type="b">
-      <default>false</default>
+      <default>true</default>
       <summary>Enable panel menu animation</summary>
     </key>
     <key name="panel-menu-grow-from-button" type="b">
-      <default>true</default>
+      <default>false</default>
       <summary>Grow the menu out of its button</summary>
       <description>While animations are on, the glass leaves the button as a drop and stretches into the menu, and goes back into the button when the menu closes.</description>
-    </key>
-    <key name="panel-menu-morph-speed" type="d">
-      <default>1.0</default>
-      <summary>Menu morph speed</summary>
-      <description>How fast the menu grows out of the button, and how fast it shrinks back into it. Default speed is 1.0</description>
     </key>
     <key name="panel-menu-spring-stiffness" type="d">
       <default>120.0</default>
@@ -206,7 +196,7 @@
       <summary>Tint color (Hex)</summary>
     </key>
     <key name="panel-menu-tint-strength" type="d">
-      <default>0.50</default>
+      <default>0.20</default>
       <summary>Tint strength</summary>
     </key>
     <key name="panel-menu-blur-radius" type="i">
@@ -226,15 +216,15 @@
       <summary>Saturation</summary>
     </key>
     <key name="panel-menu-corner-radius" type="d">
-      <default>16.0</default>
+      <default>60.0</default>
       <summary>Corner radius</summary>
     </key>
     <key name="panel-menu-glass-expand" type="i">
-      <default>3</default>
+      <default>12</default>
       <summary>Glass expand pixels</summary>
     </key>
     <key name="panel-menu-x-offset" type="i">
-      <default>5</default>
+      <default>0</default>
       <summary>X offset</summary>
     </key>
     <key name="panel-menu-y-offset" type="i">
@@ -322,7 +312,7 @@
       <summary>Sample per element</summary>
     </key>
     <key name="notification-sample-interval-ms" type="i">
-      <default>200</default>
+      <default>400</default>
       <summary>Sample interval (ms)</summary>
     </key>
     <key name="notification-hide-safety-margin" type="i">
@@ -334,7 +324,7 @@
       <summary>Tint color (Hex)</summary>
     </key>
     <key name="notification-tint-strength" type="d">
-      <default>0.36</default>
+      <default>0.08</default>
       <summary>Tint strength</summary>
     </key>
     <key name="notification-blur-radius" type="i">
@@ -374,18 +364,8 @@
       <summary>Enable glass effect for Quick Settings</summary>
     </key>
     <key name="enable-quick-settings-animation" type="b">
-      <default>false</default>
-      <summary>Enable quick settings animation</summary>
-    </key>
-    <key name="quick-settings-grow-from-button" type="b">
       <default>true</default>
-      <summary>Grow the menu out of its button</summary>
-      <description>While animations are on, the glass leaves the button as a drop and stretches into the menu, and goes back into it when the menu closes.</description>
-    </key>
-    <key name="quick-settings-morph-speed" type="d">
-      <default>1.0</default>
-      <summary>Menu morph speed</summary>
-      <description>How fast the menu grows out of the button, and how fast it shrinks back into it. Default speed is 1.0</description>
+      <summary>Enable quick settings animation</summary>
     </key>
     <key name="quick-settings-spring-stiffness" type="d">
       <default>120.0</default>
@@ -427,7 +407,7 @@
       <summary>Tint color (Hex)</summary>
     </key>
     <key name="quick-settings-tint-strength" type="d">
-      <default>0.36</default>
+      <default>0.12</default>
       <summary>Custom color strength</summary>
       <description>How strongly quick-settings-tint-color is applied. Independent of quick-settings-toggle-tint-strength.</description>
     </key>
@@ -436,7 +416,7 @@
       <summary>Blur radius</summary>
     </key>
     <key name="quick-settings-corner-radius" type="d">
-      <default>42.0</default>
+      <default>30.0</default>
       <summary>Corner radius</summary>
     </key>
     <key name="quick-settings-glass-expand" type="i">
@@ -448,7 +428,7 @@
       <summary>Y offset</summary>
     </key>
     <key name="quick-settings-x-offset" type="i">
-      <default>-20</default>
+      <default>0</default>
       <summary>X offset</summary>
     </key>
     <key name="quick-settings-brightness" type="d">
@@ -545,7 +525,7 @@
       <description>Apply the liquid glass effect to whitelisted application windows.</description>
     </key>
     <key name="application-glass-all-windows" type="b">
-      <default>true</default>
+      <default>false</default>
       <summary>Apply to all windows</summary>
       <description>Apply the glass effect to all application windows, bypassing the whitelist.</description>
     </key>
@@ -559,16 +539,6 @@
       <summary>Blacklisted window classes</summary>
       <description>WM_CLASS names that never receive the glass effect. Only consulted when "apply to all windows" is on.</description>
     </key>
-    <key name="application-corner-on-maximized" type="b">
-      <default>false</default>
-      <summary>Corner on maximized windows</summary>
-      <description>Whether the glass effect should be applied to the corners of the screen when the window is maximized.</description>
-    </key>
-    <key name="application-glass-on-maximized" type="b">
-      <default>true</default>
-      <summary>Glass on maximized windows</summary>
-      <description>Whether the glass effect should be applied to the window when it is maximized.</description>
-    </key>
     <key name="application-tint-color" type="s">
       <default>"#ffffff"</default>
       <summary>Tint color (Hex)</summary>
@@ -578,7 +548,7 @@
       <summary>Tint strength</summary>
     </key>
     <key name="application-blur-radius" type="i">
-      <default>12</default>
+      <default>8</default>
       <summary>Blur radius</summary>
     </key>
     <key name="application-corner-radius" type="d">
@@ -761,7 +731,7 @@
     </key>
 
     <key name="glass-light-angle-deg" type="d">
-      <default>230.0</default>
+      <default>90.0</default>
       <summary>Light angle (Degrees)</summary>
       <description>The directional angle of the virtual light source illuminating the glass.</description>
     </key>
@@ -978,7 +948,7 @@
       <description>"light" or "dark" decides when both are equally readable; "auto" favours neither.</description>
     </key>
     <key name="enable-glass-clock" type="b">
-      <default>true</default>
+      <default>false</default>
       <summary>Show a clock with glass digits on the desktop</summary>
     </key>
     <key name="glass-clock-position" type="s">
@@ -987,18 +957,18 @@
       <description>"top-left", "top-right", "bottom-left", "bottom-right" or "center" of the primary monitor, unless it was dragged.</description>
     </key>
     <key name="glass-clock-font" type="s">
-      <default>"Barlow Condensed Light"</default>
+      <default>"Sofia Sans Extra Condensed SemiBold"</default>
       <summary>Font of the glass clock</summary>
       <description>A font description without a size, such as "Cantarell Bold": one of the fonts the extension ships (Antonio, Barlow Condensed, Saira Extra Condensed, Sofia Sans Extra Condensed) with a weight (Light, Regular, SemiBold, Bold), or any installed font. Empty uses the interface font in bold.</description>
     </key>
     <key name="glass-clock-size" type="i">
       <range min="48" max="480"/>
-      <default>400</default>
+      <default>160</default>
       <summary>Size of the glass clock's digits (px)</summary>
     </key>
     <key name="glass-clock-stretch" type="d">
       <range min="0.3" max="4.0"/>
-      <default>1.3</default>
+      <default>1.0</default>
       <summary>Width of the glass clock's digits, relative to their height</summary>
     </key>
     <key name="glass-clock-tall-style" type="s">
@@ -1006,13 +976,13 @@
         <choice value="even"/>
         <choice value="upright"/>
       </choices>
-      <default>"upright"</default>
+      <default>"even"</default>
       <summary>How the glass clock's digits are made taller</summary>
       <description>"even": the digits grow evenly, every stroke keeping its width. "upright": mostly their straight upright strokes grow, while curves, bars and the colon's dots keep their shape; the parts above and below a join in the middle grow alike.</description>
     </key>
     <key name="glass-clock-height" type="d">
       <range min="1.0" max="3.0"/>
-      <default>2.0</default>
+      <default>1.0</default>
       <summary>Height of the glass clock's digits, relative to the font</summary>
       <description>Above 1 the digits are made taller as glass-clock-tall-style says, every stroke keeping its width.</description>
     </key>
@@ -1022,7 +992,7 @@
       <description>"system" follows the clock format in Settings, "24h" or "12h".</description>
     </key>
     <key name="glass-clock-show-date" type="b">
-      <default>false</default>
+      <default>true</default>
       <summary>Show the date above the glass clock</summary>
     </key>
     <key name="glass-clock-tint-color" type="s">
@@ -1030,7 +1000,7 @@
       <summary>Tint color (Hex)</summary>
     </key>
     <key name="glass-clock-tint-strength" type="d">
-      <default>0.24</default>
+      <default>0.16</default>
       <summary>Tint strength</summary>
     </key>
     <key name="glass-clock-blur-radius" type="i">
@@ -1133,7 +1103,7 @@
     </key>
 
     <key name="enable-launcher" type="b">
-      <default>true</default>
+      <default>false</default>
       <summary>Search launcher</summary>
       <description>A search field on glass in the middle of the screen, opened with the launcher shortcut. It shows the same results as the overview's search.</description>
     </key>
@@ -1146,7 +1116,7 @@
       <summary>Tint color (Hex)</summary>
     </key>
     <key name="launcher-tint-strength" type="d">
-      <default>0.5</default>
+      <default>0.16</default>
       <summary>Tint strength</summary>
     </key>
     <key name="launcher-blur-radius" type="i">
@@ -1214,170 +1184,6 @@
       <summary>How the launcher changes to its pinned items</summary>
       <description>"morph": the glass flows into its new shape on a spring, with the content seen deep in it; "tween": the glass eases to its new shape and the content fades.</description>
     </key>
-    <key name="launcher-spring-response" type="d">
-      <default>0.42</default>
-      <summary>Spring response</summary>
-      <description>How fast the springs respond to changes in the menu's size.</description>
-    </key>
-    <key name="launcher-spring-damping-fraction" type="d">
-      <default>0.72</default>
-      <summary>Spring damping fraction</summary>
-      <description>How much the springs damp when they reach their target.</description>
-    </key>
 
-    <key name="dock-outline-enabled" type="b">
-      <default>false</default>
-      <summary>Outline on Dock</summary>
-      <description>Draws a line along the visible edge of the glass, inside the shadow, to make it easier to see.</description>
-    </key>
-    <key name="dock-outline-width" type="d">
-      <default>1.0</default>
-      <range min="0.5" max="10"/>
-      <summary>Outline width on Dock</summary>
-    </key>
-    <key name="dock-outline-color" type="s">
-      <default>"#000000"</default>
-      <summary>Outline color on Dock (Hex)</summary>
-    </key>
-    <key name="menu-outline-enabled" type="b">
-      <default>false</default>
-      <summary>Outline on Calendar</summary>
-      <description>Draws a line along the visible edge of the glass, inside the shadow, to make it easier to see.</description>
-    </key>
-    <key name="menu-outline-width" type="d">
-      <default>1.0</default>
-      <range min="0.5" max="10"/>
-      <summary>Outline width on Calendar</summary>
-    </key>
-    <key name="menu-outline-color" type="s">
-      <default>"#000000"</default>
-      <summary>Outline color on Calendar (Hex)</summary>
-    </key>
-    <key name="panel-menu-outline-enabled" type="b">
-      <default>false</default>
-      <summary>Outline on Other top bar menus</summary>
-      <description>Draws a line along the visible edge of the glass, inside the shadow, to make it easier to see.</description>
-    </key>
-    <key name="panel-menu-outline-width" type="d">
-      <default>1.0</default>
-      <range min="0.5" max="10"/>
-      <summary>Outline width on Other top bar menus</summary>
-    </key>
-    <key name="panel-menu-outline-color" type="s">
-      <default>"#000000"</default>
-      <summary>Outline color on Other top bar menus (Hex)</summary>
-    </key>
-    <key name="notification-outline-enabled" type="b">
-      <default>false</default>
-      <summary>Outline on Notifications</summary>
-      <description>Draws a line along the visible edge of the glass, inside the shadow, to make it easier to see.</description>
-    </key>
-    <key name="notification-outline-width" type="d">
-      <default>1.0</default>
-      <range min="0.5" max="10"/>
-      <summary>Outline width on Notifications</summary>
-    </key>
-    <key name="notification-outline-color" type="s">
-      <default>"#000000"</default>
-      <summary>Outline color on Notifications (Hex)</summary>
-    </key>
-    <key name="quick-settings-outline-enabled" type="b">
-      <default>false</default>
-      <summary>Outline on Quick settings</summary>
-      <description>Draws a line along the visible edge of the glass, inside the shadow, to make it easier to see.</description>
-    </key>
-    <key name="quick-settings-outline-width" type="d">
-      <default>1.0</default>
-      <range min="0.5" max="10"/>
-      <summary>Outline width on Quick settings</summary>
-    </key>
-    <key name="quick-settings-outline-color" type="s">
-      <default>"#000000"</default>
-      <summary>Outline color on Quick settings (Hex)</summary>
-    </key>
-    <key name="osd-outline-enabled" type="b">
-      <default>false</default>
-      <summary>Outline on Volume and brightness</summary>
-      <description>Draws a line along the visible edge of the glass, inside the shadow, to make it easier to see.</description>
-    </key>
-    <key name="osd-outline-width" type="d">
-      <default>1.0</default>
-      <range min="0.5" max="10"/>
-      <summary>Outline width on Volume and brightness</summary>
-    </key>
-    <key name="osd-outline-color" type="s">
-      <default>"#000000"</default>
-      <summary>Outline color on Volume and brightness (Hex)</summary>
-    </key>
-    <key name="application-outline-enabled" type="b">
-      <default>false</default>
-      <summary>Outline on Application windows</summary>
-      <description>Draws a line along the visible edge of the glass, inside the shadow, to make it easier to see.</description>
-    </key>
-    <key name="application-outline-width" type="d">
-      <default>1.0</default>
-      <range min="0.5" max="10"/>
-      <summary>Outline width on Application windows</summary>
-    </key>
-    <key name="application-outline-color" type="s">
-      <default>"#000000"</default>
-      <summary>Outline color on Application windows (Hex)</summary>
-    </key>
-    <key name="desktop-menu-outline-enabled" type="b">
-      <default>false</default>
-      <summary>Outline on Desktop menu</summary>
-      <description>Draws a line along the visible edge of the glass, inside the shadow, to make it easier to see.</description>
-    </key>
-    <key name="desktop-menu-outline-width" type="d">
-      <default>1.0</default>
-      <range min="0.5" max="10"/>
-      <summary>Outline width on Desktop menu</summary>
-    </key>
-    <key name="desktop-menu-outline-color" type="s">
-      <default>"#000000"</default>
-      <summary>Outline color on Desktop menu (Hex)</summary>
-    </key>
-    <key name="top-bar-outline-enabled" type="b">
-      <default>false</default>
-      <summary>Outline on Top bar</summary>
-      <description>Draws a line along the visible edge of the glass, inside the shadow, to make it easier to see.</description>
-    </key>
-    <key name="top-bar-outline-width" type="d">
-      <default>1.0</default>
-      <range min="0.5" max="10"/>
-      <summary>Outline width on Top bar</summary>
-    </key>
-    <key name="top-bar-outline-color" type="s">
-      <default>"#000000"</default>
-      <summary>Outline color on Top bar (Hex)</summary>
-    </key>
-    <key name="desktop-widget-outline-enabled" type="b">
-      <default>false</default>
-      <summary>Outline on Desktop widgets</summary>
-      <description>Draws a line along the visible edge of the glass, inside the shadow, to make it easier to see.</description>
-    </key>
-    <key name="desktop-widget-outline-width" type="d">
-      <default>1.0</default>
-      <range min="0.5" max="10"/>
-      <summary>Outline width on Desktop widgets</summary>
-    </key>
-    <key name="desktop-widget-outline-color" type="s">
-      <default>"#000000"</default>
-      <summary>Outline color on Desktop widgets (Hex)</summary>
-    </key>
-    <key name="launcher-outline-enabled" type="b">
-      <default>false</default>
-      <summary>Outline on Launcher</summary>
-      <description>Draws a line along the visible edge of the glass, inside the shadow, to make it easier to see.</description>
-    </key>
-    <key name="launcher-outline-width" type="d">
-      <default>1.0</default>
-      <range min="0.5" max="10"/>
-      <summary>Outline width on Launcher</summary>
-    </key>
-    <key name="launcher-outline-color" type="s">
-      <default>"#000000"</default>
-      <summary>Outline color on Launcher (Hex)</summary>
-    </key>
   </schema>
 </schemalist>

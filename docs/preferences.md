@@ -16,15 +16,11 @@ The Blur my Shell warning at the top of Appearance follows `blur-my-shell-popup-
 which the shell writes. Its Turn Off button writes only Blur my Shell's own popup
 `blur` key, and only when clicked.
 
-The window is built from three files. `preferences/pages.js` defines the pages, the visible
-choices and which existing keys they own, the advanced view (a group per surface, built the
-first time it is picked), the Desktop page and the switches for detected top bar menus.
-`controls.js` owns the row builders, grouped writes, mixed-value readouts and subscriptions,
-the settings backup format, and the branches that set the rows depending on a switch (animations,
-adaptive color, the outline) in from the left and fold them with an arrow at the end of the
-switch's row; it loads the one CSS rule for that indent and removes it when the window closes.
-`apps.js` owns the application icon and window lists, their pickers and the D-Bus lifetime of
-the window list.
+`preferences/pages.js` defines the visible choices. `model.js` defines which existing
+keys those choices own. `controls.js` owns grouped writes, mixed-value readouts and
+subscriptions. `windows.js` owns the application picker and its D-Bus lifetime.
+`advanced-model.js` describes individual controls; `advanced.js` builds the advanced
+view and `panel-menus.js` manages switches for detected top bar menus.
 The preferences entry point only loads this window; it does not import Shell modules.
 
 Verification:

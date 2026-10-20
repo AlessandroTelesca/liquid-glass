@@ -7,7 +7,7 @@ import { BackdropGlass } from './rendering/backdropGlass.js';
 import { getWindowActors } from './actors/windows.js';
 import { isActorValid } from './actors/lifecycle.js';
 import { getAllocatedSize } from './actors/geometry.js';
-import { setActorVisible, ensureGlassAllocated, ensureWindowActorAllocated, clearStranded } from './actors/allocation.js';
+import { setActorVisible, ensureGlassAllocated, ensureWindowActorAllocated } from './actors/allocation.js';
 import { setPositionIfChanged, setSizeIfChanged } from './actors/writes.js';
 import { isFrameSyncFrozen, SAME_FRAME_WINDOW_US } from './animation/frameSync.js';
 import { hexToColorArray } from './animation/colors.js';
@@ -71,9 +71,6 @@ interface WindowState {
   frameLocalActorPos?: [number, number];
   // Inputs of the last geometry sync, compared exactly each frame.
   geomSig?: Float64Array;
-
-  // Whether the window is maximized.
-  maximized: boolean;
 }
 
 export class ApplicationManager {
@@ -88,8 +85,6 @@ export class ApplicationManager {
   private _frameSignalId = 0;
   private _lastTickUs = 0;
   private _glassMargin = GLASS_MIN_MARGIN;
-  private _cornerOnMaximized = false;
-  private _glassOnMaximized = true;
 
   constructor(extensionPath: string, settings: Gio.Settings, logger: Logger) {
     this._extensionPath = extensionPath;
@@ -172,11 +167,6 @@ export class ApplicationManager {
     connectSetting('application-glass-all-windows', () => this._syncWhitelist());
     connectSetting('application-window-whitelist', () => this._syncWhitelist());
     connectSetting('application-window-blacklist', () => this._syncWhitelist());
-
-    connectSetting('application-corner-on-maximized', () => { this._cornerOnMaximized = this._settings.get_boolean('application-corner-on-maximized'); this._updateMaximized() });
-    connectSetting('application-glass-on-maximized', () => { this._glassOnMaximized = this._settings.get_boolean('application-glass-on-maximized'); this._updateMaximized() });
-    this._cornerOnMaximized = this._settings.get_boolean('application-corner-on-maximized');
-    this._glassOnMaximized = this._settings.get_boolean('application-glass-on-maximized')
 
     // The shadow renders into the margin, so these resize the glass.
     connectSetting('shadow-radius', () => this._updateGlassMargin());
@@ -360,7 +350,6 @@ export class ApplicationManager {
   _updateEffectParams() {
     for (const state of this._states.values())
       this._applyAppearance(state.glass, state.profile);
-    this._updateMaximized();
   }
 
   _applyAppearance(glass: BackdropGlass, profile: GlassProfile): void {
@@ -418,7 +407,6 @@ export class ApplicationManager {
       settings: this._settings,
       logger: this._logger,
       owner: profile,
-      outline: profile,
     } as any);
     glass.set_name('liquid-glass-window');
     glass.setPadding(this._glassMargin);
@@ -432,12 +420,6 @@ export class ApplicationManager {
     glass.setShadowMaxRadius(Math.max(0, this._glassMargin - SHADOW_MARGIN_HEADROOM));
     windowActor.insert_child_below(glass, surfaceActor);
 
-    let maximized = false;
-    const metaWin = windowActor.get_meta_window();
-    if (metaWin) {
-      maximized = metaWin.maximized_horizontally || metaWin.maximized_vertically;
-    }
-
     const state: WindowState = {
       profile,
       windowActor,
@@ -445,7 +427,6 @@ export class ApplicationManager {
       originalOpacity,
       glass,
       signals: [],
-      maximized,
     };
     this._states.set(windowActor, state);
 
@@ -457,23 +438,12 @@ export class ApplicationManager {
       }),
     });
 
+    const metaWin = windowActor.get_meta_window();
     if (metaWin) {
       state.signals.push({
         obj: metaWin,
         // Maximize and tiling change the invisible border.
         id: metaWin.connect('size-changed', () => { state.frameLocal = undefined; }),
-      });
-      state.signals.push({
-        obj: metaWin,
-        id: metaWin.connect('notify::maximized-horizontally', () => {
-          this._updateMaximized(state);
-        }),
-      });
-      state.signals.push({
-        obj: metaWin,
-        id: metaWin.connect('notify::maximized-vertically', () => {
-          this._updateMaximized(state);
-        }),
       });
     }
 
@@ -515,34 +485,6 @@ export class ApplicationManager {
     return state.frameLocal ?? [0, 0];
   }
 
-  _updateMaximized(state: WindowState | null = null): void {
-    const apply = (state: WindowState) => {
-      const metaWin = state.windowActor.get_meta_window();
-      if (!metaWin) return;
-
-      state.maximized = metaWin.maximized_horizontally || metaWin.maximized_vertically;
-
-      const shouldHideCorner = !this._cornerOnMaximized && state.maximized;
-      const shouldHideGlass = !this._glassOnMaximized && state.maximized;
-
-      state.glass.setCornerRadius(shouldHideCorner ? 0 : this._settings.get_double('application-corner-radius'));
-
-      if (isActorValid(state.surfaceActor)) {
-        state.surfaceActor.opacity = shouldHideGlass
-          ? state.originalOpacity
-          : Math.round(this._getContentOpacity(state.profile) * 255);
-
-        this._hideGlass(state);
-      }
-    };
-    if (!state) {
-      for (const state of this._states.values())
-        apply(state);
-    } else {
-      apply(state);
-    }
-  }
-
   // Hides the glass while its window is not shown on this workspace. The
   // geometry signature is dropped so the next sync places it again.
   _hideGlass(state: WindowState): void {
@@ -550,21 +492,20 @@ export class ApplicationManager {
     state.geomSig = undefined;
   }
 
-  // Returns whether the window moved since the last sync.
-  _syncState(state: WindowState): boolean {
+  _syncState(state: WindowState) {
     const actor = state.windowActor;
     if (!actor.get_stage() || !actor.mapped) {
       this._hideGlass(state);
-      return false;
+      return;
     }
 
     const metaWin = actor.get_meta_window();
-    if (!metaWin) return false;
+    if (!metaWin) return;
 
     // Folds the repaints of the setters below into one.
     state.glass.beginBatch();
     try {
-      return this._syncStateInner(state, actor, metaWin);
+      this._syncStateInner(state, actor, metaWin);
     } finally {
       state.glass.endBatch();
     }
@@ -577,25 +518,20 @@ export class ApplicationManager {
    * the glass follows those transforms with the window. They still move it on
    * screen, so they are part of the signature that tells syncSources().
    */
-  _syncStateInner(state: WindowState, actor: Meta.WindowActor, metaWin: Meta.Window): boolean {
+  _syncStateInner(state: WindowState, actor: Meta.WindowActor, metaWin: Meta.Window) {
     const winWorkspace = metaWin.get_workspace();
     if (winWorkspace && winWorkspace !== global.workspace_manager.get_active_workspace()) {
       this._hideGlass(state);
-      return false;
+      return;
     }
 
     const rect = metaWin.get_frame_rect();
     const bufferRect = metaWin.get_buffer_rect();
     if (rect.width <= 0 || rect.height <= 0) {
       this._hideGlass(state);
-      return false;
+      return;
     }
 
-    const shouldHideGlass = !this._glassOnMaximized && state.maximized;
-    if (shouldHideGlass) {
-      this._hideGlass(state);
-      return false;
-    }
     setActorVisible(state.glass, true);
 
     const [frameLocalX, frameLocalY] = this._frameLocalOffset(state, actor, rect, bufferRect);
@@ -623,7 +559,6 @@ export class ApplicationManager {
 
     // Every frame: the windows below move on their own.
     state.glass.syncSources(moved);
-    return moved;
   }
 
   // Stores `values` as the geometry signature and returns whether it was
@@ -673,14 +608,6 @@ export class ApplicationManager {
     // Names this glass in diagnostic dumps.
     state.glass._diagOwnerLabel = title;
 
-    // A window that moves, or is animated, has a relayout pending in every
-    // frame this runs in, so only one that stays put can be stranded.
-    if (this._syncState(state)) {
-      clearStranded(state.windowActor);
-      clearStranded(state.glass);
-      return;
-    }
-
     // The window actor is rescued before the glass. Its children are laid out
     // by its default layout, so a stranded window actor swallows every
     // relayout they queue and the glass's own rescue could never land.
@@ -688,6 +615,7 @@ export class ApplicationManager {
       state.windowActor, WINDOW_ACTOR_RELAYOUT_FRAMES, WINDOW_ACTOR_STRANDED_FRAMES);
     if (rescue) this._logStrand(state, metaWin, title, rescue);
     ensureGlassAllocated(state.glass);
+    this._syncState(state);
   }
 
   private _logStrand(state: WindowState, metaWin: Meta.Window, title: string, rescue: string): void {

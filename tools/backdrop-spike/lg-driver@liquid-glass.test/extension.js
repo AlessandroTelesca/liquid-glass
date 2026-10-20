@@ -6,8 +6,6 @@
 //   dock       the dock over windows, a changing background and UI actors
 //   ui         the calendar menu, Quick Settings, a notification and the OSD
 //   toggles    Quick Settings in toggle mode
-//   outline    the ui and toggles scenarios with every surface's outline on
-//              (LG_DRV_OUTLINE_WIDTH, default 3, and LG_DRV_OUTLINE_COLOR, default #ff2020)
 //   fullstage  how many frames redraw the whole stage while the calendar opens
 //   monitor    global._lgGlass.monitor() while windows move and a menu opens
 //   lifecycle  disables and enables Liquid Glass with every glass shown once
@@ -28,13 +26,11 @@
 //              also scale (the calendar, Quick Settings in both modes and the launcher
 //              on a small logical screen: run-glass.sh with LG_SPIKE_MONITOR=2256x1504 and
 //              LG_MONITORS_XML=tools/backdrop-spike/monitors-200.xml; LG_DRV_LIGHT=1 for the
-//              light shell theme), widgetcolors (the weather card's text colours after rebuilds) and menuedge
-//              (whether the glass of menus at the screen's sides stays inside the work area);
+//              light shell theme) and widgetcolors (the weather card's text colours after rebuilds);
 //              $LG_DRV_SETTINGS_DUMP (a dconf dump) and $LG_DRV_ICON_THEME set up the session first
 //   bench      global._lgBench.run() (run-glass.sh with LG_BENCH=1); LG_DRV_BENCH
 //              picks scenarios (comma separated, default all), LG_DRV_BENCH_SECONDS
-//              the seconds per scenario (default 3), LG_DRV_BENCH_AB=1 adds a run without UI glass,
-//              LG_DRV_BENCH_MODES the modes to run (comma separated: stage, none, outline)
+//              the seconds per scenario (default 3), LG_DRV_BENCH_AB=1 adds a run without UI glass
 //
 // Screenshots are off-stage paints, where a stage-reading glass draws with
 // its last on-screen copy. The camera shows what was really on screen: while
@@ -284,12 +280,8 @@ export default class LgDriver extends Extension {
     }
     this._camera = this._add(new Camera([0, 0, 10, 10]));
     this._camera.set_position(20, 60);
-    for (let i = 0; i < 160 && !this._glass('dock'); i++)
+    for (let i = 0; i < 40 && !this._glass('dock'); i++)
       await sleep(250);
-    if (!lg()) {
-      const states = Main.extensionManager.getUuids().map(uuid => `${uuid}=${Main.extensionManager.lookup(uuid).state}`);
-      log(`Liquid Glass is not running: ${states.join(' ')}`);
-    }
 
     if (SCENARIO === 'dock')
       await this._dockScenario();
@@ -297,8 +289,6 @@ export default class LgDriver extends Extension {
       await this._uiScenario();
     else if (SCENARIO === 'toggles')
       await this._togglesScenario();
-    else if (SCENARIO === 'outline')
-      await this._outlineScenario();
     else if (SCENARIO === 'fullstage')
       await this._fullStageScenario();
     else if (SCENARIO === 'monitor')
@@ -624,22 +614,6 @@ export default class LgDriver extends Extension {
     await this._surface('o1 osd', 'osd', showOsd, () => Main.osdWindowManager.hideAll(), showOsd);
 
     await this._menuShot('m2 calendar-again', dateMenu, 'menu');
-  }
-
-  async _outlineScenario() {
-    const settings = this._lgSettings();
-    for (const surface of ['dock', 'menu', 'panel-menu', 'notification', 'quick-settings', 'osd', 'application',
-      'desktop-menu', 'top-bar', 'desktop-widget', 'launcher']) {
-      settings.set_boolean(`${surface}-outline-enabled`, true);
-      settings.set_double(`${surface}-outline-width`, Number(GLib.getenv('LG_DRV_OUTLINE_WIDTH') ?? 3));
-      settings.set_string(`${surface}-outline-color`, GLib.getenv('LG_DRV_OUTLINE_COLOR') ?? '#ff2020');
-    }
-    await sleep(800);
-    const dock = this._region('dock');
-    if (dock)
-      await this._shots('d1 dock', dock, 'dock');
-    await this._uiScenario();
-    await this._togglesScenario();
   }
 
   async _togglesScenario() {
@@ -1094,9 +1068,8 @@ export default class LgDriver extends Extension {
   async _benchScenario() {
     const which = GLib.getenv('LG_DRV_BENCH') ?? 'all';
     const seconds = Number(GLib.getenv('LG_DRV_BENCH_SECONDS') ?? 3);
-    const modes = GLib.getenv('LG_DRV_BENCH_MODES')?.split(',');
     log(global._lgBench.run(which === 'all' ? 'all' : which.split(','),
-      {seconds, settle: 2, ab: GLib.getenv('LG_DRV_BENCH_AB') === '1', ...(modes ? {modes} : {})}));
+      {seconds, settle: 2, ab: GLib.getenv('LG_DRV_BENCH_AB') === '1'}));
     await sleep(1000);
     while (global._lgBench.running)
       await sleep(500);
@@ -2177,50 +2150,6 @@ export default class LgDriver extends Extension {
     log(`icon glass clear again: ready=${ready(dock, dock)}`);
   }
 
-  // Menus at the sides of the screen: their glass reaches glass-expand past the menu's box and is drawn only
-  // on the menu's monitor, so it has to stay as far inside the work area as the shell keeps the menu.
-  async _menuEdge(settings, m) {
-    const button = new PanelMenu.Button(0.5, 'lgdrv-edge');
-    button.add_child(new St.Label({text: 'Edge', y_align: Clutter.ActorAlign.CENTER}));
-    button.menu.addMenuItem(new PopupMenu.PopupMenuItem('A menu much wider than the room left of its button'));
-    Main.panel.addToStatusArea('lgdrv-edge', button, 0, 'left');
-    await sleep(2000);
-    const area = Main.layoutManager.getWorkAreaForMonitor(Main.layoutManager.primaryIndex);
-    const qs = Main.panel.statusArea.quickSettings.menu;
-    const leftRect = [m.x, m.y, 800, 400], rightRect = [m.x + m.width - 800, m.y, 800, 700];
-    // [tag, menu, glass px past the menu's box, rect, set up, whether the menu must stay where the shell put it]
-    const cases = [
-      ['left', button.menu, () => settings.get_int('panel-menu-glass-expand'), leftRect, null, false],
-      ['qs', qs, () => settings.get_int('quick-settings-glass-expand'), rightRect, null, false],
-      // The toggles' glass is inside the menu.
-      ['qs-toggles', qs, () => 0, rightRect, () => settings.set_int('quick-settings-apply-to', 1), true],
-      // With its glass off, the menu goes back to where the shell puts it.
-      ['left-off', button.menu, () => 0, leftRect, () => settings.set_boolean('enable-extra-menu-glass', false), true],
-    ];
-    for (const [tag, menu, expand, rect, setUp, exact] of cases) {
-      if (setUp) {
-        setUp();
-        await sleep(1500);
-      }
-      menu.open(false);
-      await sleep(2000);
-      const rise = menu._boxPointer.get_theme_node().get_length('-arrow-rise');
-      const box = menu.box.get_transformed_extents();
-      const left = Math.round(box.origin.x - expand() - area.x);
-      const right = Math.round(area.x + area.width - (box.origin.x + box.size.width + expand()));
-      const near = Math.min(left, right);
-      const ok = near >= rise - 1 && (!exact || near <= rise + 1);
-      log(`menuedge: ${tag} glass from the work area's sides left=${left} right=${right} ` +
-        `want ${exact ? '' : '>='}${rise} ${ok ? 'OK' : 'NG'}`);
-      await shot(`menuedge-${tag}`, rect);
-      menu.close(false);
-      await sleep(800);
-    }
-    settings.reset('quick-settings-apply-to');
-    settings.reset('enable-extra-menu-glass');
-    button.destroy();
-  }
-
   async _featuresScenario() {
     const parts = (GLib.getenv('LG_DRV_FEATURES') ?? 'morph,topbar,widgets,clock,launcher').split(',');
     const settings = this._lgSettings();
@@ -2688,8 +2617,6 @@ export default class LgDriver extends Extension {
       Launcher.instance?.close();
       await sleep(800);
     }
-    if (parts.includes('menuedge'))
-      await this._menuEdge(settings, m);
     if (parts.includes('launcher')) {
       settings.set_boolean('enable-launcher', true);
       await sleep(1000);

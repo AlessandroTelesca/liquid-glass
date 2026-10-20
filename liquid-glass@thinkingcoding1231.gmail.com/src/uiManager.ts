@@ -17,7 +17,6 @@ import { resolveMonitorGeometry, getAllocatedSize } from './actors/geometry.js';
 import { isActorValid } from './actors/lifecycle.js';
 import { startSyncLoop, stopStageLoop } from './animation/frameLoops.js';
 import { placeScreenGlass, resolveGlassOrigin, applyGlassScale, GLASS_SHADOW_MAX_RADIUS } from './actors/glassBounds.js';
-import { keepGlassInWorkArea } from './actors/menuEdge.js';
 import { resolveCrossFade, adaptiveColorTweener, hexToColorArray, hexToRgb, rgbToHex } from './animation/colors.js';
 
 import { MENU_NO_ANIMATION, accentColors } from './shellVersion.js';
@@ -39,11 +38,10 @@ const MIN_MENU_SCALE = 0.5;
 
 // Frames to wait for an opening menu to get its size before it just appears.
 const MORPH_WAIT_FRAMES = 30;
-// The menu's own open and close animations, which the morph replaces. Its
-// closing fade would hide the items and then the menu long before the glass is
-// back in the button, so the fade is held and the menu is hidden by the morph.
+// The menu's own open and close animations, which the morph replaces; it keeps
+// the closing fade.
 const BOXPOINTER_EASED = ['opacity', 'translation-x', 'translation-y', 'scale-x', 'scale-y'];
-const BOXPOINTER_HOLD_MS = 10000;
+const BOXPOINTER_MOVES = BOXPOINTER_EASED.slice(1);
 const CONTENT_LENS = 'liquid-glass-content-lens';
 // What the refraction (displacement scale) and the blur radius come down to,
 // whatever they are set to, as the closing glass settles on the button.
@@ -68,7 +66,6 @@ interface MenuMorph {
   refraction: number;
   blurRadius: number;
   shownBlurRadius: number;
-  speed: number;
 }
 
 const MENU_MEASURE_FRAMES = 30;
@@ -115,7 +112,6 @@ export class UIManager {
   private _ownOpenHeight: number = 0;
   private _measureLaterIds: Set<number> = new Set();
   private _restoreQuickSettings: (() => void) | null = null;
-  private _undoEdgeInset: (() => void) | null = null;
   private _tickId: number;
   private _contrastSampler: StageContrastSampler;
   private _adaptiveTimerId: number;
@@ -165,7 +161,6 @@ export class UIManager {
   private _growFromButton: boolean = true;
   private _morph: MenuMorph | null = null;
   private _morphTickId: number = 0;
-  private _morphSpeed: number = 1.0;
 
   private _interfaceSettings: Gio.Settings | null = null;
   private _accentColorSignalId: number = 0;
@@ -249,7 +244,6 @@ export class UIManager {
 
     this._enableAnimation = this._settings.get_boolean(this._animationKey());
     this._growFromButton = this._settings.get_boolean(this._key('grow-from-button'));
-    this._morphSpeed = this._settings.get_double(this._key('morph-speed'));
     this._menuScale = this._settings.get_double(this._key('scale'));
     this._matchQuickSettingsHeight = this._settings.get_boolean(this._key('match-quick-settings-height'));
     const remembered = this._ownsSettingsNamespace
@@ -605,10 +599,6 @@ export class UIManager {
       this._growFromButton = this._settings.get_boolean(this._key('grow-from-button'));
     });
 
-    connectSetting(this._key('morph-speed'), () => {
-      this._morphSpeed = this._settings.get_double(this._key('morph-speed'));
-    });
-
     connectSetting(this._key('spring-stiffness'), () => {
       this._springStiffness = this._settings.get_double(this._key('spring-stiffness'));
       if (this._springScale) this._springScale.updateParams(this._springStiffness, this._springDamping, this._springMass);
@@ -675,7 +665,6 @@ export class UIManager {
     connectSetting(this._key('glass-expand'), () => {
       if (this.glass) {
         this._glassExpand = this._settings.get_int(this._key('glass-expand'));
-        this.targetActor.queue_relayout();
       }
     });
 
@@ -683,7 +672,6 @@ export class UIManager {
       if (this.animActor) {
         this._menuXoffset = this._settings.get_int(this._key('x-offset'));
         this.animActor.translation_x = this._menuXoffset;
-        this.targetActor.queue_relayout();
       }
     });
 
@@ -739,9 +727,6 @@ export class UIManager {
     this.animActor.translation_y = this._menuYoffset;
 
     this._glassExpand = this._settings.get_int(this._key('glass-expand'));
-    // The x-offset moves the box inside the BoxPointer, so the glass reaches that much further out on one side.
-    this._undoEdgeInset = keepGlassInWorkArea(this.menu._boxPointer,
-      () => [this._glassExpand - this._menuXoffset, this._glassExpand + this._menuXoffset]);
     this._animationInterval = this._settings.get_int(this._key('animation-interval-ms'));
 
     this._adaptiveConfig = {
@@ -756,7 +741,6 @@ export class UIManager {
     // Sized to the monitor by _syncGeometry().
     const glass = new BackdropGlass({
       extensionPath: this.extensionPath, settings: this._settings, logger: this._logger, owner: this._label,
-      outline: this._keyPrefix,
     } as any);
     this.glass = glass;
     glass.set_size(1.0, 1.0);
@@ -849,8 +833,8 @@ export class UIManager {
       id: this.menu.actor.connect('notify::mapped', () => {
         if (!this.menu.actor.mapped) {
           stopFrameSync();
-          // The morph owns the glass until it ends.
-          if (this._morph) return;
+          // The glass outlives the menu while it goes back into the button.
+          if (this._morph && !this._morph.opening) return;
 
           if (this.glass) {
             this.glass.hide();
@@ -1444,25 +1428,11 @@ export class UIManager {
     // Opened again while closing: the glass is the menu's again at once, not from the next frame.
     if (open && prev && prev.shownBlurRadius !== blurRadius) this.glass.setBlurRadius(blurRadius);
     if (open) this.glass.setAnimationScale(1);
-    let fromFrame = prev?.motion?.frame ?? null;
-    if (!fromFrame && prev) {
-      fromFrame = {
-        body: prev.button,
-        bodyRadius: prev.button[3] / 2,
-        contentScale: 2,
-        contentOpacity: 0,
-        lens: 1,
-        glassOpacity: 1,
-        soften: 0,
-        done: false,
-      };
-    }
     this._morph = {
       opening: open, motion: null, button, lens, lastUs: 0, waitFrames: 0,
-      from: fromFrame, velocities: prev?.motion?.velocities ?? null,
+      from: prev?.motion?.frame ?? null, velocities: prev?.motion?.velocities ?? null,
       refraction: this._settings.get_double('glass-displacement-scale'), blurRadius,
       shownBlurRadius: open ? blurRadius : prev?.shownBlurRadius ?? blurRadius,
-      speed: this._morphSpeed,
     };
     this.animActor.remove_all_transitions();
     this.glass.remove_all_transitions();
@@ -1479,13 +1449,12 @@ export class UIManager {
       return false;
     }
     m.button = this._buttonRect() ?? m.button;
-    // The menu stays where it opens and stays visible until the morph ends.
-    for (const name of BOXPOINTER_EASED) {
+    // The menu stays where it opens; closing, it only fades.
+    for (const name of m.opening ? BOXPOINTER_EASED : BOXPOINTER_MOVES) {
       const ease = this.targetActor.get_transition(name);
       if (!ease) continue;
       if (m.opening) ease.set_from(ease.get_interval().peek_final_value());
       else ease.set_to(ease.get_interval().peek_initial_value());
-      if (!m.opening && name === 'opacity') ease.set_duration(BOXPOINTER_HOLD_MS);
     }
 
     const menu = this._menuBodyRect();
@@ -1501,13 +1470,13 @@ export class UIManager {
         this._endMorph();
         return false;
       }
-      m.motion = new MenuMorphMotion(m.opening, m.button, menu, this._cornerRadius * this._menuScale, m.from, m.velocities);
+      m.motion = new MenuMorphMotion(m.opening, m.button, menu, this._cornerRadius * this._menuScale);
     } else {
       m.motion.retarget(m.button, menu, this._cornerRadius * this._menuScale);
     }
 
     const now = GLib.get_monotonic_time();
-    const frame = m.motion.step(m.lastUs ? (now - m.lastUs) / 1e6 : 1 / 60, m.speed);
+    const frame = m.motion.step(m.lastUs ? (now - m.lastUs) / 1e6 : 1 / 60);
     m.lastUs = now;
     this._placeMorph(frame);
     if (!frame.done) return true;
@@ -1651,11 +1620,7 @@ export class UIManager {
   }
 
   private _restoreMenuActors() {
-    if (!this._actorDestroyed) {
-      this._undoEdgeInset?.();
-      this.targetActor.remove_style_class_name('liquid-glass-transparent');
-    }
-    this._undoEdgeInset = null;
+    if (!this._actorDestroyed) this.targetActor.remove_style_class_name('liquid-glass-transparent');
     if (!this._actorDestroyed && this.animActor) {
       this.animActor.remove_style_class_name('liquid-glass-transparent');
       this.animActor.remove_style_class_name('liquid-glass-menu-root');

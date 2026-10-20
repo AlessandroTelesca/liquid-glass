@@ -38,7 +38,7 @@ Notifications:
 
 ![Notifications Screenshot](assets/notification.png)
 
-Panel Menus (right: menus growing from their button):
+Panel Menus (right: menus growing from their button, off by default):
 
 <p>
   <img src="assets/calendar.png" alt="Panel Menu Screenshot" width="49%">
@@ -75,7 +75,7 @@ OSD:
 
 ![OSD Screenshot](assets/osd.png)
 
-Glass Clock:
+Glass Clock (off by default):
 
 ![Glass Clock Screenshot](assets/clock.png)
 
@@ -113,14 +113,14 @@ cp -r liquid-glass/liquid-glass@thinkingcoding1231.gmail.com ~/.local/share/gnom
 
 ## What Can Be Made of Glass
 
-The effect can be enabled or disabled per UI element on the **Effects** page. In the **Simple** view every element shares one look (blur, corners, tint, outline); switch the view to **Advanced** (Appearance → Settings) to tune each element on its own — tint color and strength, an **outline** (a line along the visible edge of the glass, shadow not included, to make it easier to see: switch, width and color; the glass clock has none), blur radius, corner radius, glass expand, offsets, and brightness / contrast / saturation — plus the element-specific features listed below. Values you tune by eye have a slider next to the number; values whose number is what matters (spring constants, intervals) are typed in. Settings that depend on a switch (the outline, animations, adaptive color) sit indented below it and fold away with the arrow at the end of the switch's row.
+The effect can be enabled or disabled per UI element on the **Effects** page. In the **Simple** view every element shares one look (blur, corners, tint); switch the view to **Advanced** (Appearance → Settings) to tune each element on its own — tint color and strength, blur radius, corner radius, glass expand, offsets, and brightness / contrast / saturation — plus the element-specific features listed below. Values you tune by eye have a slider next to the number; values whose number is what matters (spring constants, intervals) are typed in.
 
 | Element | Notes / Special features |
 | --- | --- |
 | **Top Bar** | The bar itself, as **one pill** across the screen or **three pills** behind its groups of buttons (activities, clock, status icons), chosen on the Effects page (Appearance → Top bar in the Advanced view). The space around the pills (**margin**) and between their edges and the buttons (**padding**) can be set per side in the Advanced view; the bar grows to make room, and maximized windows stay below it. The top bars that other extensions add on further monitors, such as [Multi Monitors Bar](https://github.com/FrederykAbryan/multi-monitors-bar_fapv2)'s, get the same glass with the same settings, unless they run along a side of the screen. Off by default. Supports **adaptive text coloring**. |
 | **Dash to Dock** | Glass behind the dock. Adds a bottom margin control so the dock can float above the screen edge. Works with the Dash to Dock / Ubuntu Dock extension. |
 | **Application Icons** | The icons in Dash to Dock (the Show Apps button too), in the launcher's results and in the overview's app grid, redrawn as glass plates under a one-color symbol, as in macOS 26 and iOS 26. See [Glass Icons](#glass-icons). Off by default. |
-| **Calendar & Other Top Bar Menus** | Glass behind the calendar (clock) menu and behind the menus of the other top bar indicators — the keyboard layout and accessibility menus, and the indicators other extensions add, including [ArcMenu](https://gitlab.com/arcmenu/ArcMenu)'s menu and its right-click menu. The calendar menus of the top bars other extensions add on further monitors, such as [Multi Monitors Bar](https://github.com/FrederykAbryan/multi-monitors-bar_fapv2)'s, get the same glass and follow the calendar menu's settings. The calendar menu's cards (messages, events, world clocks) follow the colour scheme in GNOME Settings: dark under Dark, pale under Default, with the text colours set to match. Each detected menu can be switched off on its own. Menus **grow out of their button**, after [liquid-dom](https://github.com/AndrewPrifer/liquid-dom)'s menu demo: the button's highlight drops out of the button and rounds off into a drop of glass, which is thrown out to where the menu will be — each time with a small push in a random downward direction — and swells into the menu, its items coming up through the glass, seen bent by its rim at first. Closing runs it back: the menu shrinks into a drop that rises into the button, widening into its highlight on the way, and fades once it has become the highlight. On by default (Appearance → Behavior → "Menus grow from their button"). With that off, a **custom spring animation** (stiffness / damping / mass) scales the menu instead. Also supports **adaptive text coloring**. |
+| **Calendar & Other Top Bar Menus** | Glass behind the calendar (clock) menu and behind the menus of the other top bar indicators — the keyboard layout and accessibility menus, and the indicators other extensions add, including [ArcMenu](https://gitlab.com/arcmenu/ArcMenu)'s menu and its right-click menu. The calendar menus of the top bars other extensions add on further monitors, such as [Multi Monitors Bar](https://github.com/FrederykAbryan/multi-monitors-bar_fapv2)'s, get the same glass and follow the calendar menu's settings. The calendar menu's cards (messages, events, world clocks) follow the colour scheme in GNOME Settings: dark under Dark, pale under Default, with the text colours set to match. Each detected menu can be switched off on its own. Menus **grow out of their button**, after [liquid-dom](https://github.com/AndrewPrifer/liquid-dom)'s menu demo: the button's highlight drops out of the button and rounds off into a drop of glass, which is thrown out to where the menu will be — each time with a small push in a random downward direction — and swells into the menu, its items coming up through the glass, seen bent by its rim at first. Closing runs it back: the menu shrinks into a drop that rises into the button, widening into its highlight on the way, and fades once it has become the highlight. Off by default (Appearance → Behavior → "Menus grow from their button"). With that off, a **custom spring animation** (stiffness / damping / mass) scales the menu instead. Also supports **adaptive text coloring**. |
 | **Notifications** | Glass behind notification banners. Supports **adaptive text coloring** and a hide safety margin to avoid flicker while the banner is dismissed. |
 | **Quick Settings** | Two modes: **Whole menu** applies one sheet of glass behind the whole panel, and **Individual buttons** turns every toggle button into its own piece of glass, keeping each toggle's own accent color (see "Button base color"). Also supports spring animation and adaptive text coloring. |
 | **OSD** | Glass behind the on-screen displays (volume, brightness, and so on), with adaptive text coloring. |
@@ -160,7 +160,7 @@ The **Desktop** page of the preferences adds glass that is not part of GNOME's o
 
 ### Glass Clock
 
-A large clock whose digits are themselves glass, like the clock on the iPhone's lock screen, with the date above it. It sits on the desktop below the windows. Pick a place for it (one of the four corners or the center) in the preferences or from its right-click menu (**Position**), or right-click it and choose **Move and Resize**: a frame appears round it, to drag it anywhere and to resize it by the handles. The side handles make the digits wider; the top and bottom ones make them taller the way the iPhone's tall clock does, in one of two ways (**Taller digits** in the preferences): **evenly** or **along their upright strokes** (the default), lengthening the straight upright parts while curves and bars keep their shape and the parts above and below a join in the middle (of a 3, 5 or 8) grow alike. Either way every stroke keeps its width whichever way it runs, corners stay sharp and the colon's dots keep their shape; the corners scale the whole clock. It stays where it was moved until you pick a place again. The font, the size, the width, the height, the time format (as in Settings, 24-hour or 12-hour), the date, the blur and the tint can be changed. Four condensed fonts that suit a tall clock come with the extension, each in Light, Regular, SemiBold and Bold: [Antonio](https://fonts.google.com/specimen/Antonio), [Barlow Condensed](https://fonts.google.com/specimen/Barlow+Condensed), [Saira Extra Condensed](https://fonts.google.com/specimen/Saira+Extra+Condensed) and [Sofia Sans Extra Condensed](https://fonts.google.com/specimen/Sofia+Sans+Extra+Condensed), all under the SIL Open Font License (`fonts/`); Barlow Condensed Light is the default. The interface font or any installed font can be picked instead.
+A large clock whose digits are themselves glass, like the clock on the iPhone's lock screen, with the date above it. It sits on the desktop below the windows. Pick a place for it (one of the four corners or the center) in the preferences or from its right-click menu (**Position**), or right-click it and choose **Move and Resize**: a frame appears round it, to drag it anywhere and to resize it by the handles. The side handles make the digits wider; the top and bottom ones make them taller the way the iPhone's tall clock does, in one of two ways (**Taller digits** in the preferences): **evenly**, the default, or **along their upright strokes**, lengthening the straight upright parts while curves and bars keep their shape and the parts above and below a join in the middle (of a 3, 5 or 8) grow alike. Either way every stroke keeps its width whichever way it runs, corners stay sharp and the colon's dots keep their shape; the corners scale the whole clock. It stays where it was moved until you pick a place again. The font, the size, the width, the height, the time format (as in Settings, 24-hour or 12-hour), the date, the blur and the tint can be changed. Four condensed fonts that suit a tall clock come with the extension, each in Light, Regular, SemiBold and Bold: [Antonio](https://fonts.google.com/specimen/Antonio), [Barlow Condensed](https://fonts.google.com/specimen/Barlow+Condensed), [Saira Extra Condensed](https://fonts.google.com/specimen/Saira+Extra+Condensed) and [Sofia Sans Extra Condensed](https://fonts.google.com/specimen/Sofia+Sans+Extra+Condensed), all under the SIL Open Font License (`fonts/`); Sofia Sans Extra Condensed SemiBold is the default. The interface font or any installed font can be picked instead.
 
 ### Desktop Widgets
 
@@ -190,9 +190,9 @@ Point at a result and a pin appears on its left: click it to pin the result (app
 
 ## Preferences
 
-- **Appearance** — shared blur, corners, tint and outline; animations, adaptive color and matching menu heights; **Backup**, which exports every setting to a file and imports it again.
+- **Appearance** — shared blur, corners and tint; animations, adaptive color and matching menu heights; **Backup**, which exports every setting to a file and imports it again.
 - **Effects** — choose where glass appears: top bar, dock, menus, popups (and whether quick settings get one sheet or one per button), application icons and application windows. The advanced view lists every surface on its own here, the top bar included.
-- **Desktop** — the glass clock (whether it shows, the time format and the date), the desktop widgets and the launcher (its shortcut). The clock's place, size, font and glass (blur, tint color and strength, brightness, contrast, saturation), and the launcher's width, the height of the pinned items, their icon size and how it changes to them, are surfaces of the advanced **Appearance** page.
+- **Desktop** — the glass clock (its settings fold away while it is off), the desktop widgets and the launcher (its shortcut, width, the height of the pinned items, their icon size and how it changes to them).
 - **Rendering** — rendering quality, refraction, edge lighting, shadows and diagnostics.
 
 Opening the window preserves your configuration. **Custom** means your existing
@@ -242,7 +242,7 @@ A separate ambient-occlusion style darkening sits just inside the glass edge, in
 ### Troubleshooting
 - **Logging** - Print the extension's logs to the journal / terminal. Useful when reporting a bug.
 - **Render diagnostics** - More detailed rendering state in the logs; adds overhead, so leave it off for normal use.
-- **Dump shortcut** - A global shortcut (Ctrl+Alt+L unless changed in the row under the switch) that records the glass state for a bug report.
+- **Dump shortcut** - A global shortcut (Ctrl+Alt+L) that records the glass state for a bug report.
 
 
 ## The WebGL/Three.js Prototype (The Lab)
@@ -311,10 +311,9 @@ A significant part of this codebase was written with the help of AI coding assis
 - [x] Glass application icons in the app grid
 - [x] Pin launcher results, with a page of pinned items, and work out arithmetic in the launcher
 - [x] Export and import the settings, set the launcher's size and its pinned icons' size, scroll its results, mark applications that are not installed, and keep desktop widgets in a stack when their content changes
-- [x] Outline for the glass of each element, and settings that fold away under their switch in the advanced preferences
 
 ### Next
-- [ ] Publish to extensions.gnome.org
+- [ ] Publish to extensions.gnome.org (not approved yet)
 - [ ] glass-lib: a glass library for apps
 
 ## License

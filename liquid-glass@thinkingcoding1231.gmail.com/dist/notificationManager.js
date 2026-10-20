@@ -223,7 +223,6 @@ export class NotificationManager {
         }
         const glass = new BackdropGlass({
             extensionPath: this.extensionPath, settings: this._settings, logger: this._logger, owner: 'notification',
-            outline: 'notification',
         });
         this.glass = glass;
         glass.set_size(1.0, 1.0);

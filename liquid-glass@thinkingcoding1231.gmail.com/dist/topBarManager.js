@@ -89,7 +89,7 @@ export class TopBarManager {
         const panelBox = this._panelBox;
         panel.add_style_class_name('liquid-glass-transparent');
         const glass = new BackdropGlass({
-            extensionPath: this._path, settings: this._settings, logger: this._logger, owner: this._owner, outline: 'top-bar',
+            extensionPath: this._path, settings: this._settings, logger: this._logger, owner: this._owner,
         });
         this._glass = glass;
         glass.reactive = false;
