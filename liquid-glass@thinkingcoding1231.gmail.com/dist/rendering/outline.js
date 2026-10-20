@@ -1,5 +1,4 @@
 import { hexToColorArray } from '../animation/colors.js';
-
 // Keeps the outline uniforms of one glass in step with its surface's
 // `<prefix>-outline-*` settings. A width of 0 is how the shader turns the
 // outline off.
@@ -9,14 +8,12 @@ export class OutlineBinding {
     _uniforms;
     _repaintIfDirty;
     _ids = [];
-
     constructor(_settings, _prefix, _uniforms, _repaintIfDirty) {
         this._settings = _settings;
         this._prefix = _prefix;
         this._uniforms = _uniforms;
         this._repaintIfDirty = _repaintIfDirty;
     }
-
     initialize() {
         this._apply();
         for (const suffix of ['enabled', 'width', 'color']) {
@@ -26,12 +23,10 @@ export class OutlineBinding {
             }));
         }
     }
-
     clear() {
         this._ids.forEach(id => this._settings.disconnect(id));
         this._ids = [];
     }
-
     _apply() {
         const s = this._settings;
         const p = this._prefix;

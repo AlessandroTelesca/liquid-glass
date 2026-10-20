@@ -165,15 +165,15 @@ export class PreferenceControls {
   }
 
   // create and return a group with a title and description
-  group(page, title, description = '') {
-    const group = new Adw.PreferencesGroup({ title, description });
+  group(page, title, description = '', name = '') {
+    const group = new Adw.PreferencesGroup({ title, description, name: name || null });
     page.add(group);
     return group;
   }
 
   // create and return a switch row with a title and subtitle
-  toggle(group, title, key, subtitle = '') {
-    const row = new Adw.SwitchRow({ title, subtitle });
+  toggle(group, title, key, subtitle = '', name = '') {
+    const row = new Adw.SwitchRow({ title, subtitle, name: name || null });
     group.add(row);
     this.settings.bind(key, row, 'active', Gio.SettingsBindFlags.DEFAULT);
     return row;

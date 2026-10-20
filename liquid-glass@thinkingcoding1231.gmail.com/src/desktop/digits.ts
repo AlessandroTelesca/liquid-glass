@@ -52,7 +52,7 @@ export class DigitsMaker {
   async make(request: DigitsRequest): Promise<Digits> {
     const key = fontKey(request);
     if (key !== this._key || !this._fields) {
-      this._fields?.then(old => old.cancellable.cancel(), () => {});
+      this._fields?.then(old => old.cancellable.cancel(), () => { });
       this._key = key;
       this._fields = this._face(request).then(face =>
         new GlyphFields(face, FIELD_RANGE, request.stretch, request.height, request.style));
@@ -65,14 +65,16 @@ export class DigitsMaker {
     const band = Math.min(Math.max(maxDepth(field), 2), MAX_BAND);
     const lens = await softenedInSteps(field, band * LENS_SOFTNESS, () => fields.pause());
     await fields.pause();
-    return { bytes: encodeFields(field, lens, FIELD_RANGE), width: field.width, height: field.height, band,
-      digitHeight: fields.digitHeight };
+    return {
+      bytes: encodeFields(field, lens, FIELD_RANGE), width: field.width, height: field.height, band,
+      digitHeight: fields.digitHeight
+    };
   }
 
-  /** Gives up the work for any font but `request`'s. */
+  /** Gives up the work for any font but `request`'s. Caller uses this to process only the latest request.*/
   keepOnly(request: DigitsRequest): void {
     if (fontKey(request) === this._key) return;
-    this._fields?.then(fields => fields.cancellable.cancel(), () => {});
+    this._fields?.then(fields => fields.cancellable.cancel(), () => { });
     this._fields = null;
     this._key = '';
   }
@@ -96,7 +98,7 @@ export class DigitsMaker {
 
   destroy(): void {
     this._cancellable.cancel();
-    this._fields?.then(fields => fields.cancellable.cancel(), () => {});
+    this._fields?.then(fields => fields.cancellable.cancel(), () => { });
     this._fields = null;
   }
 }

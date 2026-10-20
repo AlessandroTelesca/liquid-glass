@@ -29,7 +29,7 @@ export function introProgress(t: number): number {
   const zeta = DAMPING_FRACTION;
   const omegaD = omega0 * Math.sqrt(1 - zeta * zeta);
   const decay = Math.exp(-zeta * omega0 * t);
-  return 1 - decay * (Math.cos(omegaD * t) + (zeta * omega0 - START_VELOCITY) / omegaD * Math.sin(omegaD * t));
+  return 1 - decay * (Math.cos(omegaD * t) + (zeta * omega0 - START_VELOCITY) / omegaD * Math.sin(omegaD * t)); // 1 - decay * wave * start velocity -> t
 }
 
 export interface IntroFrame {
@@ -96,12 +96,12 @@ export class ToggleIntro {
   // the shortfall. The shares are weighed rather than compared, so the sizes
   // change smoothly when one button overtakes the other.
   private _keepApart(rects: number[][]): void {
-    for (let pass = 0; pass < 3; pass++) {
+    for (let pass = 0; pass < 3; pass++) { // loop 3 times to settle
       for (const { i, j, gap } of this._pairs) {
-        const short = gap - distance(rects[i], rects[j]);
+        const short = gap - distance(rects[i], rects[j]); // calculate the gap between the buttons
         if (short <= 0) continue;
         const [gx, gy] = axisGaps(rects[i], rects[j]);
-        const [wi, wj] = [i, j].map(n => (rects[n][2] / this._rects[n][2]) ** YIELD_POWER);
+        const [wi, wj] = [i, j].map(n => (rects[n][2] / this._rects[n][2]) ** YIELD_POWER); // which to make smaller
         for (const [n, weight] of [[i, wi / (wi + wj)], [j, wj / (wi + wj)]]) {
           const r = rects[n];
           // Each side that faces the other moves in by this share of the shortfall.

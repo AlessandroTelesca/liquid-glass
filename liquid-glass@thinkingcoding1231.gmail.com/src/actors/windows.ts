@@ -17,7 +17,7 @@ export function windowMayCover(actor: Clutter.Actor, rect: number[]): boolean {
   let top: Clutter.Actor | null = actor;
   while (top && top.get_parent() !== global.window_group) top = top.get_parent();
   if (!top) return false;
-  for (let above = top.get_next_sibling(); above; above = above.get_next_sibling()) {
+  for (let above = top.get_next_sibling(); above; above = above.get_next_sibling()) { // loop over all windows above. `for (init, cond, step)`
     if (!(above instanceof Meta.WindowActor) || !above.visible || above.get_paint_opacity() !== 255) continue;
     if (above.get_effects().some(effect => effect.enabled)) continue;
     const box = above.get_transformed_extents();

@@ -56,7 +56,7 @@ export class BlurMyShellWatch {
   private _path: string | null = null;
   private _blurring: boolean | null = null;
 
-  constructor(private _settings: Gio.Settings, private _logger: Logger) {}
+  constructor(private _settings: Gio.Settings, private _logger: Logger) { }
 
   setup() {
     this._stateId = Main.extensionManager.connect('extension-state-changed', (_manager: any, extension: any) => {
@@ -121,6 +121,11 @@ export class BlurMyShellWatch {
     if (blurring) {
       this._logger.warn('[Liquid Glass] Blur my Shell is blurring popups, which shows through the glass on menus, '
         + 'notifications and OSDs. Turn off Popups in Blur my Shell.');
+    }
+    for (const part of ['panel', 'dock', 'applications']) {
+      const blurring = active && (this._parts.get(part)?.get_boolean('blur') ?? false);
+      if (!blurring) continue;
+      this._settings.set_boolean(`blur-my-shell-${part}-blur`, blurring);
     }
   }
 

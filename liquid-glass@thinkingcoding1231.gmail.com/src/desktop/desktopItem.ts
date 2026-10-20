@@ -128,7 +128,7 @@ export abstract class GlassCard implements DesktopItem {
   set shown(shown: boolean) {
     if (shown === this._shown) return;
     this._shown = shown;
-    this.env.relayout();
+    this.env.relayout(); // defined in desktopLayer.ts (connects to the _queueLayout() in the DesktopLayer)
   }
 
   private _applyMaterial(): void {

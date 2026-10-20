@@ -45,7 +45,6 @@ const MENU_MEASURE_STABLE_FRAMES = 3;
 // and the callbacks waiting for a measurement in progress.
 let _quickSettingsHeight = 0;
 let _quickSettingsWaiting = null;
-
 export class UIManager {
     _enableKey;
     _keyPrefix;
@@ -65,17 +64,13 @@ export class UIManager {
     _destroySignalId = 0;
     _actorDestroyed = false;
     _frameSyncId;
-
     get _frameSlot() {
         return { get: () => this._frameSyncId, set: (id) => { this._frameSyncId = id; } };
     }
-
     _frameSignalId = 0;
-
     get _frameSignalSlot() {
         return { get: () => this._frameSignalId, set: (id) => { this._frameSignalId = id; } };
     }
-
     _glassExpand;
     _menuXoffset;
     _menuYoffset;
@@ -143,13 +138,12 @@ export class UIManager {
     _lastScreenH;
     // The menu's ancestor that is a direct child of uiGroup; see _restackGlass().
     _menuRoot = null;
-
-    constructor(extensionPath, settings, logger, panelButton = Main.panel.statusArea.dateMenu, ownsAccentCss = true, _enableKey = 'enable-menu-glass',
+    constructor(extensionPath, settings, logger, panelButton = Main.panel.statusArea.dateMenu, ownsAccentCss = true, _enableKey = 'enable-menu-glass', 
     // Settings prefix: `menu` for the calendar, `panel-menu` for the
     // other panel menus (see PanelMenuManager).
-    _keyPrefix = 'menu',
+    _keyPrefix = 'menu', 
     // Names this glass in logs, dumps and actor names.
-    _label = 'menu', _ownsSettingsNamespace = true,
+    _label = 'menu', _ownsSettingsNamespace = true, 
     // A key holding "off", "spring" or "morph", which then decides the
     // animation instead of the namespace's animation and grow switches.
     _motionKey = null) {
@@ -201,7 +195,6 @@ export class UIManager {
             this.cleanup();
         });
     }
-
     setup() {
         if (!this._settings)
             return;
@@ -234,7 +227,6 @@ export class UIManager {
             this._applyEffect();
         }
     }
-
     /**
      * The accent color and its foreground as [background, foreground] hex.
      * Asked of St rather than read off a themed dummy widget, because themes
@@ -259,7 +251,6 @@ export class UIManager {
         parent.destroy();
         return [rgbToHex(bgColor.red, bgColor.green, bgColor.blue), '#ffffff'];
     }
-
     _applySystemAccentColor() {
         if (!this._ownsAccentCss || !this.targetActor)
             return;
@@ -295,14 +286,12 @@ export class UIManager {
             this._logger.error(`[Liquid Glass] [UIManager] Failed to apply system accent color: ${e}`);
         }
     }
-
     _allocatedHeightOf(actor) {
         if (!actor || !isActorValid(actor) || !actor.has_allocation())
             return 0;
         const [, allocated] = getAllocatedSize(actor);
         return allocated > 1 ? allocated : 0;
     }
-
     _firstHeight(actors, measure) {
         for (const actor of actors) {
             const height = measure(actor);
@@ -311,7 +300,6 @@ export class UIManager {
         }
         return 0;
     }
-
     // Measures a menu's height once it has stopped changing for a few frames
     // (it grows while its content lays out), within MENU_MEASURE_FRAMES.
     _settleHeight(menu, done) {
@@ -335,7 +323,6 @@ export class UIManager {
         };
         this._addMeasureLater(tick);
     }
-
     _addMeasureLater(callback) {
         const id = global.compositor.get_laters().add(Meta.LaterType.BEFORE_REDRAW, () => {
             this._measureLaterIds.delete(id);
@@ -344,7 +331,6 @@ export class UIManager {
         });
         this._measureLaterIds.add(id);
     }
-
     _cancelHeightMeasurement() {
         for (const id of this._measureLaterIds)
             global.compositor.get_laters().remove(id);
@@ -358,7 +344,6 @@ export class UIManager {
             _quickSettingsWaiting = null;
         }
     }
-
     _withQuickSettingsHeight(done) {
         if (_quickSettingsHeight > 0) {
             done(_quickSettingsHeight);
@@ -405,7 +390,6 @@ export class UIManager {
             settle(height);
         });
     }
-
     _measureHeightScale() {
         if (!this.menu)
             return;
@@ -413,7 +397,6 @@ export class UIManager {
         this._ownOpenHeight = 0;
         this._withQuickSettingsHeight(() => this._rememberRatioWhenBothKnown());
     }
-
     _noteOwnOpenedHeight() {
         if (!this._matchQuickSettingsHeight)
             return;
@@ -428,7 +411,6 @@ export class UIManager {
             }
         });
     }
-
     _rememberRatioWhenBothKnown() {
         if (_quickSettingsHeight <= 0 || this._ownOpenHeight <= 0)
             return;
@@ -438,7 +420,6 @@ export class UIManager {
         this._rememberHeightScale(ratio);
         this._applyMenuScale();
     }
-
     _quickSettingsHeightScale() {
         const quickSettings = Main.panel.statusArea.quickSettings?.menu;
         if (!quickSettings)
@@ -453,7 +434,6 @@ export class UIManager {
         this._rememberHeightScale(ratio);
         return ratio;
     }
-
     _rememberHeightScale(ratio) {
         if (this._settledHeightScale !== null && Math.abs(this._settledHeightScale - ratio) < 0.005)
             return;
@@ -462,7 +442,6 @@ export class UIManager {
             return;
         this._settings.set_double(this._key('settled-height-scale'), ratio);
     }
-
     _applyMenuScale() {
         if (!this.targetActor || !isActorValid(this.targetActor))
             return;
@@ -478,11 +457,9 @@ export class UIManager {
         this.targetActor.set_pivot_point(0.5, 0.0);
         this.targetActor.set_scale(scale, scale);
     }
-
     _getMenuMonitorGeometry() {
         return resolveMonitorGeometry([this.menu?.sourceActor, this.targetActor]);
     }
-
     /**
      * Keeps the glass directly beneath the menu it backs, as the other surfaces
      * do; placed anywhere lower, a dock between the two would cover the glass
@@ -506,17 +483,14 @@ export class UIManager {
             return;
         uiGroup.set_child_below_sibling(this.glass, root);
     }
-
     // A key in this instance's settings namespace; see _keyPrefix.
     _key(suffix) {
         return `${this._keyPrefix}-${suffix}`;
     }
-
     // The animation switch is named `enable-<prefix>-animation`.
     _animationKey() {
         return `enable-${this._keyPrefix}-animation`;
     }
-
     _readMotion() {
         if (this._motionKey) {
             const motion = this._settings.get_string(this._motionKey);
@@ -528,7 +502,6 @@ export class UIManager {
             this._growFromButton = this._settings.get_boolean(this._key('grow-from-button'));
         }
     }
-
     _bindSettings() {
         const connectSetting = (key, callback) => {
             let id = this._settings.connect(`changed::${key}`, callback.bind(this));
@@ -639,7 +612,6 @@ export class UIManager {
             this._adaptiveConfig.preference = sanitizeColorPreference(this._settings.get_string(this._key('adaptive-text-preference')));
         });
     }
-
     _applyEffect() {
         if (this._isEffectActive)
             return;
@@ -774,7 +746,6 @@ export class UIManager {
             startFrameSync();
         }
     }
-
     _syncGeometry() {
         // The morph places the glass itself.
         if (this._morph)
@@ -798,7 +769,6 @@ export class UIManager {
         // After the geometry setters, so the relays cover this frame's rect.
         this.glass.syncSources();
     }
-
     _syncBgVisibility() {
         if (!this.glass || !this.targetActor || !this.targetActor.mapped) {
             if (this.glass && this.glass.visible) {
@@ -814,7 +784,6 @@ export class UIManager {
         }
         return true;
     }
-
     _measureMenu() {
         // The allocation: a hover restyle leaves a relayout pending, during
         // which get_size() reports the preferred size including CSS margins.
@@ -835,7 +804,6 @@ export class UIManager {
             scaleY,
         };
     }
-
     _resolveMenuOrigin(w) {
         return resolveGlassOrigin(this.animActor, this, () => {
             const monitor = Main.layoutManager.primaryMonitor;
@@ -844,7 +812,6 @@ export class UIManager {
             return [(monitor.width / 2) - (w / 2) + this._menuXoffset, (Main.panel.height || 27) + this._menuYoffset];
         });
     }
-
     _applyGlassBounds(glass, bgX, bgY, bgW, bgH, monitorX, monitorY, screenW, screenH) {
         if (this._lastBgW === bgW && this._lastBgH === bgH &&
             this._lastBgX === bgX && this._lastBgY === bgY &&
@@ -864,11 +831,9 @@ export class UIManager {
         this._lastScreenW = screenW;
         this._lastScreenH = screenH;
     }
-
     _applyGlassScale(scaleX, scaleY) {
         applyGlassScale(this.glass, this._cornerRadius, scaleX, scaleY);
     }
-
     _updateResolution() {
         if (!this.glass)
             return;
@@ -877,24 +842,20 @@ export class UIManager {
             this.glass.setResolution(width, height);
         }
     }
-
     _hasStyleClass(actor, className) {
         return actor instanceof St.Widget &&
             actor.has_style_class_name(className);
     }
-
     _collectAdaptiveTextTargets(actor = this.menu?.actor, targets = []) {
         if (!actor)
             return targets;
         return this._findAllTextActors(this.menu?.actor);
     }
-
     // The calendar menu's cards get their text color from the stylesheet, not from what is behind the glass.
     _isCard(actor) {
         return CARD_CLASSES.some(name => this._hasStyleClass(actor, name)) &&
             !!this.animActor?.has_style_class_name('liquid-glass-menu-root');
     }
-
     _findAllTextActors(actor, foundActors = []) {
         if (!actor)
             return foundActors;
@@ -909,7 +870,6 @@ export class UIManager {
             this._findAllTextActors(child, foundActors);
         return foundActors;
     }
-
     _setActorColor(actor, color, skipAnimations = false, batchStart) {
         // Clutter.Text targets have no St style.
         if (!(actor instanceof St.Widget))
@@ -932,7 +892,6 @@ export class UIManager {
         actor._currentInsensitiveState = isInsensitive;
         this._animateActorColor(actor, color, isInsensitive, 380, skipAnimations, batchStart);
     }
-
     _clearAdaptiveStyles() {
         for (const [actor, originalStyle] of this._styledActors.entries()) {
             adaptiveColorTweener.cancel(actor);
@@ -946,7 +905,6 @@ export class UIManager {
         this._sharedColor = null;
         this._disconnectHoverWatchers();
     }
-
     _disconnectHoverWatchers() {
         this._pendingBackdropRoots.clear();
         if (this._backdropRefreshId !== 0) {
@@ -959,7 +917,6 @@ export class UIManager {
         }
         this._hoverSignals.clear();
     }
-
     // A hovered row restyles its parent (the highlight); watching that lets the
     // text colors follow the highlight instead of the glass behind it.
     _watchHoverFor(targets) {
@@ -983,7 +940,6 @@ export class UIManager {
                 this._hoverSignals.delete(actor);
         }
     }
-
     _queueBackdropRefresh(root) {
         if (!this._adaptiveConfig.enabled || !this._isEffectActive || this._actorDestroyed)
             return;
@@ -1003,7 +959,6 @@ export class UIManager {
             return GLib.SOURCE_REMOVE;
         });
     }
-
     _applyBackdropColorsTo(targets) {
         if (!targets || targets.length === 0)
             return;
@@ -1026,7 +981,6 @@ export class UIManager {
         }
         this._applyingColors = false;
     }
-
     // Iterates through the color map and applies the new target colors to the respective actors
     _applyAdaptiveColorMap(colorMap, skipAnimations = false) {
         if (!colorMap || colorMap.size === 0)
@@ -1042,7 +996,6 @@ export class UIManager {
         }
         this._applyingColors = false;
     }
-
     /**
      * @param skipAnimations Set on open. The first sample is taken before the
      *   first frame, before the glass is drawn: the screen then shows the bare
@@ -1086,7 +1039,6 @@ export class UIManager {
             return GLib.SOURCE_CONTINUE;
         });
     }
-
     _stopAdaptiveColorSampling() {
         if (this._adaptiveTimerId !== 0) {
             GLib.source_remove(this._adaptiveTimerId);
@@ -1102,7 +1054,6 @@ export class UIManager {
         }
         this._newTextPending = false;
     }
-
     // Some menus add their items as they open (Kiwi Menu rebuilds them every
     // time), after the open sample. Their text takes the menu's color before it
     // is drawn, rather than the theme's until the next sample; before the first
@@ -1121,7 +1072,6 @@ export class UIManager {
             return GLib.SOURCE_REMOVE;
         });
     }
-
     _colorNewText() {
         const color = this._sharedColor;
         if (color === null)
@@ -1133,7 +1083,6 @@ export class UIManager {
         this._applyBackdropColorsTo(fresh);
         this._applyAdaptiveColorMap(new Map(fresh.map(actor => [actor, color])), true);
     }
-
     _updateAdaptiveTextColors(skipAnimations = false) {
         if (!this._adaptiveConfig.enabled || this._adaptiveInFlight)
             return;
@@ -1190,7 +1139,6 @@ export class UIManager {
             }
         });
     }
-
     _animateActorColor(actor, targetHexColor, isInsensitive, durationMs = 380, skipAnimations = false, batchStart) {
         // An existing tween is not cancelled: add() restarts from the color it
         // last applied.
@@ -1220,7 +1168,6 @@ export class UIManager {
             apply,
         }, batchStart);
     }
-
     // The spring open/close animation.
     _startAnimation(targetValue) {
         if (this._tickId !== 0) {
@@ -1266,7 +1213,6 @@ export class UIManager {
             }, normalizeAnimationIntervalMs(this._animationInterval));
         }
     }
-
     // The button the menu belongs to, as the glass it grows out of: the capsule
     // the theme highlights it with, [x, y, w, h] in stage coordinates, or null
     // when it is not on screen. Panel buttons draw it inside a transparent
@@ -1296,7 +1242,6 @@ export class UIManager {
             return [x, y, w, h];
         return [x + left, y + top, w - left - right, h - top - bottom];
     }
-
     // Where the menu's items are at rest: their stage rect without the
     // morph's own scale and shift, and the scale (`k`) the menu puts on them.
     _menuRest() {
@@ -1312,7 +1257,6 @@ export class UIManager {
             return null;
         return { x, y, w: w * k, h: h * k, k };
     }
-
     // The resting menu's glass body, [x, y, w, h] in stage coordinates.
     _menuBodyRect() {
         const rest = this._menuRest();
@@ -1321,7 +1265,6 @@ export class UIManager {
         const e = this._glassExpand;
         return [rest.x - e, rest.y - e, rest.w + e * 2, rest.h + e * 2];
     }
-
     /**
      * Starts the glass towards the menu (`open`) or back into the button.
      * False when there is no button to grow out of; the scale spring runs then.
@@ -1372,7 +1315,6 @@ export class UIManager {
         this._morphTickId = addFrameTicker(() => this._stepMorph(), normalizeAnimationIntervalMs(this._animationInterval));
         return true;
     }
-
     _stepMorph() {
         const m = this._morph;
         if (!m || !this.glass) {
@@ -1429,7 +1371,6 @@ export class UIManager {
         }
         return false;
     }
-
     // Draws the travelling glass (stage coordinates) and the menu's items in it.
     _placeMorph(f) {
         const glass = this.glass;
@@ -1447,7 +1388,6 @@ export class UIManager {
         this._placeContent(f);
         glass.syncSources();
     }
-
     // Takes the refraction and the blur from their settings towards
     // SOFT_REFRACTION and SOFT_BLUR_RADIUS, by `soften` (0 to 1).
     _softenGlass(glass, soften) {
@@ -1460,7 +1400,6 @@ export class UIManager {
             glass.setBlurRadius(blur);
         }
     }
-
     // Draws the menu's items `f.contentScale` times their size around the
     // middle of the travelling glass, cut to its outline.
     _placeContent(f) {
@@ -1484,14 +1423,12 @@ export class UIManager {
         a.set_clip(clip[0], clip[1], clip[2], clip[3]);
         this._morph.lens.shape(clip, s * k, f.bodyRadius, f.lens);
     }
-
     _stopMorphTicker() {
         if (!this._morphTickId)
             return;
         removeFrameTicker(this._morphTickId);
         this._morphTickId = 0;
     }
-
     // Leaves the glass and the menu as the rest of the manager expects them.
     _endMorph() {
         this._stopMorphTicker();
@@ -1515,7 +1452,6 @@ export class UIManager {
         if (this.glass && this.targetActor.mapped)
             this._syncGeometry();
     }
-
     _removeEffect() {
         if (!this._isEffectActive)
             return;
@@ -1526,7 +1462,6 @@ export class UIManager {
         this._restoreMenuActors();
         this._releaseGlass();
     }
-
     _disconnectEffectSources() {
         for (let sig of this._signals)
             sig.target.disconnect(sig.id);
@@ -1539,7 +1474,6 @@ export class UIManager {
         stopStageLoop(this._frameSignalSlot, this._frameSlot);
         this._disconnectAccentColor();
     }
-
     _disconnectAccentColor() {
         if (this._accentColorTimeoutId) {
             GLib.Source.remove(this._accentColorTimeoutId);
@@ -1551,7 +1485,6 @@ export class UIManager {
             this._interfaceSettings = null;
         }
     }
-
     // The shell stays dark for the default scheme too, but that scheme asks for light apps, so the cards follow it.
     _syncStyleVariant() {
         if (St.Settings.get().color_scheme !== St.SystemColorScheme.PREFER_DARK)
@@ -1559,7 +1492,6 @@ export class UIManager {
         else
             this.animActor.remove_style_class_name('liquid-glass-light');
     }
-
     _restoreMenuActors() {
         if (!this._actorDestroyed)
             this.targetActor.remove_style_class_name('liquid-glass-transparent');
@@ -1590,7 +1522,6 @@ export class UIManager {
             }
         }
     }
-
     _releaseGlass() {
         const glass = this.glass;
         this.glass = null;
@@ -1604,7 +1535,6 @@ export class UIManager {
         this._stableBaseW = undefined;
         this._stableBaseH = undefined;
     }
-
     cleanup() {
         this._cancelHeightMeasurement();
         stopStageLoop(this._frameSignalSlot, this._frameSlot);

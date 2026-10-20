@@ -93,7 +93,7 @@ export class GlassClock implements DesktopItem {
     this._date = new St.Label({ style_class: 'liquid-glass-clock-date' });
     this.actor.add_child(this._glass);
     this.actor.add_child(this._date);
-    connectClicks(this.actor, () => {}, (x, y) => env.menu(this, x, y));
+    connectClicks(this.actor, () => { }, (x, y) => env.menu(this, x, y));
 
     this._adaptive = new AdaptiveTextColor(() => [this._date], () => [this._glass], env.logger, 'clock');
     const watch = (key: string, fn: () => void) => this._settingsIds.push(env.settings.connect(`changed::${key}`, fn));
@@ -170,9 +170,9 @@ export class GlassClock implements DesktopItem {
     if (!shown) return;
     const wanted = this._wantedFont();
     let grow = [1, 1];
-    if (wanted.font === shown.font && wanted.style === shown.style)
+    if (wanted.font === shown.font && wanted.style === shown.style) // Only when the font and style (along upright or just stretch) are the same
       grow = [wanted.size * wanted.stretch / (shown.size * shown.stretch), wanted.size * wanted.height / (shown.size * shown.height)];
-    // The field's margin for the shadow stays as wide.
+    // The field's margin for the shadow stays as wide. result = ((width, height) - shadow margin * 2) * scale + shadow margin
     const size = this._shownSize.map((v, i) => Math.max(v - 2 * FIELD_RANGE, 1) * grow[i] + 2 * FIELD_RANGE) as [number, number];
     if (size[0] === this._fieldSize[0] && size[1] === this._fieldSize[1]) return;
     this._fieldScale = [size[0] / this._shownSize[0], size[1] / this._shownSize[1]];
@@ -297,14 +297,14 @@ export class GlassClock implements DesktopItem {
       if (key !== text) this._prepared.delete(key);
     }
     // A failure shows when that minute comes and the digits are made again.
-    this._glassFor(this._timeText(GLib.DateTime.new_now_local().add_minutes(1)!)).catch(() => {});
+    this._glassFor(this._timeText(GLib.DateTime.new_now_local().add_minutes(1)!)).catch(() => { });
   }
 
   // The date above the digits; the field's margin is mostly empty, so the
   // label goes into it.
   private _layout(): void {
     const [fw, fh] = this._fieldSize;
-    const [rx, ry] = this._fieldScale.map(k => FIELD_RANGE * k);
+    const [rx, ry] = this._fieldScale.map(k => FIELD_RANGE * k); // Scale the margins
     const [, dateH] = this._date.visible ? this._date.get_preferred_height(-1) : [0, 0];
     const [, dateW] = this._date.visible ? this._date.get_preferred_width(-1) : [0, 0];
     const glassY = Math.max(dateH + DATE_GAP - ry, 0);
@@ -312,7 +312,7 @@ export class GlassClock implements DesktopItem {
     const glassX = Math.round((width - fw) / 2);
     this._glass.set_position(glassX, glassY);
     const dateX = Math.round((width - dateW) / 2);
-    const dateY = Math.max(glassY + ry - DATE_GAP - dateH, 0);
+    const dateY = Math.max(glassY + ry - DATE_GAP - dateH, 0); // Ususally 0
     this._date.set_position(dateX, dateY);
     this._size = [Math.ceil(width), Math.ceil(glassY + fh)];
     this.actor.set_size(...this._size);

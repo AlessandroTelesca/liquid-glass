@@ -164,6 +164,21 @@
       <summary>Blur my Shell is blurring popups</summary>
       <description>Written by the shell at runtime so the preferences window can warn that Blur my Shell's popup blur shows through the glass.</description>
     </key>
+    <key name="blur-my-shell-panel-blur" type="b">
+      <default>false</default>
+      <summary>Blur my Shell is blurring the panel</summary>
+      <description>Written by the shell at runtime so the preferences window can warn that Blur my Shell's panel blur shows through the glass.</description>
+    </key>
+    <key name="blur-my-shell-dock-blur" type="b">
+      <default>false</default>
+      <summary>Blur my Shell is blurring the dock</summary>
+      <description>Written by the shell at runtime so the preferences window can warn that Blur my Shell's dock blur shows through the glass.</description>
+    </key>
+    <key name="blur-my-shell-applications-blur" type="b">
+      <default>false</default>
+      <summary>Blur my Shell is blurring the applications</summary>
+      <description>Written by the shell at runtime so the preferences window can warn that Blur my Shell's applications blur shows through the glass.</description>
+    </key>
     <key name="blur-my-shell-override" type="b">
       <default>false</default>
       <summary>Turn off Blur my Shell's blur where there is glass</summary>

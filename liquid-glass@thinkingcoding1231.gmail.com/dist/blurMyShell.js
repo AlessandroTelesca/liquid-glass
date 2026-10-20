@@ -17,11 +17,9 @@ const PARTS = [
     { name: 'dock', schema: 'dash-to-dock', keys: ['enable-dock-glass'] },
     { name: 'applications', schema: 'applications', keys: ['enable-application-glass'] },
 ];
-
 function hasGlass(settings, keys) {
     return keys.some(key => key === 'top-bar-style' ? settings.get_string(key) !== 'off' : settings.get_boolean(key));
 }
-
 // Blur my Shell's schemas, the way its getSettings() finds them, or null when
 // they cannot be read.
 function schemaSource(extensionPath) {
@@ -37,7 +35,6 @@ function schemaSource(extensionPath) {
         return null;
     }
 }
-
 /**
  * Blur my Shell blurs some of what Liquid Glass draws glass on, and repaints
  * their backgrounds, which then show through the glass. Publishes whether its
@@ -55,12 +52,10 @@ export class BlurMyShellWatch {
     _partIds = [];
     _path = null;
     _blurring = null;
-
     constructor(_settings, _logger) {
         this._settings = _settings;
         this._logger = _logger;
     }
-
     setup() {
         this._stateId = Main.extensionManager.connect('extension-state-changed', (_manager, extension) => {
             if (extension.uuid === UUID)
@@ -71,7 +66,6 @@ export class BlurMyShellWatch {
             this._settingsIds.push(this._settings.connect(`changed::${key}`, () => this._override()));
         this._sync();
     }
-
     _sync() {
         const path = Main.extensionManager.lookup(UUID)?.path ?? null;
         if (path !== this._path) {
@@ -93,7 +87,6 @@ export class BlurMyShellWatch {
         this._override();
         this._update();
     }
-
     // Turns Blur my Shell's blur off where it is overridden, and back on where
     // it no longer is (all of it with `restore`). What was turned off is noted
     // before each write, so the change signals this sets off see it done.
@@ -120,7 +113,6 @@ export class BlurMyShellWatch {
             }
         }
     }
-
     _update() {
         const active = Main.extensionManager.lookup(UUID)?.state === ACTIVE;
         const blurring = active && (this._parts.get('popups')?.get_boolean('blur') ?? false);
@@ -133,19 +125,22 @@ export class BlurMyShellWatch {
             this._logger.warn('[Liquid Glass] Blur my Shell is blurring popups, which shows through the glass on menus, '
                 + 'notifications and OSDs. Turn off Popups in Blur my Shell.');
         }
+        for (const part of ['panel', 'dock', 'applications']) {
+            const blurring = active && (this._parts.get(part)?.get_boolean('blur') ?? false);
+            if (!blurring)
+                continue;
+            this._settings.set_boolean(`blur-my-shell-${part}-blur`, blurring);
+        }
     }
-
     _disconnectParts() {
         for (const [settings, id] of this._partIds)
             settings.disconnect(id);
         this._partIds = [];
     }
-
     _dropParts() {
         this._disconnectParts();
         this._parts.clear();
     }
-
     cleanup() {
         Main.extensionManager.disconnect(this._stateId);
         this._stateId = 0;

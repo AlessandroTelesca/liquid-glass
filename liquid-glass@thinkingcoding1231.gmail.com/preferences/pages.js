@@ -33,9 +33,11 @@ const smoothMotion = Object.fromEntries(['menu', 'panel-menu', 'quick-settings']
 ]));
 
 const MOTION = [
-  { title: 'Off', patch: {
-    ...uniformPatch(MOTION_KEYS, false), 'quick-settings-toggle-animation': false, 'desktop-widget-menu-animation': 'off',
-  } },
+  {
+    title: 'Off', patch: {
+      ...uniformPatch(MOTION_KEYS, false), 'quick-settings-toggle-animation': false, 'desktop-widget-menu-animation': 'off',
+    }
+  },
   { title: 'Smooth', patch: { ...smoothMotion, 'quick-settings-toggle-animation': true, 'desktop-widget-menu-animation': 'morph' } },
 ];
 
@@ -215,31 +217,53 @@ function blurMyShellSettings(part) {
 // menus, notifications and OSDs under the glass, where it shows through.
 function addBlurMyShellWarning(page, controls) {
   const group = new Adw.PreferencesGroup();
-  const row = new Adw.ActionRow({
-    title: 'Blur my Shell is blurring popups',
-    subtitle: 'Its blur shows through the glass on menus, notifications and OSDs. Turn off Popups in Blur my Shell.',
+  const check = (keys) => {
+    if (!keys) return false;
+    return keys.some(key => controls.settings.get_boolean(key));
+  };
+  const bmsKeys = ['panel', 'dock', 'applications'].map(part => `blur-my-shell-${part}-blur`);
+
+  const overrideRow = new Adw.ActionRow({ title: 'Possible Blur My Shell conflict' });
+  overrideRow.add_prefix(new Gtk.Image({ icon_name: 'dialog-warning-symbolic' }));
+  const overrideButton = new Gtk.Button({ label: 'Go to override settings', valign: Gtk.Align.CENTER });
+  overrideRow.add_suffix(overrideButton);
+  // go to the override settings
+  overrideButton.connect('clicked', () => {
+    const window = page.get_root();
+    window.visible_page_name = 'rendering';
+    GLib.idle_add(GLib.PRIORITY_LOW, () => {
+      const targetGroup = findWidgetByName(window, 'blur-my-shell-override');
+      if (targetGroup) {
+        targetGroup.grab_focus();
+      }
+      return GLib.SOURCE_REMOVE;
+    });
   });
-  row.add_prefix(new Gtk.Image({ icon_name: 'dialog-warning-symbolic' }));
-  const popup = blurMyShellSettings('popup');
-  if (popup) {
-    const button = new Gtk.Button({ label: 'Turn Off', valign: Gtk.Align.CENTER });
-    button.connect('clicked', () => popup.set_boolean('blur', false));
-    row.add_suffix(button);
-  }
-  group.add(row);
+  group.add(overrideRow);
   page.add(group);
-  controls.watch(['blur-my-shell-popup-blur'], () => {
-    group.visible = controls.settings.get_boolean('blur-my-shell-popup-blur');
+  controls.watch(bmsKeys, () => {
+    group.visible = check(bmsKeys);
   });
+  group.visible = check(bmsKeys);
+}
+
+function findWidgetByName(parent, name) {
+  if (!parent) return null;
+  if (parent.name === name) return parent;
+  for (let child = parent.get_first_child(); child !== null; child = child.get_next_sibling()) {
+    const found = findWidgetByName(child, name);
+    if (found) return found;
+  }
+  return null;
 }
 
 // Shown while Blur my Shell is installed.
 function addCompatibility(page, controls) {
   if (!blurMyShellSettings('popup')) return;
   const settings = controls.settings;
-  const group = controls.group(page, 'Compatibility');
+  const group = controls.group(page, 'Compatibility', '');
   const override = controls.toggle(group, 'Override Blur my Shell', 'blur-my-shell-override',
-    'Turns off Blur my Shell\'s blur where there is glass, and back on when this is off or Liquid Glass is turned off');
+    'Turns off Blur my Shell\'s blur where there is glass, and back on when this is off or Liquid Glass is turned off', 'blur-my-shell-override');
   const branch = new Branch(override);
   for (const [part, title, subtitle] of BMS_PARTS) {
     const row = branch.add(new Adw.SwitchRow({ title, subtitle }));
@@ -841,8 +865,8 @@ export function buildPreferences(window, settings) {
   window.set_default_size(720, 720);
   window.search_enabled = true;
   const controls = new PreferenceControls(settings, window);
-  const page = (title, icon_name) => {
-    const result = new Adw.PreferencesPage({ title, icon_name });
+  const page = (title, icon_name, name = '') => {
+    const result = new Adw.PreferencesPage({ title, icon_name, name: name || null });
     window.add(result);
     return result;
   };
@@ -850,7 +874,7 @@ export function buildPreferences(window, settings) {
   const appearance = page('Appearance', 'preferences-desktop-appearance-symbolic');
   const effects = page('Effects', 'preferences-other-symbolic');
   const desktop = page('Desktop', 'user-desktop-symbolic');
-  const advanced = page('Rendering', 'applications-engineering-symbolic');
+  const advanced = page('Rendering', 'applications-engineering-symbolic', 'rendering');
   addBlurMyShellWarning(appearance, controls);
   const view = controls.group(appearance, 'Settings');
   controls.choice(view, 'Settings view', [
