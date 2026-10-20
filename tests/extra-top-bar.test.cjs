@@ -25,6 +25,7 @@ class Widget extends Signals {
   get_position() { return [this.x, 0]; }
   has_style_class_name(name) { return this.styleClasses.has(name); }
   add_style_class_name(name) { this.styleClasses.add(name); this.emit('notify::style-class'); }
+  remove_style_class_name(name) { this.styleClasses.delete(name); this.emit('notify::style-class'); }
 }
 class BoxLayout extends Widget { }
 const St = { Widget, BoxLayout };
@@ -111,8 +112,8 @@ test('a bar moved to a side of the screen loses its glass, and gets it back when
   f.flush();
   assert.equal(f.built[0].cleaned, 1);
 
-  panel.styleClasses.delete('multimonitor-panel-vertical');
-  f.Main.layoutManager.emit('monitors-changed');
+  // Multi Monitors Bar only changes the style class; nothing in uiGroup changes.
+  panel.remove_style_class_name('multimonitor-panel-vertical');
   f.flush();
   assert.equal(f.built.length, 2);
   assert.equal(f.built[1].panel, panel);

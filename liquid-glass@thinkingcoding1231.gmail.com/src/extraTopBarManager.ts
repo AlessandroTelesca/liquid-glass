@@ -14,11 +14,6 @@ function isTopBar(actor: Clutter.Actor): actor is TopBarPanel {
     && '_rightBox' in actor && actor._rightBox instanceof St.BoxLayout;
 }
 
-interface ExtraBar {
-  manager: TopBarManager;
-  signalIds: number[];
-}
-
 /**
  * Top bar glass for the bars other extensions put on further monitors, such as Multi Monitors Bar.
  * Each bar sits in a box of its own in uiGroup and gets its own TopBarManager, which follows the
@@ -27,7 +22,9 @@ interface ExtraBar {
  */
 export class ExtraTopBarManager {
   private _disconnects: (() => void)[] = [];
-  private _bars = new Map<TopBarPanel, ExtraBar>();
+  private _bars = new Map<TopBarPanel, TopBarManager>();
+  // Every bar found, side bars too: Multi Monitors Bar moves a bar back to the top by changing its style class only.
+  private _watched = new Map<TopBarPanel, number[]>();
   private _idleId = 0;
   private _attached = 0;
 
@@ -66,17 +63,23 @@ export class ExtraTopBarManager {
   }
 
   private _scan() {
+    const bars = new Set<TopBarPanel>();
     const found = new Map<TopBarPanel, St.Widget>();
     for (const box of Main.layoutManager.uiGroup.get_children()) {
       if (box === Main.layoutManager.panelBox || !(box instanceof St.Widget)) continue;
       for (const child of box.get_children()) {
-        if (!isTopBar(child) || child.has_style_class_name('multimonitor-panel-vertical')) continue;
-        found.set(child, box);
+        if (!isTopBar(child)) continue;
+        bars.add(child);
+        if (!child.has_style_class_name('multimonitor-panel-vertical')) found.set(child, box);
       }
     }
 
     for (const panel of [...this._bars.keys()])
       if (!found.has(panel)) this._detach(panel);
+    for (const panel of [...this._watched.keys()])
+      if (!bars.has(panel)) this._unwatch(panel);
+    for (const panel of bars)
+      if (!this._watched.has(panel)) this._watch(panel);
 
     for (const [panel, box] of found) {
       if (this._bars.has(panel)) continue;
@@ -89,20 +92,29 @@ export class ExtraTopBarManager {
         this._logger.log(`[Liquid Glass] Could not attach glass to another top bar: ${e}`);
         continue;
       }
-      // The glass and the styles must go while the bar's actors still exist.
-      const destroyId = panel.connect('destroy', () => this._detach(panel));
-      // Multi Monitors Bar marks a bar it moves to a side of the screen.
-      const styleId = panel.connect('notify::style-class', () => this._scheduleScan());
-      this._bars.set(panel, { manager, signalIds: [destroyId, styleId] });
+      this._bars.set(panel, manager);
     }
   }
 
+  private _watch(panel: TopBarPanel) {
+    // The glass and the styles must go while the bar's actors still exist.
+    const destroyId = panel.connect('destroy', () => this._unwatch(panel));
+    // Multi Monitors Bar marks a bar it moves to a side of the screen.
+    const styleId = panel.connect('notify::style-class', () => this._scheduleScan());
+    this._watched.set(panel, [destroyId, styleId]);
+  }
+
+  private _unwatch(panel: TopBarPanel) {
+    this._detach(panel);
+    for (const id of this._watched.get(panel) ?? []) panel.disconnect(id);
+    this._watched.delete(panel);
+  }
+
   private _detach(panel: TopBarPanel) {
-    const bar = this._bars.get(panel);
-    if (!bar) return;
+    const manager = this._bars.get(panel);
+    if (!manager) return;
     this._bars.delete(panel);
-    for (const id of bar.signalIds) panel.disconnect(id);
-    bar.manager.cleanup();
+    manager.cleanup();
   }
 
   cleanup() {
@@ -114,6 +126,6 @@ export class ExtraTopBarManager {
     for (const disconnect of this._disconnects) disconnect();
     this._disconnects = [];
 
-    for (const panel of [...this._bars.keys()]) this._detach(panel);
+    for (const panel of [...this._watched.keys()]) this._unwatch(panel);
   }
 }
