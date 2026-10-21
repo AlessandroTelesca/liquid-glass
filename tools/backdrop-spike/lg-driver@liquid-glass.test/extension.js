@@ -359,8 +359,11 @@ export default class LgDriver extends Extension {
     await sleep(2500);
   }
 
+  // The owner's glass on the primary monitor: OSDs, top bars and docks have one on every monitor.
   _glass(owner) {
-    return lg()?.glassObjects().find(g => g._owner === owner) ?? null;
+    const glasses = lg()?.glassObjects().filter(g => g._owner === owner) ?? [];
+    const primary = Main.layoutManager.primaryIndex;
+    return glasses.find(g => g.mapped && Main.layoutManager.findIndexForActor(g) === primary) ?? glasses[0] ?? null;
   }
 
   _stats(owner) {
@@ -369,7 +372,8 @@ export default class LgDriver extends Extension {
 
   // A glass's rect plus room for its shadow, in stage coordinates.
   _region(owner) {
-    let g = lg()?.geom(owner)[0];
+    const u = this._glass(owner)?.uniformValues;
+    let g = u ? {x: u.get('dock_x') ?? 0, y: u.get('dock_y') ?? 0, w: u.get('dock_w') ?? 0, h: u.get('dock_h') ?? 0} : null;
     // Toggle mode draws regions; its composite rect covers them.
     if (!(g?.w > 0)) {
       const r = glassRow(owner)?.compositeRect ?? glassRow(owner)?.u?.compositeRect;
@@ -472,7 +476,8 @@ export default class LgDriver extends Extension {
     const bad = expectCopy ? count(r => !r.copied || !r.painted) : count(r => r.copied);
     log(`${tag} audit steps=${steps} frames=${rec.length} painted=${count(r => r.painted)} ` +
       `copied=${count(r => r.copied)} reused=${count(r => r.reused)} missed=${count(r => r.missed)} ` +
-      `${expectCopy ? 'stale' : 'needless-copy'}=${bad} ${bad === 0 ? 'OK' : 'NG'}`);
+      `${expectCopy ? 'stale' : 'needless-copy'}=${bad} ${bad === 0 ? 'OK' : 'NG'}` +
+      (bad ? ` at ${rec.map((r, i) => (expectCopy ? !r.copied || !r.painted : r.copied) ? i : -1).filter(i => i >= 0).join(',')}` : ''));
   }
 
   // Frames and glass counters over a quiet period; both should stay put.
@@ -792,14 +797,26 @@ export default class LgDriver extends Extension {
     log(`${tag} region=${JSON.stringify(region)} opening: ${opening}`);
     await this._shots(`${tag} open`, region, owner);
     await this._idle(tag, owner, 1500);
-    keepOpen();
-    await sleep(200);
     const behind = this._behind(owner, region);
     await sleep(300);
-    await this._audit(`${tag} behind-colour`, owner, 10, 120, i => behind.set_style(`background-color: ${COLORS[i % 2]};`));
-    keepOpen();
-    await sleep(200);
-    await this._audit(`${tag} behind-move`, owner, 10, 120, i => { behind.translation_x = (i + 1) * 8; });
+    // The OSD hides itself 1.5 s after it was last shown, and shown again during its fade it
+    // stays hidden: shown twice, the second time after any fade, then on every step.
+    const shown = async () => {
+      for (let i = 0; i < 2; i++) {
+        keepOpen();
+        await sleep(250);
+      }
+    };
+    await shown();
+    await this._audit(`${tag} behind-colour`, owner, 10, 120, i => {
+      keepOpen();
+      behind.set_style(`background-color: ${COLORS[i % 2]};`);
+    });
+    await shown();
+    await this._audit(`${tag} behind-move`, owner, 10, 120, i => {
+      keepOpen();
+      behind.translation_x = (i + 1) * 8;
+    });
     keepOpen();
     await sleep(200);
     await this._shots(`${tag} behind`, region, owner);
@@ -3016,6 +3033,29 @@ export default class LgDriver extends Extension {
         log(`widgetcolors: round ${i} ${colours()}`);
       }
       await shot('widgetcolors', [m.x, m.y, m.width, m.height]);
+    }
+    if (parts.includes('osdreshow')) {
+      // The OSD shown again at different times around its own hiding (1.5 s, then a 0.1 s fade);
+      // during the fade the shell's own OSD stays hidden, glass or not.
+      const icon = Gio.ThemedIcon.new('audio-volume-high-symbolic');
+      const show = () => SHELL_MAJOR >= 49
+        ? Main.osdWindowManager.showAll(icon, 'Volume', 0.6, 1)
+        : Main.osdWindowManager.show(-1, icon, 'Volume', 0.6, 1);
+      for (const again of [1000, 1490, 1520, 1550, 1580, 1700]) {
+        show();
+        await sleep(again);
+        show();
+        await sleep(400);
+        const glass = this._glass('osd');
+        const osd = Main.osdWindowManager._osdWindows[Main.layoutManager.primaryIndex];
+        const before = glass?.stats.paints ?? 0;
+        await sleep(300);
+        log(`osdreshow: again=${again}ms osd visible=${osd.visible} opacity=${osd.opacity} glass visible=${glass?.visible} ` +
+          `mapped=${glass?.mapped} opacity=${glass?.opacity} paints in 300ms=${(glass?.stats.paints ?? 0) - before} ` +
+          `${glass?.mapped && glass.opacity > 0 ? 'OK' : 'NG'}`);
+        Main.osdWindowManager.hideAll();
+        await sleep(1000);
+      }
     }
     if (parts.includes('qsheight')) {
       // The calendar matched to Quick Settings' height, opened with the scale spring and grown from its button.
