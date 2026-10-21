@@ -72,15 +72,21 @@ test('popup blur in an active Blur my Shell is published and logged', () => {
   assert.equal(f.warnings.length, 2, 'turning it back on warns again');
 });
 
-test('the panel, dock and applications blur are published both ways, and cleared on cleanup', () => {
+test('a conflict is published only where Blur my Shell blurs under glass, both ways, and cleared on cleanup', () => {
   const f = fixture();
   f.watch.setup();
   const published = () => ['panel', 'dock', 'applications'].map(part => f.settings.values[`blur-my-shell-${part}-blur`]);
-  assert.deepEqual(published(), [true, true, true]);
-  f.bmsParts.dock.set_boolean('blur', false);
-  assert.deepEqual(published(), [true, false, true], 'turning one part off clears it although popup blur did not change');
-  f.bmsParts.dock.set_boolean('blur', true);
-  assert.deepEqual(published(), [true, true, true]);
+  // Blur my Shell blurs all three, but only the dock has glass.
+  assert.deepEqual(published(), [false, true, false]);
+  f.settings.values['top-bar-style'] = 'glass';
+  f.settings.emit('changed::top-bar-style');
+  assert.deepEqual(published(), [true, true, false], 'turning the top bar glass on publishes it');
+  f.settings.set_boolean('enable-dock-glass', false);
+  assert.deepEqual(published(), [true, false, false], 'turning the dock glass off clears it');
+  f.bmsParts.panel.set_boolean('blur', false);
+  assert.deepEqual(published(), [false, false, false], 'turning a part\'s blur off clears it although popup blur did not change');
+  f.bmsParts.panel.set_boolean('blur', true);
+  assert.deepEqual(published(), [true, false, false]);
   f.bms.state = 2;
   f.manager.emit('extension-state-changed', f.bms);
   assert.deepEqual(published(), [false, false, false]);
@@ -89,6 +95,18 @@ test('the panel, dock and applications blur are published both ways, and cleared
   f.manager.emit('extension-state-changed', f.bms);
   f.watch.cleanup();
   assert.deepEqual(published(), [false, false, false]);
+});
+
+test('popup blur is not reported while no popup has glass', () => {
+  const glass = Object.fromEntries(['enable-menu-glass', 'enable-quick-settings-glass', 'enable-notification-glass', 'enable-osd-glass']
+    .map(key => [key, false]));
+  const f = fixture({ glass });
+  f.watch.setup();
+  assert.equal(f.settings.values['blur-my-shell-popup-blur'], false);
+  assert.equal(f.warnings.length, 0);
+  f.settings.set_boolean('enable-osd-glass', true);
+  assert.equal(f.settings.values['blur-my-shell-popup-blur'], true);
+  assert.equal(f.warnings.length, 1);
 });
 
 test('disabling Blur my Shell clears the warning, and removing it drops its settings', () => {

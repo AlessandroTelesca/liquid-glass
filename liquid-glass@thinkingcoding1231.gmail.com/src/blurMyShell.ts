@@ -14,16 +14,14 @@ const POPUP_GLASS_KEYS = ['enable-menu-glass', 'enable-quick-settings-glass', 'e
 
 // The parts of Blur my Shell that blur where Liquid Glass can draw glass: the
 // name used in blur-my-shell-override-parts, Blur my Shell's schema for it,
-// and the keys that say whether there is glass there.
+// the keys that say whether there is glass there, and the key that publishes
+// that both blur and glass are there.
 const PARTS = [
-  { name: 'popups', schema: 'popup', keys: POPUP_GLASS_KEYS },
-  { name: 'panel', schema: 'panel', keys: ['top-bar-style'] },
-  { name: 'dock', schema: 'dash-to-dock', keys: ['enable-dock-glass'] },
-  { name: 'applications', schema: 'applications', keys: ['enable-application-glass'] },
+  { name: 'popups', schema: 'popup', keys: POPUP_GLASS_KEYS, conflict: 'blur-my-shell-popup-blur' },
+  { name: 'panel', schema: 'panel', keys: ['top-bar-style'], conflict: 'blur-my-shell-panel-blur' },
+  { name: 'dock', schema: 'dash-to-dock', keys: ['enable-dock-glass'], conflict: 'blur-my-shell-dock-blur' },
+  { name: 'applications', schema: 'applications', keys: ['enable-application-glass'], conflict: 'blur-my-shell-applications-blur' },
 ];
-
-// The parts the preferences window warns about, each published as blur-my-shell-<part>-blur.
-const WARNED_PARTS = ['panel', 'dock', 'applications'];
 
 function hasGlass(settings: Gio.Settings, keys: string[]): boolean {
   return keys.some(key => key === 'top-bar-style' ? settings.get_string(key) !== 'off' : settings.get_boolean(key));
@@ -45,8 +43,9 @@ function schemaSource(extensionPath: string): Gio.SettingsSchemaSource | null {
 
 /**
  * Blur my Shell blurs some of what Liquid Glass draws glass on, and repaints
- * their backgrounds, which then show through the glass. Publishes whether its
- * popup blur is on, for the preferences window's warning, and logs it. With
+ * their backgrounds, which then show through the glass. Publishes each part
+ * it blurs under glass, for the preferences window's warning, and logs the
+ * popups. With
  * blur-my-shell-override, turns its blur off for the chosen parts that have
  * glass while both run, and back on afterwards.
  */
@@ -66,7 +65,12 @@ export class BlurMyShellWatch {
       if (extension.uuid === UUID) this._sync();
     });
     const keys = new Set(['blur-my-shell-override', 'blur-my-shell-override-parts', ...PARTS.flatMap(part => part.keys)]);
-    for (const key of keys) this._settingsIds.push(this._settings.connect(`changed::${key}`, () => this._override()));
+    for (const key of keys) {
+      this._settingsIds.push(this._settings.connect(`changed::${key}`, () => {
+        this._override();
+        this._update();
+      }));
+    }
     this._sync();
   }
 
@@ -117,10 +121,12 @@ export class BlurMyShellWatch {
   private _update() {
     const active = Main.extensionManager.lookup(UUID)?.state === ACTIVE;
     this._publish('enable-blur-my-shell', active);
-    for (const part of WARNED_PARTS)
-      this._publish(`blur-my-shell-${part}-blur`, active && (this._parts.get(part)?.get_boolean('blur') ?? false));
-    const blurring = active && (this._parts.get('popups')?.get_boolean('blur') ?? false);
-    this._publish('blur-my-shell-popup-blur', blurring);
+    // Only where it blurs under glass: elsewhere it does not show through anything.
+    for (const part of PARTS) {
+      this._publish(part.conflict, active && (this._parts.get(part.name)?.get_boolean('blur') ?? false)
+        && hasGlass(this._settings, part.keys));
+    }
+    const blurring = this._settings.get_boolean('blur-my-shell-popup-blur');
     if (blurring === this._blurring) return;
     this._blurring = blurring;
     if (blurring) {
@@ -156,6 +162,6 @@ export class BlurMyShellWatch {
     if (!Main.sessionMode.isLocked) this._override(true);
     this._dropParts();
     this._path = null;
-    for (const part of ['popup', ...WARNED_PARTS]) this._publish(`blur-my-shell-${part}-blur`, false);
+    for (const part of PARTS) this._publish(part.conflict, false);
   }
 }
