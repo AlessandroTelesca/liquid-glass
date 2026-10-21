@@ -5,7 +5,8 @@
 # Build first (npm run build). Prints the output directory (shell.log, shots/).
 #
 #   LG_DRV_SCENARIO   the driver's scenario (default: dock)
-#   LG_SPIKE_MONITOR  virtual monitor mode (default: 1920x1080)
+#   LG_SPIKE_MONITOR  virtual monitor mode (default: 1920x1080); several modes separated
+#                     by spaces make one monitor each (Meta-0, Meta-1, ...)
 #   LG_MONITORS_XML   a monitors.xml to use (e.g. for a fractional scale)
 #   LG_DTD_SETTINGS   more Dash to Dock settings, "key value" pairs separated by ";"
 #                     (e.g. "dash-max-icon-size 56;apply-custom-theme true")
@@ -26,6 +27,8 @@ drv_uuid=lg-driver@liquid-glass.test
 dtd_src=${LG_DTD_DIR:-$HOME/.local/share/gnome-shell/extensions/$dtd_uuid}
 out=${1:-$(mktemp -d -t lg-glass-XXXXXX)}
 mode=${LG_SPIKE_MONITOR:-1920x1080}
+monitor_args=""
+for m in $mode; do monitor_args="$monitor_args --virtual-monitor $m"; done
 
 ext="$out/data/gnome-shell/extensions"
 mkdir -p "$out"/{config,cache,shots} "$ext"
@@ -107,7 +110,7 @@ dbus-run-session -- bash -c "
   if [ \"$shell_args\" = --x11 ]; then
     exec timeout ${LG_SHELL_TIMEOUT:-180} gnome-shell --x11
   fi
-  exec timeout ${LG_SHELL_TIMEOUT:-180} gnome-shell $shell_args --virtual-monitor '$mode' --wayland-display '$socket'
+  exec timeout ${LG_SHELL_TIMEOUT:-180} gnome-shell $shell_args$monitor_args --wayland-display '$socket'
 " >"$out/shell.log" 2>&1 || true
 [ -n "$xvfb" ] && kill "$xvfb" 2>/dev/null
 # The session's document portal mounts itself there.

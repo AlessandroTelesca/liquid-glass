@@ -97,10 +97,14 @@ export class StageCopier {
         const scale = view.get_scale();
         const ox = Math.round(-layout.x * scale);
         const oy = Math.round(-layout.y * scale);
-        const fx0 = Math.floor(x0 * scale) + ox;
-        const fy0 = Math.floor(y0 * scale) + oy;
-        const fx1 = Math.ceil(x1 * scale) + ox;
-        const fy1 = Math.ceil(y1 * scale) + oy;
+        // A fractional scale is stored a little above its value (1.3333334), so the
+        // view's far edge would round up to a pixel past the framebuffer, and past the clip.
+        const fx0 = Math.max(Math.floor(x0 * scale) + ox, 0);
+        const fy0 = Math.max(Math.floor(y0 * scale) + oy, 0);
+        const fx1 = Math.min(Math.ceil(x1 * scale) + ox, fb.get_width());
+        const fy1 = Math.min(Math.ceil(y1 * scale) + oy, fb.get_height());
+        if (!(fx1 > fx0) || !(fy1 > fy0))
+            return { copy, missed: false, fresh: false };
         const rect = [(fx0 - ox) / scale, (fy0 - oy) / scale, (fx1 - ox) / scale, (fy1 - oy) / scale];
         const clip = paintContext.get_redraw_clip();
         const clipX = Math.floor(rect[0]);

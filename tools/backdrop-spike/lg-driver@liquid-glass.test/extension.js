@@ -380,8 +380,8 @@ export default class LgDriver extends Extension {
     const m = Main.layoutManager.primaryMonitor;
     const x = Math.max(0, Math.floor(m.x + g.x - 40));
     const y = Math.max(0, Math.floor(m.y + g.y - 40));
-    const w = Math.min(m.width - x, Math.ceil(g.w + 80));
-    const h = Math.min(m.height - y, Math.ceil(g.h + 80));
+    const w = Math.min(m.x + m.width - x, Math.ceil(g.w + 80));
+    const h = Math.min(m.y + m.height - y, Math.ceil(g.h + 80));
     return [x, y, w, h];
   }
 
@@ -510,7 +510,7 @@ export default class LgDriver extends Extension {
     return `frames=${frames} full-stage=${full}`;
   }
 
-  async _dockScenario(owner = owner) {
+  async _dockScenario(owner = 'dock') {
     const region = this._region(owner);
     if (!region) {
       log(`no ${owner} glass`);
