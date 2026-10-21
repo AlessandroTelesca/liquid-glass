@@ -651,7 +651,8 @@ export default class LgDriver extends Extension {
         ? `panel component=${global.blur_my_shell._panel_blur?.enabled} dock component=${global.blur_my_shell._dash_to_dock_blur?.enabled}`
         : 'not running';
       log(`bms ${tag}: ${blur} | overridden=${settings.get_strv('blur-my-shell-overridden')} ` +
-        `warning=${settings.get_boolean('blur-my-shell-popup-blur')} | ${live}`);
+        `warning=${settings.get_boolean('blur-my-shell-popup-blur')} conflict=${['panel', 'dock', 'applications']
+          .filter(part => settings.get_boolean(`blur-my-shell-${part}-blur`)).join(',') || '-'} | ${live}`);
     };
     for (const p of parts) bmsSettings[p].set_boolean('blur', true);
     settings.set_string('top-bar-style', 'pill');
