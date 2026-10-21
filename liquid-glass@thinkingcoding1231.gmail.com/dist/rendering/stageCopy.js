@@ -38,6 +38,36 @@ export function addBlit(root, source, target, colorState, rect) {
     node.add_child(blit);
 }
 
+// The stage view being painted, between the stage's before-paint and
+// after-paint. Outside them a paint goes to a screenshot, whose framebuffer
+// is not fetched: holding it from JS keeps it alive until a garbage
+// collection, and mutter 46 only flushes a screenshot's drawing when its
+// framebuffer is freed, so the picture would come out empty.
+let paintingView = null;
+let paintSignalIds = [];
+
+export function trackViewPaints() {
+    paintSignalIds = [
+        global.stage.connect('before-paint', (_stage, view) => {
+            paintingView = view;
+        }),
+        global.stage.connect('after-paint', () => {
+            paintingView = null;
+        }),
+    ];
+}
+
+export function isPaintingView() {
+    return paintingView !== null;
+}
+
+export function untrackViewPaints() {
+    for (const id of paintSignalIds)
+        global.stage.disconnect(id);
+    paintSignalIds = [];
+    paintingView = null;
+}
+
 export class StageCopier {
     _logger;
     _copies = new Map();
@@ -56,14 +86,11 @@ export class StageCopier {
     // The view a paint of `actor` draws to directly, or null for a paint that
     // goes elsewhere (a clone, a screenshot, an ancestor's offscreen), where
     // the framebuffer does not hold what is behind the actor.
-    static liveView(actor, fb) {
-        if (actor.is_in_clone_paint())
+    static liveView(actor, paintContext) {
+        const view = paintingView;
+        if (!view || actor.is_in_clone_paint() || !actor.peek_stage_views().includes(view))
             return null;
-        for (const view of actor.peek_stage_views()) {
-            if (view.get_framebuffer() === fb)
-                return view;
-        }
-        return null;
+        return paintContext.get_framebuffer() === view.get_framebuffer() ? view : null;
     }
 
     /**
@@ -75,12 +102,12 @@ export class StageCopier {
      * copy is drawn with even when the clip covers the rect.
      */
     take(actor, root, paintContext, stageRect, keep = false) {
-        const fb = paintContext.get_framebuffer();
-        const view = StageCopier.liveView(actor, fb);
+        const view = StageCopier.liveView(actor, paintContext);
         if (!view) {
             this.offStageCount++;
             return { copy: this.lastCopy, missed: false, fresh: false };
         }
+        const fb = view.get_framebuffer();
         let copy = this._copies.get(view) ?? null;
         if (keep && copy?.rect) {
             this.reuseCount++;

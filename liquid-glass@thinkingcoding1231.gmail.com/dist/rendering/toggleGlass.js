@@ -19,7 +19,7 @@ import Cogl from 'gi://Cogl';
 import Graphene from 'gi://Graphene';
 import Shell from 'gi://Shell';
 import { GlassActor } from './backdropGlass.js';
-import { StageCopier, addBlit, createTarget } from './stageCopy.js';
+import { StageCopier, addBlit, createTarget, isPaintingView } from './stageCopy.js';
 import { RelaySet, localToStage } from './relays.js';
 import { configureSamplerLayer } from './pipelines.js';
 import { setTranslationIfChanged, setScaleIfChanged } from '../actors/writes.js';
@@ -172,11 +172,13 @@ export const ToggleBackdropGlass = GObject.registerClass(paintNodeWithContext(cl
      * before the glass. ClutterOffscreenEffect renders the actor in its own
      * coordinates, offset by its enlarged paint box and scaled by the ceiled
      * resource scale; the same arithmetic finds the rect in the offscreen.
-     * Any other paint (on stage, in a clone) keeps the last copy.
+     * Any other paint (on stage, in a clone, a screenshot) keeps the last copy.
      */
     _takeMaterial(root, paintContext, local) {
+        if (this.is_in_clone_paint() || !isPaintingView())
+            return;
         const fb = paintContext.get_framebuffer();
-        if (this.is_in_clone_paint() || !(fb instanceof Cogl.Offscreen) || StageCopier.liveView(this, fb))
+        if (!(fb instanceof Cogl.Offscreen) || StageCopier.liveView(this, paintContext))
             return;
         const menu = this._offscreenAncestor();
         const pv = menu?.get_paint_volume();
