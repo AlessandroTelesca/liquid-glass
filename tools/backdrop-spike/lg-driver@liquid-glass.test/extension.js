@@ -24,7 +24,8 @@
 //              ($LG_DRV_WALLPAPER); LG_DRV_FEATURES picks parts (comma
 //              separated: morph, topbar, widgets, clock, launcher; default all;
 //              also morphtrace, qssub, clockshot, media, guides, launcherpointer,
-//              launchercolor, iconstyle, iconglass; both need LG_DTD_DIR);
+//              launchercolor, iconstyle, iconglass; both need LG_DTD_DIR; qsheight, the calendar matched
+//              to Quick Settings' height);
 //              also scale (the calendar, Quick Settings in both modes and the launcher
 //              on a small logical screen: run-glass.sh with LG_SPIKE_MONITOR=2256x1504 and
 //              LG_MONITORS_XML=tools/backdrop-spike/monitors-200.xml; LG_DRV_LIGHT=1 for the
@@ -3014,6 +3015,41 @@ export default class LgDriver extends Extension {
         log(`widgetcolors: round ${i} ${colours()}`);
       }
       await shot('widgetcolors', [m.x, m.y, m.width, m.height]);
+    }
+    if (parts.includes('qsheight')) {
+      // The calendar matched to Quick Settings' height, opened with the scale spring and grown from its button.
+      // The headless shell has no devices, so Quick Settings gets a few rows to be a usual height.
+      const dateMenu = Main.panel.statusArea.dateMenu.menu;
+      const qs = Main.panel.statusArea.quickSettings.menu;
+      for (const iconName of ['audio-volume-high-symbolic', 'display-brightness-symbolic'])
+        qs.addItem(new QuickSettings.QuickSlider({iconName}), 2);
+      for (const title of ['Wired', 'Bluetooth', 'Power Mode', 'Night Light'])
+        qs.addItem(new QuickSettings.QuickToggle({title, iconName: 'network-wired-symbolic'}));
+      for (let i = 0; i < Number(GLib.getenv('LG_DRV_NOTIFY') ?? 6); i++)
+        Main.notify(`Driver ${i}`, 'A notification that makes the calendar taller');
+      await sleep(1500);
+      const height = actor => Math.round(actor.get_transformed_size()[1]);
+      qs.open(true);
+      await sleep(1500);
+      const qsBox = height(qs.box);
+      log(`qsheight: monitor ${m.width}x${m.height} quick settings box=${qsBox} boxpointer=${height(qs._boxPointer)}`);
+      qs.close(true);
+      await sleep(800);
+      settings.set_boolean('menu-match-quick-settings-height', true);
+      await sleep(2500);
+      for (const grow of [false, true]) {
+        settings.set_boolean('menu-grow-from-button', grow);
+        await sleep(500);
+        dateMenu.open(true);
+        await sleep(2500);
+        const box = height(dateMenu.box);
+        log(`qsheight: grow=${grow} quick settings box=${qsBox} calendar box=${box} boxpointer=${height(dateMenu.actor)} ` +
+          `allocated=${Math.round(dateMenu.actor.height)} scale=${dateMenu.actor.scale_x.toFixed(3)} ` +
+          `${Math.abs(box - qsBox) <= 2 ? 'OK' : 'NG'}`);
+        await shot(`qsheight-${grow ? 'morph' : 'spring'}`, [m.x, m.y, m.width, m.height]);
+        dateMenu.close(true);
+        await sleep(1500);
+      }
     }
     if (parts.includes('scale')) {
       // The calendar and Quick Settings on a small logical screen (a laptop at
