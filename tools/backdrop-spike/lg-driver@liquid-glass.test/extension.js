@@ -24,7 +24,7 @@
 //              ($LG_DRV_WALLPAPER); LG_DRV_FEATURES picks parts (comma
 //              separated: morph, topbar, widgets, clock, launcher; default all;
 //              also morphtrace, qssub, clockshot, media, guides, launcherpointer,
-//              launchercolor, iconstyle, iconglass; both need LG_DTD_DIR; qsheight, the calendar matched
+//              launchercolor, iconstyle, iconglass, fullshot, popupfreeze; the last four need LG_DTD_DIR; qsheight, the calendar matched
 //              to Quick Settings' height);
 //              also scale (the calendar, Quick Settings in both modes and the launcher
 //              on a small logical screen: run-glass.sh with LG_SPIKE_MONITOR=2256x1504 and
@@ -53,6 +53,7 @@ import Cogl from 'gi://Cogl';
 import GLib from 'gi://GLib';
 import Gio from 'gi://Gio';
 import GObject from 'gi://GObject';
+import Meta from 'gi://Meta';
 import Mtk from 'gi://Mtk';
 import Shell from 'gi://Shell';
 import St from 'gi://St';
@@ -131,6 +132,9 @@ function shot(name, [x, y, w, h]) {
   });
 }
 
+// The stage view being painted, between the stage's before-paint and after-paint.
+let paintingView = null;
+
 const Camera = GObject.registerClass(paintNodeWithContext(
 class Camera extends Clutter.Actor {
   _init(rect) {
@@ -145,8 +149,9 @@ class Camera extends Clutter.Actor {
   }
 
   vfunc_paint_node(root, paintContext) {
-    const fb = paintContext.get_framebuffer();
-    const view = this.peek_stage_views().find(v => v.get_framebuffer() === fb);
+    // A screenshot's framebuffer is not fetched; see StageCopier.liveView() in the extension.
+    const fb = paintingView ? paintContext.get_framebuffer() : null;
+    const view = fb && this.peek_stage_views().find(v => v.get_framebuffer() === fb);
     if (this.armed && view && !this.is_in_clone_paint()) {
       const s = view.get_scale();
       const l = view.layout;
@@ -245,7 +250,13 @@ export default class LgDriver extends Extension {
     this._frames = 0;
     this._camera = null;
     this._cameraAway = false;
-    this._signals.push([global.stage, global.stage.connect('after-paint', () => this._frames++)]);
+    this._signals.push([global.stage, global.stage.connect('before-paint', (_stage, view) => {
+      paintingView = view;
+    })]);
+    this._signals.push([global.stage, global.stage.connect('after-paint', () => {
+      paintingView = null;
+      this._frames++;
+    })]);
     this._signals.push([global.stage, global.stage.connect('before-update', () => {
       if (this._camera?.armed)
         this._camera.queue_redraw();
@@ -2484,6 +2495,123 @@ export default class LgDriver extends Extension {
 
   // Clear icons' glass: read from one backdrop per dock, app grid, folder and launcher, copied again whenever what is
   // behind changes and not while nothing does.
+  // A full-screen screenshot the way the Print Screen key takes one: the stage
+  // painted to a texture, then read straight back through a sub-texture. With
+  // glass shown, the picture must not come out transparent (issue #74).
+  async _fullShot(settings, m) {
+    const capture = async name => {
+      const shooter = new Shell.Screenshot();
+      const [content] = await new Promise((resolve, reject) => shooter.screenshot_stage_to_content((o, res) => {
+        try {
+          resolve(o.screenshot_stage_to_content_finish(res));
+        } catch (e) {
+          reject(e);
+        }
+      }));
+      const texture = content.get_texture();
+      const stream = Gio.File.new_for_path(`${OUT_DIR}/${name}.png`).replace(null, false, Gio.FileCreateFlags.NONE, null);
+      const pixbuf = await new Promise((resolve, reject) => Shell.Screenshot.composite_to_stream(texture, 0, 0, -1, -1, 1,
+        null, 0, 0, 1, stream, (_o, res) => {
+          try {
+            resolve(Shell.Screenshot.composite_to_stream_finish(res));
+          } catch (e) {
+            reject(e);
+          }
+        }));
+      stream.close(null);
+      const px = pixbuf.get_pixels();
+      const n = pixbuf.get_n_channels();
+      let clear = 0, total = 0;
+      for (let i = 0; i < px.length; i += n * 97) {
+        total++;
+        if (n === 4 && px[i + 3] === 0) clear++;
+      }
+      const ratio = clear / Math.max(total, 1);
+      log(`fullshot ${name}: ${pixbuf.get_width()}x${pixbuf.get_height()} transparent=${(ratio * 100).toFixed(1)}% ${ratio < 0.01 ? 'OK' : 'NG'}`);
+    };
+    await sleep(1000);
+    await capture('fullshot-glass');
+    const dock = findActor(Main.layoutManager.uiGroup, 'dashtodockDashContainer');
+    settings.set_string('icon-style-mode', 'clear');
+    settings.set_boolean('icon-style-dock', true);
+    for (let i = 0; i < 60 && !(dock && findActors(dock, a => a.get_effect('liquid-glass-icon-backdrop')?.current()).length); i++)
+      await sleep(500);
+    await sleep(1000);
+    await capture('fullshot-clear-icons');
+    Main.panel.statusArea.dateMenu.menu.open(false);
+    await sleep(1000);
+    await capture('fullshot-menu');
+    Main.panel.statusArea.dateMenu.menu.close(false);
+    await sleep(500);
+  }
+
+  // A GTK popover opened over the dock's icons, moved through with the arrow
+  // keys: the application has to keep drawing it (its surfaces commit after
+  // every key) with each icon look (issue #74).
+  async _popupFreeze(settings, m) {
+    const dock = findActor(Main.layoutManager.uiGroup, 'dashtodockDashContainer');
+    if (!dock) {
+      log('popupfreeze: no dock (LG_DTD_DIR?)');
+      return;
+    }
+    const a = await this._spawn(['gnome-text-editor', '--standalone', '--new-window'], 'Document');
+    if (!a) return;
+    const [dx, dy] = dock.get_transformed_position();
+    const [dw] = dock.get_transformed_size();
+    // The header bar just above the dock, so that the menu opens over the icons.
+    for (let i = 0; i < 2; i++) {
+      a.win.move_resize_frame(true, Math.round(dx + dw / 2 - 500), Math.round(dy - 480), 600, 400);
+      await sleep(1000);
+    }
+    const fr = a.win.get_frame_rect();
+    log(`popupfreeze: window ${[fr.x, fr.y, fr.width, fr.height]} dock ${[dx, dy, dw].map(Math.round)}`);
+    const backend = SHELL_MAJOR >= 48 ? global.stage.context.get_backend() : Clutter.get_default_backend();
+    const keyboard = backend.get_default_seat().create_virtual_device(Clutter.InputDeviceType.KEYBOARD_DEVICE);
+    const press = async keyval => {
+      keyboard.notify_keyval(GLib.get_monotonic_time(), keyval, Clutter.KeyState.PRESSED);
+      keyboard.notify_keyval(GLib.get_monotonic_time(), keyval, Clutter.KeyState.RELEASED);
+    };
+    let n = 0;
+    const round = async look => {
+      if (look === 'off') {
+        settings.set_boolean('icon-style-dock', false);
+      } else {
+        settings.set_string('icon-style-mode', look);
+        settings.set_boolean('icon-style-dock', true);
+      }
+      await sleep(look === 'off' ? 3000 : 8000);
+      a.win.activate(global.get_current_time());
+      await sleep(500);
+      await press(Clutter.KEY_F10);
+      await sleep(1000);
+      const popups = global.get_window_actors().filter(w => w !== a.actor && w.get_meta_window()?.get_transient_for?.() === a.win ||
+        [Meta.WindowType.POPUP_MENU, Meta.WindowType.DROPDOWN_MENU].includes(w.get_meta_window()?.get_window_type()));
+      const ids = [];
+      const commits = [0];
+      for (const w of global.get_window_actors()) {
+        for (const s of findActors(w, x => GObject.type_name(x.constructor.$gtype).startsWith('MetaSurfaceActor')))
+          ids.push([s, s.connect('repaint-scheduled', () => commits[0]++)]);
+      }
+      const frames = [0];
+      const frameId = global.stage.connect('after-paint', () => frames[0]++);
+      let stuck = 0;
+      for (let i = 0; i < 16; i++) {
+        const before = commits[0];
+        await press(i % 8 < 4 ? Clutter.KEY_Down : Clutter.KEY_Up);
+        await sleep(150);
+        if (commits[0] === before) stuck++;
+      }
+      global.stage.disconnect(frameId);
+      for (const [s, id] of ids) s.disconnect(id);
+      await shot(`popupfreeze-${look}-${++n}`, [Math.max(m.x, Math.round(dx) - 600), Math.round(dy) - 700, Math.round(dw) + 800, m.y + m.height - Math.round(dy) + 700]);
+      await press(Clutter.KEY_Escape);
+      await sleep(500);
+      log(`popupfreeze ${look}: popups=${popups.length} commits=${commits[0]} keys without a commit=${stuck}/16 frames=${frames[0]} ${stuck === 0 ? 'OK' : 'NG'}`);
+    };
+    for (const look of ['off', 'tinted', 'clear', 'off', 'clear'])
+      await round(look);
+  }
+
   async _iconGlass(settings, m) {
     const EFFECT = 'liquid-glass-icon-style';
     const BACKDROP = 'liquid-glass-icon-backdrop';
@@ -3187,6 +3315,10 @@ export default class LgDriver extends Extension {
       await this._iconStyle(settings, m);
     if (parts.includes('iconglass'))
       await this._iconGlass(settings, m);
+    if (parts.includes('fullshot'))
+      await this._fullShot(settings, m);
+    if (parts.includes('popupfreeze'))
+      await this._popupFreeze(settings, m);
     // Everything switched on, the launcher open: disabling has to leave nothing.
     (await this._lgModule('launcher/launcher.js')).Launcher.instance?.open();
     await sleep(500);

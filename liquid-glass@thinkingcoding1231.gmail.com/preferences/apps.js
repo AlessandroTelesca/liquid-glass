@@ -188,9 +188,11 @@ export class IconStyleRules {
     return row;
   }
 
+  // Adds a preferences group with a button (to open a page with a list of applications) and a list of applications already set.
   _addList(page, key, title, activeWhen) {
     const group = new Adw.PreferencesGroup({ title });
     page.add(group);
+    // Set the group visible if any of the parts are on, and if the mode (whitelist / blacklist) is the same as the one that is on.
     this.controls.watch([...ANY_ICON_STYLE, 'icon-style-all-apps'], () => {
       group.visible = ANY_ICON_STYLE.some(k => this.settings.get_boolean(k)) &&
         this.settings.get_boolean('icon-style-all-apps') === activeWhen;
@@ -231,6 +233,7 @@ export class IconStyleRules {
     });
   }
 
+  // Presents a dialog with a search field and a list of all of the applications
   _presentPicker(parent, key) {
     const { dialog, toolbar } = pickerDialog('Choose an application', 460);
     const search = new Gtk.SearchEntry({ placeholder_text: 'Search', margin_start: 12, margin_end: 12, margin_top: 6 });

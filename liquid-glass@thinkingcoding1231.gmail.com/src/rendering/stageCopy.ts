@@ -54,6 +54,35 @@ export function addBlit(root: Clutter.PaintNode, source: Cogl.Framebuffer, targe
   node.add_child(blit);
 }
 
+// The stage view being painted, between the stage's before-paint and
+// after-paint. Outside them a paint goes to a screenshot, whose framebuffer
+// is not fetched: holding it from JS keeps it alive until a garbage
+// collection, and mutter 46 only flushes a screenshot's drawing when its
+// framebuffer is freed, so the picture would come out empty.
+let paintingView: Clutter.StageView | null = null;
+let paintSignalIds: number[] = [];
+
+export function trackViewPaints(): void {
+  paintSignalIds = [
+    global.stage.connect('before-paint', (_stage: Clutter.Stage, view: Clutter.StageView) => {
+      paintingView = view;
+    }),
+    global.stage.connect('after-paint', () => {
+      paintingView = null;
+    }),
+  ];
+}
+
+export function isPaintingView(): boolean {
+  return paintingView !== null;
+}
+
+export function untrackViewPaints(): void {
+  for (const id of paintSignalIds) global.stage.disconnect(id);
+  paintSignalIds = [];
+  paintingView = null;
+}
+
 export class StageCopier {
   private _copies = new Map<Clutter.StageView, ViewCopy>();
   private _serial = 0;
@@ -70,12 +99,10 @@ export class StageCopier {
   // The view a paint of `actor` draws to directly, or null for a paint that
   // goes elsewhere (a clone, a screenshot, an ancestor's offscreen), where
   // the framebuffer does not hold what is behind the actor.
-  static liveView(actor: Clutter.Actor, fb: Cogl.Framebuffer): Clutter.StageView | null {
-    if (actor.is_in_clone_paint()) return null;
-    for (const view of actor.peek_stage_views()) {
-      if (view.get_framebuffer() === fb) return view;
-    }
-    return null;
+  static liveView(actor: Clutter.Actor, paintContext: Clutter.PaintContext): Clutter.StageView | null {
+    const view = paintingView;
+    if (!view || actor.is_in_clone_paint() || !actor.peek_stage_views().includes(view)) return null;
+    return paintContext.get_framebuffer() === view.get_framebuffer() ? view : null;
   }
 
   /**
@@ -88,12 +115,12 @@ export class StageCopier {
    */
   take(actor: Clutter.Actor, root: Clutter.PaintNode, paintContext: Clutter.PaintContext,
     stageRect: number[], keep = false): { copy: ViewCopy | null, missed: boolean, fresh: boolean } {
-    const fb = paintContext.get_framebuffer();
-    const view = StageCopier.liveView(actor, fb);
+    const view = StageCopier.liveView(actor, paintContext);
     if (!view) {
       this.offStageCount++;
       return { copy: this.lastCopy, missed: false, fresh: false };
     }
+    const fb = view.get_framebuffer();
     let copy = this._copies.get(view) ?? null;
     if (keep && copy?.rect) {
       this.reuseCount++;

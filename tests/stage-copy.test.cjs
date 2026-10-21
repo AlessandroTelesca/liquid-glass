@@ -10,7 +10,10 @@ function fixture(layout, scale, fbSize) {
   const blits = [];
   class Offscreen { static new_with_texture() { return { allocate() {} }; } }
   class Rectangle { constructor(r) { Object.assign(this, r); } }
-  const { StageCopier } = loadModule(path.join(dist, 'rendering/stageCopy.js'), {
+  const handlers = new Map();
+  const stage = { connect: (name, handler) => { handlers.set(name, handler); return handlers.size; }, disconnect() {} };
+  const { StageCopier, trackViewPaints } = loadModule(path.join(dist, 'rendering/stageCopy.js'), {
+    global: { stage },
     Clutter: { BlitNode: { new: () => ({ add_blit_rectangle: (...r) => blits.push(r) }) } },
     Cogl: { Offscreen, Texture2D: { new_with_size: (_ctx, w, h) => ({ w, h }) } },
     Mtk: { Rectangle, RegionOverlap: { IN, PART } },
@@ -24,9 +27,13 @@ function fixture(layout, scale, fbSize) {
   const clip = { contains_rectangle: r => r.x >= layout.x && r.y >= layout.y
     && r.x + r.width <= layout.x + layout.width && r.y + r.height <= layout.y + layout.height ? IN : PART };
   const actor = { is_in_clone_paint: () => false, peek_stage_views: () => [view] };
-  const paint = { get_framebuffer: () => fb, get_redraw_clip: () => clip };
-  const take = rect => new StageCopier().take(actor, { add_child() {} }, paint, rect);
-  return { take, blits };
+  const paint = { framebufferReads: 0, get_framebuffer() { this.framebufferReads++; return fb; }, get_redraw_clip: () => clip };
+  const copier = new StageCopier();
+  const take = rect => copier.take(actor, { add_child() {} }, paint, rect);
+  trackViewPaints();
+  handlers.get('before-paint')(stage, view);
+  const endPaint = () => handlers.get('after-paint')(stage, view);
+  return { take, blits, paint, endPaint };
 }
 
 test('glass at the edge of a fractionally scaled monitor off the stage origin is still copied', () => {
@@ -45,4 +52,17 @@ test('a whole-number scale copies the rect as it is', () => {
   const f = fixture({ x: 0, y: 0, width: 1920, height: 1080 }, 1, [1920, 1080]);
   assert.ok(f.take([100, 980, 900, 1100]).fresh);
   assert.deepEqual(f.blits[0], [100, 980, 0, 0, 800, 100]);
+});
+
+test('a paint outside a frame of the view (a screenshot) draws the last copy and leaves its framebuffer alone', () => {
+  const f = fixture({ x: 0, y: 0, width: 1920, height: 1080 }, 1, [1920, 1080]);
+  const first = f.take([100, 980, 900, 1080]);
+  assert.ok(first.fresh);
+  f.endPaint();
+  const reads = f.paint.framebufferReads;
+  const shot = f.take([100, 980, 900, 1080]);
+  assert.ok(!shot.fresh && !shot.missed);
+  assert.equal(shot.copy, first.copy);
+  assert.equal(f.blits.length, 1);
+  assert.equal(f.paint.framebufferReads, reads);
 });

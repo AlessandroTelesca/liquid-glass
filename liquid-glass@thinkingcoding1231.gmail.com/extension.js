@@ -22,6 +22,7 @@ import {adaptiveColorTweener} from './dist/animation/colors.js';
 import {installGlassDiagnostics, removeGlassDiagnostics} from './dist/diagnostics/glass.js';
 import {DumpShortcut} from './dist/diagnostics/dumpShortcut.js';
 import {setUtilsLogger} from './dist/diagnostics/logging.js';
+import {trackViewPaints, untrackViewPaints} from './dist/rendering/stageCopy.js';
 
 const QUICK_SETTINGS_DELAY_MS = 1500;
 
@@ -33,6 +34,7 @@ export default class LiquidGlassExtension extends Extension {
     // `output-logs`-gated logger.
     setUtilsLogger(this._logger);
     installGlassDiagnostics();
+    trackViewPaints();
 
     const path = this.dir.get_path();
 
@@ -151,6 +153,7 @@ export default class LiquidGlassExtension extends Extension {
     this._windowListService.cleanup();
     this._windowListService = null;
 
+    untrackViewPaints();
     removeGlassDiagnostics();
     setUtilsLogger(null);
     this._logger.cleanup();
