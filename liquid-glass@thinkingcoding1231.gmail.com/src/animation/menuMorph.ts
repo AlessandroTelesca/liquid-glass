@@ -338,7 +338,8 @@ export class MenuMorphMotion {
       // The corners square off as the glass grows, and are the menu's once it has.
       const menuRound = this._menuRadius / Math.max(Math.min(this._menu[2], this._menu[3]) / 2, 1);
       const roundFrom = this._roundS ? 1 : this._radiusFrom;
-      radius = lerp(roundFrom, menuRound, k) * Math.min(w, h) / 2;
+      // Never a corner sharper than the menu's while the drop is still smaller than it.
+      radius = Math.max(lerp(roundFrom, menuRound, k) * Math.min(w, h) / 2, Math.min(this._menuRadius, w / 2, h / 2));
     }
     const k = openSize(clamp01(Math.max(g, 0) / OPEN_SIZE_S));
     const reveal = clamp01(t / REVEAL_S);

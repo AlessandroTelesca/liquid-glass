@@ -218,13 +218,9 @@ function blurMyShellSettings(part) {
 // menus, notifications and OSDs under the glass, where it shows through.
 function addBlurMyShellWarning(page, controls) {
   const group = new Adw.PreferencesGroup();
-  const check = (keys) => {
-    if (!keys) return false;
-    const enabled = controls.settings.get_boolean('enable-blur-my-shell');
-    if (!enabled) return false;
-    return keys.some(key => controls.settings.get_boolean(key));
-  };
   const bmsKeys = ['panel', 'dock', 'applications'].map(part => `blur-my-shell-${part}-blur`);
+  const conflicting = () => controls.settings.get_boolean('enable-blur-my-shell')
+    && bmsKeys.some(key => controls.settings.get_boolean(key));
 
   const overrideRow = new Adw.ActionRow({ title: 'Possible Blur My Shell conflict' });
   overrideRow.add_prefix(new Gtk.Image({ icon_name: 'dialog-warning-symbolic' }));
@@ -252,10 +248,9 @@ function addBlurMyShellWarning(page, controls) {
   });
   group.add(overrideRow);
   page.add(group);
-  controls.watch(bmsKeys, () => {
-    group.visible = check(bmsKeys);
+  controls.watch(['enable-blur-my-shell', ...bmsKeys], () => {
+    group.visible = conflicting();
   });
-  group.visible = check(bmsKeys);
 }
 
 function findWidgetByName(parent, name) {
