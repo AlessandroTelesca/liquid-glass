@@ -181,3 +181,16 @@ test('menus sharing one settings namespace never write each other a ratio', () =
   assert.equal(written['menu-settled-height-scale'], undefined, 'nothing persisted');
   assert.equal(own.actor.scale, 700 / 900, 'but this session still scales');
 });
+
+test('the ratio compares the two boxes, not the empty Quick Settings holder or this menu\'s BoxPointer', () => {
+  const quickSettings = menuStub();
+  quickSettings.box = Object.assign(actorStub(), { allocated: 700 });
+  const own = menuStub();
+  own.actor.allocated = 1012;
+  own.box = Object.assign(actorStub(), { allocated: 1000 });
+  const { makeManager } = shell({ quickSettings });
+  const manager = makeManager(own);
+  assert.equal(manager._quickSettingsHeightScale(), 0.7);
+  manager._applyMenuScale();
+  assert.equal(own.actor.scale * own.box.allocated, 700);
+});

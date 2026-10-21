@@ -1549,6 +1549,11 @@ export class QuickSettingsManager {
         signalIds.push(button.connect('notify::mapped', updateHandler));
         signalIds.push(button.connect('key-focus-in', updateHandler));
         signalIds.push(button.connect('key-focus-out', updateHandler));
+        // The shell destroys rows while the menu is up and on screen lock, before this cleans up.
+        signalIds.push(button.connect('destroy', () => {
+          this._buttonSignalIds.delete(button);
+          this._styledButtons.delete(button);
+        }));
         this._buttonSignalIds.set(button, signalIds);
       }
 

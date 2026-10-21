@@ -159,6 +159,11 @@
       <summary>Panel menus excluded from glass</summary>
       <description>Panel indicator names disabled individually in preferences.</description>
     </key>
+    <key name="enable-blur-my-shell" type="b">
+      <default>false</default>
+      <summary>Blur my Shell</summary>
+      <description>Whether the extension is enabled.</description>
+    </key>
     <key name="blur-my-shell-popup-blur" type="b">
       <default>false</default>
       <summary>Blur my Shell is blurring popups</summary>

@@ -31,7 +31,8 @@ function fixture({ state = 1, blur = true, hasPopupSchema = true, glass = {}, ov
   const manager = new Signals();
   manager.lookup = uuid => uuid === bms.uuid ? bms : null;
   const settings = new FakeSettings({
-    'blur-my-shell-popup-blur': false, 'blur-my-shell-override': false, 'blur-my-shell-override-parts': ['popups', 'panel', 'dock'],
+    'blur-my-shell-popup-blur': false, 'blur-my-shell-panel-blur': false, 'blur-my-shell-dock-blur': false,
+    'blur-my-shell-applications-blur': false, 'enable-blur-my-shell': false, 'blur-my-shell-override': false, 'blur-my-shell-override-parts': ['popups', 'panel', 'dock'],
     'blur-my-shell-overridden': [], 'top-bar-style': 'off', 'enable-dock-glass': true, 'enable-application-glass': false,
     'enable-menu-glass': true, 'enable-quick-settings-glass': true, 'enable-extra-menu-glass': false,
     'enable-desktop-menu-glass': false, 'enable-notification-glass': true, 'enable-osd-glass': true, ...glass, ...override,
@@ -69,6 +70,25 @@ test('popup blur in an active Blur my Shell is published and logged', () => {
   f.popup.set_boolean('blur', true);
   assert.equal(f.settings.values['blur-my-shell-popup-blur'], true);
   assert.equal(f.warnings.length, 2, 'turning it back on warns again');
+});
+
+test('the panel, dock and applications blur are published both ways, and cleared on cleanup', () => {
+  const f = fixture();
+  f.watch.setup();
+  const published = () => ['panel', 'dock', 'applications'].map(part => f.settings.values[`blur-my-shell-${part}-blur`]);
+  assert.deepEqual(published(), [true, true, true]);
+  f.bmsParts.dock.set_boolean('blur', false);
+  assert.deepEqual(published(), [true, false, true], 'turning one part off clears it although popup blur did not change');
+  f.bmsParts.dock.set_boolean('blur', true);
+  assert.deepEqual(published(), [true, true, true]);
+  f.bms.state = 2;
+  f.manager.emit('extension-state-changed', f.bms);
+  assert.deepEqual(published(), [false, false, false]);
+  assert.equal(f.settings.values['enable-blur-my-shell'], false);
+  f.bms.state = 1;
+  f.manager.emit('extension-state-changed', f.bms);
+  f.watch.cleanup();
+  assert.deepEqual(published(), [false, false, false]);
 });
 
 test('disabling Blur my Shell clears the warning, and removing it drops its settings', () => {

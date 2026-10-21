@@ -24,7 +24,8 @@
 //              ($LG_DRV_WALLPAPER); LG_DRV_FEATURES picks parts (comma
 //              separated: morph, topbar, widgets, clock, launcher; default all;
 //              also morphtrace, qssub, clockshot, media, guides, launcherpointer,
-//              launchercolor, iconstyle, iconglass; both need LG_DTD_DIR);
+//              launchercolor, iconstyle, iconglass; both need LG_DTD_DIR; qsheight, the calendar matched
+//              to Quick Settings' height);
 //              also scale (the calendar, Quick Settings in both modes and the launcher
 //              on a small logical screen: run-glass.sh with LG_SPIKE_MONITOR=2256x1504 and
 //              LG_MONITORS_XML=tools/backdrop-spike/monitors-200.xml; LG_DRV_LIGHT=1 for the
@@ -358,8 +359,11 @@ export default class LgDriver extends Extension {
     await sleep(2500);
   }
 
+  // The owner's glass on the primary monitor: OSDs, top bars and docks have one on every monitor.
   _glass(owner) {
-    return lg()?.glassObjects().find(g => g._owner === owner) ?? null;
+    const glasses = lg()?.glassObjects().filter(g => g._owner === owner) ?? [];
+    const primary = Main.layoutManager.primaryIndex;
+    return glasses.find(g => g.mapped && Main.layoutManager.findIndexForActor(g) === primary) ?? glasses[0] ?? null;
   }
 
   _stats(owner) {
@@ -368,7 +372,8 @@ export default class LgDriver extends Extension {
 
   // A glass's rect plus room for its shadow, in stage coordinates.
   _region(owner) {
-    let g = lg()?.geom(owner)[0];
+    const u = this._glass(owner)?.uniformValues;
+    let g = u ? {x: u.get('dock_x') ?? 0, y: u.get('dock_y') ?? 0, w: u.get('dock_w') ?? 0, h: u.get('dock_h') ?? 0} : null;
     // Toggle mode draws regions; its composite rect covers them.
     if (!(g?.w > 0)) {
       const r = glassRow(owner)?.compositeRect ?? glassRow(owner)?.u?.compositeRect;
@@ -379,8 +384,8 @@ export default class LgDriver extends Extension {
     const m = Main.layoutManager.primaryMonitor;
     const x = Math.max(0, Math.floor(m.x + g.x - 40));
     const y = Math.max(0, Math.floor(m.y + g.y - 40));
-    const w = Math.min(m.width - x, Math.ceil(g.w + 80));
-    const h = Math.min(m.height - y, Math.ceil(g.h + 80));
+    const w = Math.min(m.x + m.width - x, Math.ceil(g.w + 80));
+    const h = Math.min(m.y + m.height - y, Math.ceil(g.h + 80));
     return [x, y, w, h];
   }
 
@@ -471,7 +476,8 @@ export default class LgDriver extends Extension {
     const bad = expectCopy ? count(r => !r.copied || !r.painted) : count(r => r.copied);
     log(`${tag} audit steps=${steps} frames=${rec.length} painted=${count(r => r.painted)} ` +
       `copied=${count(r => r.copied)} reused=${count(r => r.reused)} missed=${count(r => r.missed)} ` +
-      `${expectCopy ? 'stale' : 'needless-copy'}=${bad} ${bad === 0 ? 'OK' : 'NG'}`);
+      `${expectCopy ? 'stale' : 'needless-copy'}=${bad} ${bad === 0 ? 'OK' : 'NG'}` +
+      (bad ? ` at ${rec.map((r, i) => (expectCopy ? !r.copied || !r.painted : r.copied) ? i : -1).filter(i => i >= 0).join(',')}` : ''));
   }
 
   // Frames and glass counters over a quiet period; both should stay put.
@@ -509,7 +515,7 @@ export default class LgDriver extends Extension {
     return `frames=${frames} full-stage=${full}`;
   }
 
-  async _dockScenario(owner = owner) {
+  async _dockScenario(owner = 'dock') {
     const region = this._region(owner);
     if (!region) {
       log(`no ${owner} glass`);
@@ -650,7 +656,8 @@ export default class LgDriver extends Extension {
         ? `panel component=${global.blur_my_shell._panel_blur?.enabled} dock component=${global.blur_my_shell._dash_to_dock_blur?.enabled}`
         : 'not running';
       log(`bms ${tag}: ${blur} | overridden=${settings.get_strv('blur-my-shell-overridden')} ` +
-        `warning=${settings.get_boolean('blur-my-shell-popup-blur')} | ${live}`);
+        `warning=${settings.get_boolean('blur-my-shell-popup-blur')} conflict=${['panel', 'dock', 'applications']
+          .filter(part => settings.get_boolean(`blur-my-shell-${part}-blur`)).join(',') || '-'} | ${live}`);
     };
     for (const p of parts) bmsSettings[p].set_boolean('blur', true);
     settings.set_string('top-bar-style', 'pill');
@@ -790,14 +797,26 @@ export default class LgDriver extends Extension {
     log(`${tag} region=${JSON.stringify(region)} opening: ${opening}`);
     await this._shots(`${tag} open`, region, owner);
     await this._idle(tag, owner, 1500);
-    keepOpen();
-    await sleep(200);
     const behind = this._behind(owner, region);
     await sleep(300);
-    await this._audit(`${tag} behind-colour`, owner, 10, 120, i => behind.set_style(`background-color: ${COLORS[i % 2]};`));
-    keepOpen();
-    await sleep(200);
-    await this._audit(`${tag} behind-move`, owner, 10, 120, i => { behind.translation_x = (i + 1) * 8; });
+    // The OSD hides itself 1.5 s after it was last shown, and shown again during its fade it
+    // stays hidden: shown twice, the second time after any fade, then on every step.
+    const shown = async () => {
+      for (let i = 0; i < 2; i++) {
+        keepOpen();
+        await sleep(250);
+      }
+    };
+    await shown();
+    await this._audit(`${tag} behind-colour`, owner, 10, 120, i => {
+      keepOpen();
+      behind.set_style(`background-color: ${COLORS[i % 2]};`);
+    });
+    await shown();
+    await this._audit(`${tag} behind-move`, owner, 10, 120, i => {
+      keepOpen();
+      behind.translation_x = (i + 1) * 8;
+    });
     keepOpen();
     await sleep(200);
     await this._shots(`${tag} behind`, region, owner);
@@ -3014,6 +3033,64 @@ export default class LgDriver extends Extension {
         log(`widgetcolors: round ${i} ${colours()}`);
       }
       await shot('widgetcolors', [m.x, m.y, m.width, m.height]);
+    }
+    if (parts.includes('osdreshow')) {
+      // The OSD shown again at different times around its own hiding (1.5 s, then a 0.1 s fade);
+      // during the fade the shell's own OSD stays hidden, glass or not.
+      const icon = Gio.ThemedIcon.new('audio-volume-high-symbolic');
+      const show = () => SHELL_MAJOR >= 49
+        ? Main.osdWindowManager.showAll(icon, 'Volume', 0.6, 1)
+        : Main.osdWindowManager.show(-1, icon, 'Volume', 0.6, 1);
+      for (const again of [1000, 1490, 1520, 1550, 1580, 1700]) {
+        show();
+        await sleep(again);
+        show();
+        await sleep(400);
+        const glass = this._glass('osd');
+        const osd = Main.osdWindowManager._osdWindows[Main.layoutManager.primaryIndex];
+        const before = glass?.stats.paints ?? 0;
+        await sleep(300);
+        log(`osdreshow: again=${again}ms osd visible=${osd.visible} opacity=${osd.opacity} glass visible=${glass?.visible} ` +
+          `mapped=${glass?.mapped} opacity=${glass?.opacity} paints in 300ms=${(glass?.stats.paints ?? 0) - before} ` +
+          `${glass?.mapped && glass.opacity > 0 ? 'OK' : 'NG'}`);
+        Main.osdWindowManager.hideAll();
+        await sleep(1000);
+      }
+    }
+    if (parts.includes('qsheight')) {
+      // The calendar matched to Quick Settings' height, opened with the scale spring and grown from its button.
+      // The headless shell has no devices, so Quick Settings gets a few rows to be a usual height.
+      const dateMenu = Main.panel.statusArea.dateMenu.menu;
+      const qs = Main.panel.statusArea.quickSettings.menu;
+      for (const iconName of ['audio-volume-high-symbolic', 'display-brightness-symbolic'])
+        qs.addItem(new QuickSettings.QuickSlider({iconName}), 2);
+      for (const title of ['Wired', 'Bluetooth', 'Power Mode', 'Night Light'])
+        qs.addItem(new QuickSettings.QuickToggle({title, iconName: 'network-wired-symbolic'}));
+      for (let i = 0; i < Number(GLib.getenv('LG_DRV_NOTIFY') ?? 6); i++)
+        Main.notify(`Driver ${i}`, 'A notification that makes the calendar taller');
+      await sleep(1500);
+      const height = actor => Math.round(actor.get_transformed_size()[1]);
+      qs.open(true);
+      await sleep(1500);
+      const qsBox = height(qs.box);
+      log(`qsheight: monitor ${m.width}x${m.height} quick settings box=${qsBox} boxpointer=${height(qs._boxPointer)}`);
+      qs.close(true);
+      await sleep(800);
+      settings.set_boolean('menu-match-quick-settings-height', true);
+      await sleep(2500);
+      for (const grow of [false, true]) {
+        settings.set_boolean('menu-grow-from-button', grow);
+        await sleep(500);
+        dateMenu.open(true);
+        await sleep(2500);
+        const box = height(dateMenu.box);
+        log(`qsheight: grow=${grow} quick settings box=${qsBox} calendar box=${box} boxpointer=${height(dateMenu.actor)} ` +
+          `allocated=${Math.round(dateMenu.actor.height)} scale=${dateMenu.actor.scale_x.toFixed(3)} ` +
+          `${Math.abs(box - qsBox) <= 2 ? 'OK' : 'NG'}`);
+        await shot(`qsheight-${grow ? 'morph' : 'spring'}`, [m.x, m.y, m.width, m.height]);
+        dateMenu.close(true);
+        await sleep(1500);
+      }
     }
     if (parts.includes('scale')) {
       // The calendar and Quick Settings on a small logical screen (a laptop at

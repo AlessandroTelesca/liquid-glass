@@ -173,6 +173,19 @@ test('a rebuilt row adopts its own backdrop and destroyed rows are released', as
   button.emit('style-changed'); f.flush();
 });
 
+test('buttons destroyed while the menu is open are not touched on cleanup', () => {
+  const f = fixture();
+  f.manager._findAllButtons = () => [f.button];
+  f.manager._updateSingleButtonAlpha = () => {};
+  f.manager._updateButtonAlpha();
+  assert.ok(f.manager._buttonSignalIds.has(f.button));
+  f.button.emit('destroy');
+  f.button.disconnect = () => assert.fail('disconnect on a destroyed button');
+  f.button.set_style = () => assert.fail('set_style on a destroyed button');
+  f.manager._clearButtonStyles();
+  assert.equal(f.manager._styledButtons.size, 0);
+});
+
 test('reparenting a row updates the backdrop and watches the new parent', async () => {
   const f = fixture(); await f.sample();
   const button = new f.Button(bright, f.root);

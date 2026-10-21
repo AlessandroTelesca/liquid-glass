@@ -504,25 +504,27 @@ test('a slider dragged between steps stores the value the row displays', () => {
   assert.ok(Object.values(f.writes[1]).every(value => value === 0.46));
 });
 
-test('the Blur my Shell warning shows only while the shell reports popup blur, and can turn it off', () => {
-  const popup = {blur: true, set_boolean(key, value) { this[key] = value; }};
-  const f = fixture({}, [], popup);
-  const row = f.row('Blur my Shell is blurring popups');
+test('the Blur my Shell warning shows only while Blur my Shell is on and blurs a part with glass', () => {
+  const f = fixture();
+  const row = f.row('Possible Blur My Shell conflict');
   const group = f.widgets.find(widget => widget instanceof Object && widget.children?.includes(row));
+  const set = (key, value) => {
+    f.values.set(key, value);
+    for (const {signal, fn} of f.listeners.values()) if (signal === `changed::${key}`) fn();
+  };
   assert.equal(group.visible, false);
-  f.values.set('blur-my-shell-popup-blur', true);
-  for (const {signal, fn} of f.listeners.values()) if (signal === 'changed::blur-my-shell-popup-blur') fn();
+  set('blur-my-shell-dock-blur', true);
+  assert.equal(group.visible, false, 'Blur my Shell is off');
+  set('enable-blur-my-shell', true);
   assert.equal(group.visible, true);
-  const button = f.widgets.find(widget => widget.label === 'Turn Off');
-  button.emit('clicked');
-  assert.equal(popup.blur, false);
-  assert.equal(f.writes.length, 0, 'turning it off writes only Blur my Shell\'s setting');
+  set('blur-my-shell-dock-blur', false);
+  assert.equal(group.visible, false);
 });
 
-test('the warning offers no button when Blur my Shell\'s settings cannot be found', () => {
+test('the warning offers a way to the override settings', () => {
   const f = fixture();
-  assert.ok(f.row('Blur my Shell is blurring popups'));
-  assert.equal(f.widgets.find(widget => widget.label === 'Turn Off'), undefined);
+  const row = f.row('Possible Blur My Shell conflict');
+  assert.ok(row.suffixes.some(widget => widget.label === 'Go to override settings'));
 });
 
 test('exported settings are a dconf dump, and an import keeps only valid values of known keys', () => {

@@ -17,6 +17,8 @@ const PARTS = [
     { name: 'dock', schema: 'dash-to-dock', keys: ['enable-dock-glass'] },
     { name: 'applications', schema: 'applications', keys: ['enable-application-glass'] },
 ];
+// The parts the preferences window warns about, each published as blur-my-shell-<part>-blur.
+const WARNED_PARTS = ['panel', 'dock', 'applications'];
 
 function hasGlass(settings, keys) {
     return keys.some(key => key === 'top-bar-style' ? settings.get_string(key) !== 'off' : settings.get_boolean(key));
@@ -123,22 +125,24 @@ export class BlurMyShellWatch {
 
     _update() {
         const active = Main.extensionManager.lookup(UUID)?.state === ACTIVE;
+        this._publish('enable-blur-my-shell', active);
+        for (const part of WARNED_PARTS)
+            this._publish(`blur-my-shell-${part}-blur`, active && (this._parts.get(part)?.get_boolean('blur') ?? false));
         const blurring = active && (this._parts.get('popups')?.get_boolean('blur') ?? false);
+        this._publish('blur-my-shell-popup-blur', blurring);
         if (blurring === this._blurring)
             return;
         this._blurring = blurring;
-        if (blurring !== this._settings.get_boolean('blur-my-shell-popup-blur'))
-            this._settings.set_boolean('blur-my-shell-popup-blur', blurring);
         if (blurring) {
             this._logger.warn('[Liquid Glass] Blur my Shell is blurring popups, which shows through the glass on menus, '
                 + 'notifications and OSDs. Turn off Popups in Blur my Shell.');
         }
-        for (const part of ['panel', 'dock', 'applications']) {
-            const blurring = active && (this._parts.get(part)?.get_boolean('blur') ?? false);
-            if (!blurring)
-                continue;
-            this._settings.set_boolean(`blur-my-shell-${part}-blur`, blurring);
-        }
+    }
+
+    // Written only when it changes, so the preferences window is not told of every Blur my Shell change.
+    _publish(key, value) {
+        if (this._settings.get_boolean(key) !== value)
+            this._settings.set_boolean(key, value);
     }
 
     _disconnectParts() {
@@ -166,6 +170,7 @@ export class BlurMyShellWatch {
             this._override(true);
         this._dropParts();
         this._path = null;
-        this._settings.set_boolean('blur-my-shell-popup-blur', false);
+        for (const part of ['popup', ...WARNED_PARTS])
+            this._publish(`blur-my-shell-${part}-blur`, false);
     }
 }

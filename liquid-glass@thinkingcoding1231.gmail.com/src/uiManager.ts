@@ -381,7 +381,7 @@ export class UIManager {
     let tallest = 0;
     let repeats = 0;
     const tick = () => {
-      const height = this._firstHeight([actor, menu.box], a => this._allocatedHeightOf(a));
+      const height = this._firstHeight([menu.box, actor], a => this._allocatedHeightOf(a));
 
       repeats = height > 0 && height === tallest ? repeats + 1 : 0;
       if (height > tallest) tallest = height;
@@ -508,9 +508,11 @@ export class UIManager {
     if (!quickSettings)
       return this._settledHeightScale;
 
-    const targetHeight = this._firstHeight([quickSettings.actor, quickSettings.box],
+    // The boxes, which the glass is drawn around: Quick Settings' actor is an empty holder,
+    // and this menu's BoxPointer is taller than its box by its padding.
+    const targetHeight = this._firstHeight([quickSettings.box, quickSettings.actor],
       actor => this._allocatedHeightOf(actor));
-    const ownHeight = this._firstHeight([this.targetActor, this.animActor],
+    const ownHeight = this._firstHeight([this.animActor, this.targetActor],
       actor => this._allocatedHeightOf(actor));
     if (targetHeight <= 0 || ownHeight <= 0)
       return this._settledHeightScale;
