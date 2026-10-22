@@ -25,7 +25,8 @@
 //              separated: morph, topbar, widgets, clock, launcher; default all;
 //              also morphtrace, qssub, clockshot, media, guides, launcherpointer,
 //              launchercolor, iconstyle, iconglass, fullshot, popupfreeze; the last four need LG_DTD_DIR; qsheight, the calendar matched
-//              to Quick Settings' height);
+//              to Quick Settings' height; qsflicker, the Quick Settings glass rect while adaptive colour samples;
+//              adaptiveoff, adaptive colour turned off and on while each surface is shown);
 //              also scale (the calendar, Quick Settings in both modes and the launcher
 //              on a small logical screen: run-glass.sh with LG_SPIKE_MONITOR=2256x1504 and
 //              LG_MONITORS_XML=tools/backdrop-spike/monitors-200.xml; LG_DRV_LIGHT=1 for the
@@ -2779,8 +2780,18 @@ export default class LgDriver extends Extension {
     // A shell theme's gnome-shell.css, as the User Themes extension would load it.
     const shellTheme = GLib.getenv('LG_DRV_SHELL_THEME');
     if (shellTheme) {
-      Main.setThemeStylesheet(shellTheme);
-      Main.loadTheme();
+      // Main.loadTheme() is not used: on GNOME 49 the custom stylesheet list can hold a null.
+      const context = St.ThemeContext.get_for_stage(global.stage);
+      const previous = context.get_theme();
+      const theme = new St.Theme({
+        application_stylesheet: Gio.File.new_for_path(shellTheme),
+        default_stylesheet: previous.default_stylesheet,
+      });
+      const custom = previous.get_custom_stylesheets();
+      for (const file of custom.filter(f => f))
+        theme.load_stylesheet(file);
+      log(`shell theme ${shellTheme} (custom stylesheets ${custom.length}, null ${custom.filter(f => !f).length})`);
+      context.set_theme(theme);
       await sleep(1000);
     }
     const wallpaper = GLib.getenv('LG_DRV_WALLPAPER');
@@ -3191,6 +3202,73 @@ export default class LgDriver extends Extension {
           `${glass?.mapped && glass.opacity > 0 ? 'OK' : 'NG'}`);
         Main.osdWindowManager.hideAll();
         await sleep(1000);
+      }
+    }
+    if (parts.includes('qsflicker')) {
+      // Quick Settings left open in Whole menu mode with adaptive colour on: the glass rect has to stay put
+      // while the colours are sampled, also when they do not change.
+      const ext = Extension.lookupByUUID(LG_UUID);
+      const manager = ext.stateObj?._quickSettingsManager ?? ext._quickSettingsManager;
+      const qs = Main.panel.statusArea.quickSettings.menu;
+      settings.set_int('quick-settings-apply-to', 0);
+      settings.set_boolean('quick-settings-enable-adaptive-text-color', GLib.getenv('LG_DRV_QS_ADAPTIVE') !== '0');
+      await sleep(1500);
+      qs.open(false);
+      await sleep(3000);
+      const rects = new Map();
+      let frames = 0;
+      const id = global.stage.connect('after-paint', () => {
+        const u = manager.glass?.uniformValues;
+        if (!u) return;
+        frames++;
+        const g = manager.glass;
+        const key = [...['dock_x', 'dock_y', 'dock_w', 'dock_h'].map(k => u.get(k) ?? 0), g.x, g.y, g.width, g.height]
+          .map(Math.round).join(',') + ` s=${g.scale_x.toFixed(3)},${g.scale_y.toFixed(3)}`;
+        rects.set(key, (rects.get(key) ?? 0) + 1);
+      });
+      // Keeps the stage painting, as the pointer over the menu would.
+      const ticker = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 16, () => {
+        global.stage.queue_redraw();
+        return GLib.SOURCE_CONTINUE;
+      });
+      await sleep(6000);
+      GLib.Source.remove(ticker);
+      global.stage.disconnect(id);
+      log(`qsflicker: frames=${frames} rects=${JSON.stringify([...rects])} ${rects.size === 1 ? 'OK' : 'NG'}`);
+      qs.close(false);
+      await sleep(1000);
+    }
+    if (parts.includes('adaptiveoff')) {
+      // Turning adaptive colour off while a surface is shown gives its text the theme's colour back.
+      const colored = root => findActors(root, a => /(^|;)\s*color\s*:/.test(a.get_style?.() ?? '')).length;
+      const dimmed = root => findActors(root, a => /background-color\s*:\s*rgba/.test(a.get_style?.() ?? '')).length;
+      const qs = Main.panel.statusArea.quickSettings.menu;
+      const dateMenu = Main.panel.statusArea.dateMenu.menu;
+      settings.set_int('quick-settings-apply-to', 0);
+      for (const [tag, key, open, close, root] of [
+        ['quick-settings', 'quick-settings-enable-adaptive-text-color', () => qs.open(false), () => qs.close(false), () => qs.box],
+        ['calendar', 'menu-enable-adaptive-text-color', () => dateMenu.open(false), () => dateMenu.close(false), () => dateMenu.box],
+        ['notification', 'notification-enable-adaptive-text-color',
+          () => Main.notify('Liquid Glass driver', 'A banner while adaptive colour is turned off'),
+          () => Main.messageTray.getSources().forEach(source => source.destroy()), () => Main.messageTray._bannerBin],
+      ]) {
+        settings.set_boolean(key, true);
+        await sleep(1000);
+        open();
+        await sleep(2500);
+        const on = colored(root());
+        const dimOn = dimmed(root());
+        settings.set_boolean(key, false);
+        await sleep(1000);
+        const off = colored(root());
+        const dimOff = dimmed(root());
+        settings.set_boolean(key, true);
+        await sleep(1500);
+        const again = colored(root());
+        log(`adaptiveoff ${tag}: colored on=${on} off=${off} on again=${again} dimmed on=${dimOn} off=${dimOff} ` +
+          `${on > 0 && off === 0 && again > 0 && dimOff === dimOn ? 'OK' : 'NG'}`);
+        close();
+        await sleep(1500);
       }
     }
     if (parts.includes('qsheight')) {
