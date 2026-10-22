@@ -11,7 +11,7 @@ import Shell from 'gi://Shell';
 
 import { UnpickableActor } from '../actors/unpickable.js';
 import { setTranslationIfChanged, setScaleIfChanged } from '../actors/writes.js';
-import { undoCloneScale } from '../shellVersion.js';
+import { canCloneSource, undoCloneScale } from '../shellVersion.js';
 
 // Room around the sample rect, so the rect can shift a little at paint time
 // (the live geometry hook) and still be inside the redrawn area.
@@ -136,14 +136,14 @@ export class RelaySet {
         this._relays.delete(source);
         continue;
       }
-      const show = relay.visible ? reach.keep : reach.near;
+      const show = (relay.visible ? reach.keep : reach.near) && canCloneSource(source);
       if (relay.visible !== show) {
         relay.visible = show;
         changed = true;
       }
     }
     for (const [source, reach] of sources) {
-      if (this._relays.has(source) || !reach.near) continue;
+      if (this._relays.has(source) || !reach.near || !canCloneSource(source)) continue;
       const relay = new BackdropRelay({ source, opacity: 0, width: SAMPLE_BASE, height: SAMPLE_BASE }) as Clutter.Clone;
       this.area.add_child(relay);
       this._relays.set(source, relay);
