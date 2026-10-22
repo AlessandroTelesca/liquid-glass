@@ -24,7 +24,7 @@
 //              ($LG_DRV_WALLPAPER); LG_DRV_FEATURES picks parts (comma
 //              separated: morph, topbar, widgets, clock, launcher; default all;
 //              also morphtrace, qssub, clockshot, media, guides, launcherpointer,
-//              launchercolor, iconstyle, iconglass, fullshot, popupfreeze; the last four need LG_DTD_DIR; qsheight, the calendar matched
+//              launchercolor, iconstyle, iconglass, fullshot, popupfreeze, redrawclip, prefshover, bannerintro; fullshot to prefshover need LG_DTD_DIR; qsheight, the calendar matched
 //              to Quick Settings' height; qsflicker, the Quick Settings glass rect while adaptive colour samples;
 //              adaptiveoff, adaptive colour turned off and on while each surface is shown);
 //              also scale (the calendar, Quick Settings in both modes and the launcher
@@ -2614,6 +2614,188 @@ export default class LgDriver extends Extension {
       await round(look);
   }
 
+  // A window away from the dock that redraws (text typed into it): each
+  // change has to reach the stage's redraw clip, with each icon look in the
+  // dock (issue #74, where parts of the screen stopped being redrawn).
+  async _redrawClip(settings, m) {
+    const a = await this._spawn(['gnome-text-editor', '--standalone', '--new-window'], 'Document');
+    if (!a) return;
+    for (let i = 0; i < 2; i++) {
+      a.win.move_resize_frame(true, m.x + m.width - 800, m.y + 100, 700, 500);
+      await sleep(1000);
+    }
+    // What is really on screen over the text area, against a screenshot of it (drawn afresh).
+    const text = (() => {
+      const r = a.win.get_frame_rect();
+      return [r.x + 20, r.y + 80, r.width - 40, r.height - 100];
+    })();
+    this._camera.rect = text;
+    this._camera.set_position(m.x + 20, m.y + 60);
+    this._camera.set_size(text[2], text[3]);
+    const backend = SHELL_MAJOR >= 48 ? global.stage.context.get_backend() : Clutter.get_default_backend();
+    const keyboard = backend.get_default_seat().create_virtual_device(Clutter.InputDeviceType.KEYBOARD_DEVICE);
+    const press = keyval => {
+      keyboard.notify_keyval(GLib.get_monotonic_time(), keyval, Clutter.KeyState.PRESSED);
+      keyboard.notify_keyval(GLib.get_monotonic_time(), keyval, Clutter.KeyState.RELEASED);
+    };
+    const looks = (GLib.getenv('LG_DRV_REDRAW_LOOKS') ?? 'off,tinted,clear,off,clear').split(',');
+    let round = 0;
+    for (const look of looks) {
+      if (look === 'off') {
+        settings.set_boolean('icon-style-dock', false);
+      } else {
+        settings.set_string('icon-style-mode', look);
+        settings.set_boolean('icon-style-dock', true);
+      }
+      await sleep(look === 'off' ? 3000 : 8000);
+      a.win.activate(global.get_current_time());
+      await sleep(500);
+      const fr = a.win.get_frame_rect();
+      // The text area, below the header bar.
+      const area = new Mtk.Rectangle({x: fr.x + 20, y: fr.y + 80, width: fr.width - 40, height: fr.height - 100});
+      let hits = 0;
+      const id = global.stage.connect('paint-view', (_stage, _view, region) => {
+        if (!region || region.contains_rectangle(area) !== Mtk.RegionOverlap.OUT) hits++;
+      });
+      let missed = 0;
+      for (let i = 0; i < 12; i++) {
+        const before = hits;
+        press(i % 6 === 5 ? Clutter.KEY_Return : Clutter.KEY_a);
+        await sleep(200);
+        if (hits === before) missed++;
+      }
+      global.stage.disconnect(id);
+      log(`redrawclip ${look}: keys whose change was not redrawn=${missed}/12 ${missed === 0 ? 'OK' : 'NG'}`);
+      this._camera.armed = true;
+      this._camera.queue_redraw();
+      await sleep(100);
+      this._camera.armed = false;
+      round++;
+      await shot(`redrawclip-${round}-${look}-screen`, [this._camera.x, this._camera.y, text[2], text[3]]);
+      await shot(`redrawclip-${round}-${look}-fresh`, text);
+      // The window's menu, moved through row by row: each step redraws the row left and the row entered.
+      press(Clutter.KEY_F10);
+      await sleep(800);
+      const popup = global.get_window_actors().find(w => w !== a.actor && w.get_meta_window()?.get_transient_for() === a.win);
+      if (popup) {
+        for (let i = 0; i < 7; i++) {
+          press(Clutter.KEY_Down);
+          await sleep(250);
+        }
+        const pr = popup.get_meta_window().get_buffer_rect();
+        const menu = [pr.x, pr.y, pr.width, pr.height];
+        this._camera.rect = menu;
+        this._camera.set_size(menu[2], menu[3]);
+        this._camera.armed = true;
+        this._camera.queue_redraw();
+        await sleep(100);
+        this._camera.armed = false;
+        await shot(`redrawclip-${round}-${look}-menu-screen`, [this._camera.x, this._camera.y, menu[2], menu[3]]);
+        await shot(`redrawclip-${round}-${look}-menu-fresh`, menu);
+        this._camera.rect = text;
+        this._camera.set_size(text[2], text[3]);
+      } else {
+        log(`redrawclip ${look}: no menu`);
+      }
+      press(Clutter.KEY_Escape);
+      await sleep(400);
+    }
+  }
+
+  // The pointer moved down the rows of a preferences window (rows-app.js), as
+  // in the report of issue #74 (hover highlights left on rows that the pointer
+  // had left, with clear icons in the dock): what is on screen over the window
+  // afterwards has to match a screenshot of it drawn afresh.
+  async _prefsHover(settings, m) {
+    const app = await this._spawn(['gjs', '-m', `${this.path}/rows-app.js`], 'lgdrv-rows');
+    if (!app) return;
+    const win = app.win;
+    // Down to the dock, so that the window is behind its icons' glass too.
+    const width = 520, height = m.height - 100;
+    for (let i = 0; i < 2; i++) {
+      win.move_resize_frame(true, m.x + m.width / 2 - 100, m.y + 60, width, height);
+      await sleep(1000);
+    }
+    const fr = win.get_frame_rect();
+    const area = [fr.x, fr.y, fr.width, fr.height];
+    const backend = SHELL_MAJOR >= 48 ? global.stage.context.get_backend() : Clutter.get_default_backend();
+    const pointer = backend.get_default_seat().create_virtual_device(Clutter.InputDeviceType.POINTER_DEVICE);
+    const camera = this._camera;
+    camera.set_position(m.x + 20, m.y + 60);
+    camera.set_size(area[2], area[3]);
+    camera.rect = area;
+    let round = 0;
+    for (const look of (GLib.getenv('LG_DRV_HOVER_LOOKS') ?? 'off,clear,off,clear').split(',')) {
+      if (look === 'off') {
+        settings.set_boolean('icon-style-dock', false);
+      } else {
+        settings.set_string('icon-style-mode', look);
+        settings.set_boolean('icon-style-dock', true);
+      }
+      await sleep(look === 'off' ? 3000 : 8000);
+      for (let pass = 0; pass < 2; pass++) {
+        for (let y = fr.y + 80; y < fr.y + fr.height - 20; y += 12) {
+          pointer.notify_absolute_motion(GLib.get_monotonic_time(), fr.x + fr.width / 2, y);
+          await sleep(40);
+        }
+      }
+      // A row under the pointer, to see that it lights up.
+      pointer.notify_absolute_motion(GLib.get_monotonic_time(), fr.x + fr.width / 2, fr.y + 160);
+      await sleep(400);
+      const [px, py] = global.get_pointer();
+      log(`prefshover ${look}: pointer at ${px},${py} window ${area} under it ${global.stage.get_actor_at_pos(Clutter.PickMode.REACTIVE, px, py)}`);
+      await shot(`prefshover-${round + 1}-${look}-hovered`, area);
+      // Off the window, so that no row stays hovered.
+      pointer.notify_absolute_motion(GLib.get_monotonic_time(), fr.x - 30, fr.y + fr.height / 2);
+      await sleep(600);
+      camera.armed = true;
+      camera.queue_redraw();
+      await sleep(100);
+      round++;
+      await shot(`prefshover-${round}-${look}-screen`, [camera.x, camera.y, area[2], area[3]]);
+      camera.armed = false;
+      camera.tex = null;
+      camera.queue_redraw();
+      await sleep(100);
+      await shot(`prefshover-${round}-${look}-fresh`, area);
+      log(`prefshover ${look}: shots taken`);
+    }
+    win.delete(global.get_current_time());
+  }
+
+  // A notification banner sliding in from above: the glass has to be on it
+  // while it slides, not only once it has stopped.
+  async _bannerIntro() {
+    const tray = Main.messageTray;
+    for (let round = 0; round < 3; round++) {
+      const frames = [];
+      const id = global.stage.connect('after-paint', () => {
+        const banner = tray._banner;
+        const glass = lg()?.glassObjects().find(g => g._owner === 'notification');
+        if (!banner?.mapped) return;
+        const styled = banner.has_style_class_name('liquid-glass-transparent') ||
+          banner.has_style_class_name('liquid-glass-transparent-keep-border');
+        // Seen: below the stage's top edge and more than faint. In the first frame the banner
+        // is not laid out yet, and the glass follows from the next.
+        const [, by] = banner.get_transformed_position();
+        const opacity = banner.get_paint_opacity();
+        frames.push({y: Math.round(tray._bannerBin.y), seen: by + banner.get_transformed_size()[1] > 0 && opacity > 32, opacity,
+          glass: styled && !!glass?.visible, why: `${styled ? 't' : '-'}${glass ? (glass.visible ? 'v' : 'h') : 'n'}`});
+      });
+      Main.notify(`Driver ${round}`, 'A banner sliding in');
+      await sleep(1500);
+      global.stage.disconnect(id);
+      // The frames before the banner first reaches its place (y 0).
+      const arrived = frames.findIndex(f => f.y >= 0);
+      const moving = frames.slice(0, arrived < 0 ? frames.length : arrived).filter(f => f.seen);
+      const bare = moving.filter(f => !f.glass).length;
+      log(`bannerintro ${round}: frames while sliding=${moving.length} without glass=${bare} ${moving.length > 0 && bare === 0 ? 'OK' : 'NG'} ` +
+        `(${frames.slice(0, 12).map(f => `${f.y}/${f.opacity}${f.why}`).join(' ')})`);
+      tray._notification?.destroy();
+      await sleep(1500);
+    }
+  }
+
   async _iconGlass(settings, m) {
     const EFFECT = 'liquid-glass-icon-style';
     const BACKDROP = 'liquid-glass-icon-backdrop';
@@ -3405,6 +3587,12 @@ export default class LgDriver extends Extension {
       await this._fullShot(settings, m);
     if (parts.includes('popupfreeze'))
       await this._popupFreeze(settings, m);
+    if (parts.includes('redrawclip'))
+      await this._redrawClip(settings, m);
+    if (parts.includes('prefshover'))
+      await this._prefsHover(settings, m);
+    if (parts.includes('bannerintro'))
+      await this._bannerIntro();
     // Everything switched on, the launcher open: disabling has to leave nothing.
     (await this._lgModule('launcher/launcher.js')).Launcher.instance?.open();
     await sleep(500);
