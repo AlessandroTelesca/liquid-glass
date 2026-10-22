@@ -153,6 +153,13 @@ export class NotificationManager {
         });
         connectSetting('notification-enable-adaptive-text-color', () => {
             this._adaptiveConfig.enabled = this._settings.get_boolean('notification-enable-adaptive-text-color');
+            if (this._adaptiveConfig.enabled) {
+                if (this.currentBanner && this.glass)
+                    this._startAdaptiveColorSampling();
+                return;
+            }
+            this._stopAdaptiveColorSampling();
+            this._clearAdaptiveStyles();
         });
         connectSetting('notification-adaptive-text-preference', () => {
             this._adaptiveConfig.preference = sanitizeColorPreference(this._settings.get_string('notification-adaptive-text-preference'));

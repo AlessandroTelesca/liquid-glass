@@ -387,6 +387,16 @@ export class QuickSettingsManager {
         });
         connectSetting(this._key('enable-adaptive-text-color'), () => {
             this._adaptiveConfig.enabled = this._settings.get_boolean(this._key('enable-adaptive-text-color'));
+            if (this._adaptiveConfig.enabled) {
+                if (this._isEffectActive && this.menu?.isOpen)
+                    this._startAdaptiveColorSampling();
+                return;
+            }
+            this._stopAdaptiveColorSampling();
+            this._clearAdaptiveStyles();
+            // Restoring the original styles also took the dimmed button backgrounds.
+            if (this._activeMode === 'background')
+                this._updateButtonAlpha();
         });
         connectSetting(this._key('adaptive-text-preference'), () => {
             this._adaptiveConfig.preference = sanitizeColorPreference(this._settings.get_string(this._key('adaptive-text-preference')));

@@ -633,6 +633,13 @@ export class UIManager {
         });
         connectSetting(this._key('enable-adaptive-text-color'), () => {
             this._adaptiveConfig.enabled = this._settings.get_boolean(this._key('enable-adaptive-text-color'));
+            if (this._adaptiveConfig.enabled) {
+                if (this._isEffectActive && this.menu?.isOpen)
+                    this._startAdaptiveColorSampling();
+                return;
+            }
+            this._stopAdaptiveColorSampling();
+            this._clearAdaptiveStyles();
         });
         connectSetting(this._key('sample-interval-ms'), () => {
             this._adaptiveConfig.sampleIntervalMs = this._settings.get_int(this._key('sample-interval-ms'));
