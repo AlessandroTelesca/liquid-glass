@@ -347,14 +347,12 @@ export class DashManager {
         if (!monitor || !(marginValue > 0))
             return bounds;
         const { absX, absY, baseW, baseH } = bounds;
-        // No margin correction while the dock moves.
+        // No margin correction while the dock slides in or out from its screen edge. A move along the edge
+        // is a centered dock growing or shrinking as icons come and go, which still needs it.
         let isMoving = false;
         if (this._lastAbsX !== undefined && this._lastAbsY !== undefined) {
-            let diffX = Math.abs(absX - this._lastAbsX);
-            let diffY = Math.abs(absY - this._lastAbsY);
-            if (diffX > 1.0 || diffY > 1.0) {
-                isMoving = true;
-            }
+            const horizontal = edges.minCenterDist === edges.distTopCenter || edges.minCenterDist === edges.distBottomCenter;
+            isMoving = horizontal ? Math.abs(absY - this._lastAbsY) > 1.0 : Math.abs(absX - this._lastAbsX) > 1.0;
         }
         this._lastAbsX = absX;
         this._lastAbsY = absY;
