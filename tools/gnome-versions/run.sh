@@ -11,7 +11,9 @@
 #
 # VERSION is 46 to 51. 49 and later run with --devkit (the nested screen is
 # streamed to a GTK window through PipeWire); 46 to 48 have no devkit and run
-# with --nested, an X11 window on the host's Xwayland.
+# with --nested, an X11 window on the host's Xwayland, whose screen keeps the
+# size it starts with: on sway, the focused workspace's (or set
+# MUTTER_DEBUG_DUMMY_MODE_SPECS, e.g. 1440x900).
 #
 # Dash to Dock is copied from the host's extensions when it is installed there
 # (its releases support 45 to 51), so the dock glass can be tried too.
@@ -55,6 +57,29 @@ if ! in_box; then
   # podman starts the box through the systemd user manager over the session
   # bus; a desktop started with its own dbus-daemon (/tmp/dbus-...) has no
   # systemd on it, so point podman at systemd's bus.
+  # The --nested screen (46 to 48) keeps the size it starts with, and its
+  # window cannot be resized. On sway it starts as large as the focused
+  # workspace, less the title bar and border sway draws around the window.
+  if [ "$version" -le 48 ] && [ -z "${MUTTER_DEBUG_DUMMY_MODE_SPECS:-}" ] && command -v swaymsg >/dev/null &&
+     swaymsg -t get_version >/dev/null 2>&1; then
+    size=$( { swaymsg -t get_workspaces; echo; swaymsg -t get_tree; } | python3 -c '
+import json, sys
+workspaces, tree = [json.loads(part) for part in sys.stdin.read().split("\n\n", 1)]
+ws = next(w for w in workspaces if w["focused"])["rect"]
+def focused(node):
+    if node.get("focused"):
+        return node
+    for child in node.get("nodes", []) + node.get("floating_nodes", []):
+        found = focused(child)
+        if found:
+            return found
+con = focused(tree) or {}
+border = con.get("window_rect", {}).get("x", 2)
+title = con.get("deco_rect", {}).get("height", 30)
+print("%dx%d" % (ws["width"] - 2 * border, ws["height"] - title - border))
+' 2>/dev/null) || size=""
+    [ -n "$size" ] && export MUTTER_DEBUG_DUMMY_MODE_SPECS="$size"
+  fi
   user_bus="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/bus"
   [ -S "$user_bus" ] && export DBUS_SESSION_BUS_ADDRESS="unix:path=$user_bus"
   exec distrobox enter "$BOX" -- "$here/run.sh" "$version" "${args[@]}"
