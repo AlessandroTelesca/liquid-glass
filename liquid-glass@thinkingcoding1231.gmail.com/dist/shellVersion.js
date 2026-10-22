@@ -78,6 +78,17 @@ export function undoCloneScale(clone, volume) {
     }
 }
 
+// Whether `source` can be cloned. With the clone scale above, a source of no
+// size (a popup window just being mapped) gives an infinite scale, the clone
+// a NaN paint volume and every ancestor too: picking then skips the whole
+// branch, and no window under it gets the pointer. Always true from 47 on.
+export function canCloneSource(source) {
+    if (SHELL_MAJOR >= 47)
+        return true;
+    const box = source.get_allocation_box();
+    return box.get_width() > 0 && box.get_height() > 0;
+}
+
 // The properties that make an St.BoxLayout stack its children vertically:
 // `orientation` from GNOME 48 on; before, `vertical`, which GNOME 51 removed.
 export function verticalBoxParams() {

@@ -24,7 +24,7 @@
 //              ($LG_DRV_WALLPAPER); LG_DRV_FEATURES picks parts (comma
 //              separated: morph, topbar, widgets, clock, launcher; default all;
 //              also morphtrace, qssub, clockshot, media, guides, launcherpointer,
-//              launchercolor, iconstyle, iconglass, fullshot, popupfreeze, redrawclip, prefshover, bannerintro, stalefreeze, dockgrow; fullshot to prefshover, stalefreeze and dockgrow need LG_DTD_DIR; qsheight, the calendar matched
+//              launchercolor, iconstyle, iconglass, fullshot, popupfreeze, redrawclip, prefshover, bannerintro, stalefreeze, dockgrow, nanrelay; fullshot to prefshover and the last three need LG_DTD_DIR; qsheight, the calendar matched
 //              to Quick Settings' height; qsflicker, the Quick Settings glass rect while adaptive colour samples;
 //              adaptiveoff, adaptive colour turned off and on while each surface is shown);
 //              also scale (the calendar, Quick Settings in both modes and the launcher
@@ -2843,6 +2843,17 @@ export default class LgDriver extends Extension {
       await shot(`stalefreeze-${round}-${what}-fresh`, area);
       // The ticker redraws ten times a second.
       log(`stalefreeze ${what}: frames in 1 s=${frames} redrawing the window=${hits} ${hits >= 5 ? 'OK' : 'NG'}`);
+      // Picking finds the window everywhere on it: in the report it found only the stage on part of a window.
+      const missed = [];
+      for (const fy of [0.25, 0.5, 0.75]) {
+        for (const fx of [0.25, 0.5, 0.75]) {
+          const px = Math.round(fr.x + fr.width * fx), py = Math.round(fr.y + fr.height * fy);
+          let a = global.stage.get_actor_at_pos(Clutter.PickMode.REACTIVE, px, py);
+          while (a && a !== app.actor) a = a.get_parent();
+          if (!a) missed.push(`${px},${py}:${global.stage.get_actor_at_pos(Clutter.PickMode.REACTIVE, px, py)?.constructor.$gtype.name}`);
+        }
+      }
+      log(`stalefreeze ${what}: points on the window that pick something else=${missed.length}/9 ${missed.length === 0 ? 'OK' : `NG (${missed.join(' ')})`}`);
     };
     await check('start');
     const dock = findActor(Main.layoutManager.uiGroup, 'dashtodockDashContainer');
@@ -2896,6 +2907,44 @@ export default class LgDriver extends Extension {
     const fmt = r => `${[r.x, r.y, r.w, r.h].map(Math.round)}`;
     log(`dockgrow: settled ${fmt(settled)} with the window ${fmt(opened)} after ${fmt(closed)} frames=${rects.length} ` +
       `frames outside the settled rects=${odd.length} ${odd.length === 0 ? 'OK' : `NG (${odd.slice(0, 6).map(fmt).join(' ')})`}`);
+  }
+
+  // Issue #74's cause on GNOME 46: something of no size behind the clear dock
+  // icons (a popup just being mapped) got a relay whose clone transform, scaled
+  // by its size over its source's, was not finite. The relay holder's paint
+  // volume and then the UI group's became NaN, and picking skipped the whole UI
+  // group: no window got the pointer until something recomputed it.
+  async _nanRelay(settings) {
+    settings.set_string('icon-style-mode', 'clear');
+    settings.set_boolean('icon-style-dock', true);
+    await sleep(8000);
+    const dock = findActor(Main.layoutManager.uiGroup, 'dashtodockDashContainer');
+    const [dx, dy] = dock.get_transformed_position();
+    const ui = Main.layoutManager.uiGroup;
+    const volume = a => {
+      const pv = a.get_transformed_paint_volume(global.stage);
+      if (!pv) return 'none';
+      const o = pv.get_origin();
+      return [o.x, o.y, pv.get_width(), pv.get_height()].map(Math.round).join(',');
+    };
+    const holders = () => findActors(ui, a => a.get_name() === 'liquid-glass-relay-holder' && a.mapped).map(volume).join(' ');
+    const panel = Main.panel.statusArea.dateMenu;
+    const [bx, by] = panel.get_transformed_position();
+    const picks = () => {
+      let a = global.stage.get_actor_at_pos(Clutter.PickMode.REACTIVE, Math.round(bx + 5), Math.round(by + 5));
+      while (a && a !== panel) a = a.get_parent();
+      return !!a;
+    };
+    // A sized widget first, then one of no size, both in the window group right behind the icons.
+    for (const [w, h] of [[40, 40], [0, 0]]) {
+      const behind = new St.Widget({x: dx + 60, y: dy + 10, width: w, height: h, reactive: false});
+      global.window_group.add_child(behind);
+      await sleep(1000);
+      const nan = /NaN/.test(`${volume(ui)} ${holders()}`);
+      log(`nanrelay ${w}x${h}: ui group ${volume(ui)} holders ${holders()} picks the date menu=${picks()} ${!nan && picks() ? 'OK' : 'NG'}`);
+      behind.destroy();
+      await sleep(1000);
+    }
   }
 
   async _iconGlass(settings, m) {
@@ -3699,6 +3748,8 @@ export default class LgDriver extends Extension {
       await this._staleFreeze(settings, m);
     if (parts.includes('dockgrow'))
       await this._dockGrow();
+    if (parts.includes('nanrelay'))
+      await this._nanRelay(settings);
     // Everything switched on, the launcher open: disabling has to leave nothing.
     (await this._lgModule('launcher/launcher.js')).Launcher.instance?.open();
     await sleep(500);

@@ -153,3 +153,12 @@ test('a hover cursor is the actor\'s own from GNOME 50 on and the display\'s bef
     assert.deepEqual(set, ['meta-move', 'meta-default', 'meta-default'], version);
   }
 });
+
+test('GNOME 46 clones only a source with a size, later versions any', () => {
+  const actor = (width, height) => ({ get_allocation_box: () => ({ get_width: () => width, get_height: () => height }) });
+  const v46 = shellVersion('46.0');
+  assert.equal(v46.canCloneSource(actor(40, 30)), true);
+  assert.equal(v46.canCloneSource(actor(0, 0)), false);
+  assert.equal(v46.canCloneSource(actor(40, 0)), false);
+  assert.equal(shellVersion('47.0').canCloneSource(actor(0, 0)), true);
+});
