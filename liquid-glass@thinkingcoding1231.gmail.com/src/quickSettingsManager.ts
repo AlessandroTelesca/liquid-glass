@@ -270,7 +270,7 @@ export class QuickSettingsManager {
   private _regionGraceFrames: number = 0;
 
   constructor(extensionPath: string, settings: Gio.Settings, logger: Logger,
-    private _enableKey: string = 'enable-menu-glass',
+    private _enableKey: string = 'enable-quick-settings-glass',
     private _keyPrefix: string = 'quick-settings',
     private _label: string = 'quick-settings',
     private _ownsSettingsNamespace: boolean = true) {

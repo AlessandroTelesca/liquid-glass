@@ -203,7 +203,7 @@ export class QuickSettingsManager {
     _lastGoodRegions = null;
     _regionGraceFrames = 0;
 
-    constructor(extensionPath, settings, logger, _enableKey = 'enable-menu-glass', _keyPrefix = 'quick-settings', _label = 'quick-settings', _ownsSettingsNamespace = true) {
+    constructor(extensionPath, settings, logger, _enableKey = 'enable-quick-settings-glass', _keyPrefix = 'quick-settings', _label = 'quick-settings', _ownsSettingsNamespace = true) {
         this._enableKey = _enableKey;
         this._keyPrefix = _keyPrefix;
         this._label = _label;
