@@ -387,6 +387,16 @@ export class QuickSettingsManager {
         });
         connectSetting(this._key('enable-adaptive-text-color'), () => {
             this._adaptiveConfig.enabled = this._settings.get_boolean(this._key('enable-adaptive-text-color'));
+            if (this._adaptiveConfig.enabled) {
+                if (this._isEffectActive && this.menu?.isOpen)
+                    this._startAdaptiveColorSampling();
+                return;
+            }
+            this._stopAdaptiveColorSampling();
+            this._clearAdaptiveStyles();
+            // Restoring the original styles also took the dimmed button backgrounds.
+            if (this._activeMode === 'background')
+                this._updateButtonAlpha();
         });
         connectSetting(this._key('adaptive-text-preference'), () => {
             this._adaptiveConfig.preference = sanitizeColorPreference(this._settings.get_string(this._key('adaptive-text-preference')));
@@ -978,27 +988,15 @@ export class QuickSettingsManager {
         return [scaleX, scaleY];
     }
 
-    _themeMarginSize() {
-        let themeNode = this.animActor.get_theme_node();
-        return [themeNode.get_margin(St.Side.LEFT) + themeNode.get_margin(St.Side.RIGHT),
-            themeNode.get_margin(St.Side.TOP) + themeNode.get_margin(St.Side.BOTTOM)];
-    }
-
     _measurePanel() {
-        let [inW, inH] = this.animActor.get_size();
-        let [outW] = this.targetActor.get_size();
+        // The allocation: a restyle (hover, adaptive colors, button dimming) leaves a relayout pending,
+        // during which get_size() reports the preferred size including the theme margins.
+        let [inW, inH] = getAllocatedSize(this.animActor);
         inW = Number.isNaN(inW) || inW <= 0 ? (this._stableBaseW || 1) : inW;
         inH = Number.isNaN(inH) || inH <= 0 ? (this._stableBaseH || 1) : inH;
         const [scaleX, scaleY] = this._panelScale();
-        const [marginW, marginH] = this._themeMarginSize();
-        let targetW = Math.round(inW);
-        let targetH = Math.round(inH);
-        // While a hover restyle leaves a relayout pending, the box reports its
-        // preferred size including the theme margins; those are taken off.
-        if (Math.abs(inW - outW) <= 2 && marginW > 0) {
-            targetW = Math.round(inW - marginW);
-            targetH = Math.round(inH - marginH);
-        }
+        const targetW = Math.round(inW);
+        const targetH = Math.round(inH);
         this._stableBaseW = targetW;
         this._stableBaseH = targetH;
         // Never below 1px: a 0-size actor with a shader crashes Cogl.

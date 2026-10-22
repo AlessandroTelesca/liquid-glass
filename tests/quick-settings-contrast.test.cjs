@@ -127,8 +127,15 @@ test('hover or checked style changes update descendants without another screensh
   assert.equal(f.label._currentTargetColor, '#f2f2f2', 'transparent backdrop returns to the last glass color');
 });
 
+test('button alpha only dims: translucent theme backgrounds keep their own alpha', () => {
+  const f = fixture({red: 255, green: 255, blue: 255, alpha: 38});
+  f.manager._styledButtons.set(f.button, f.button.style);
+  f.manager._updateSingleButtonAlpha(f.button, 0.8);
+  assert.equal(f.button.style, 'padding: 4px;');
+});
+
 test('alpha and foreground updates preserve each other and restore native styles', async () => {
-  const f = fixture(); const original = f.button.style;
+  const f = fixture({...dark, alpha: 255}); const original = f.button.style;
   f.manager._styledButtons.set(f.button, original);
   await f.sample();
   f.manager._updateSingleButtonAlpha(f.button, 0.8);
