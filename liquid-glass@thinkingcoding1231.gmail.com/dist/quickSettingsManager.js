@@ -1316,8 +1316,8 @@ export class QuickSettingsManager {
         }, batchStart);
     }
 
-    // Background mode dims the buttons' own backgrounds to BUTTON_ALPHA, and
-    // keeps doing so as their state changes.
+    // Background mode dims the buttons' own backgrounds to at most BUTTON_ALPHA,
+    // and keeps doing so as their state changes.
     _findAllButtons(actor, foundButtons = []) {
         if (!actor)
             return foundButtons;
@@ -1365,8 +1365,11 @@ export class QuickSettingsManager {
         // Buttons without a background of their own stay that way.
         if (bgColor.alpha === 0)
             return;
-        const rgbaStr = `rgba(${bgColor.red}, ${bgColor.green}, ${bgColor.blue}, ${targetAlpha})`;
-        button.set_style(origStyle ? `${origStyle} background-color: ${rgbaStr};` : `background-color: ${rgbaStr};`);
+        // Only dims, so themes whose buttons are already translucent keep their own alpha.
+        if (bgColor.alpha / 255 > targetAlpha) {
+            const rgbaStr = `rgba(${bgColor.red}, ${bgColor.green}, ${bgColor.blue}, ${targetAlpha})`;
+            button.set_style(origStyle ? `${origStyle} background-color: ${rgbaStr};` : `background-color: ${rgbaStr};`);
+        }
         // The parent toggle depends on this button's state.
         const parent = button.get_parent();
         if (parent instanceof St.Widget && parent.has_style_class_name('quick-toggle'))
