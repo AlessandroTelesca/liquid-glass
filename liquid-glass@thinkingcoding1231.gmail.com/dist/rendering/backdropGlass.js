@@ -55,6 +55,11 @@ export const GlassActor = GObject.registerClass(class GlassActor extends Clutter
     }
 
     async _loadShaders() {
+        // Nothing has been drawn yet, so there is nothing for _onShadersLoaded() to redraw.
+        if (this._renderer.pipelines.loadCached(this._extensionPath)) {
+            this._shadersLoaded = true;
+            return;
+        }
         const start = GLib.get_monotonic_time();
         try {
             await this._renderer.pipelines.load(this._extensionPath, this._shaderLoad);

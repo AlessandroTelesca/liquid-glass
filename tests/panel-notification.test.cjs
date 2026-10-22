@@ -28,8 +28,9 @@ class Settings extends Signals {
 }
 function scheduler() {
   const pending = new Map(); let id = 0;
-  return { GLib: { idle_add: (_, fn) => { pending.set(++id, fn); return id; },
-    Source: { remove: id => pending.delete(id) }, SOURCE_REMOVE: false },
+  const add = fn => { pending.set(++id, fn); return id; };
+  return { GLib: { idle_add: (_, fn) => add(fn), Source: { remove: id => pending.delete(id) }, SOURCE_REMOVE: false },
+    addBeforeRedraw: add, removeBeforeRedraw: id => pending.delete(id),
   flush() { for (const [id, fn] of [...pending]) { pending.delete(id); fn(); } }, pending };
 }
 function panelFixture() {
@@ -109,6 +110,7 @@ function notificationFixture() {
   const monitor = { x: 1920, y: 200, width: 1600, height: 1000 };
   const C = loadClass('notificationManager.js', 'NotificationManager', {
     Main: { messageTray: tray }, GLib: clock.GLib,
+    addBeforeRedraw: clock.addBeforeRedraw, removeBeforeRedraw: clock.removeBeforeRedraw,
     StageContrastSampler: class {}, AdaptiveContrastConfig: {},
     getTransformedRect: actor => actor.rect,
     resolveMonitorGeometry: () => monitor,

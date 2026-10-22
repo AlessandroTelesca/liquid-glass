@@ -17,6 +17,10 @@
 #   LG_BENCH=1        also enable tools/perf/lg-bench@liquid-glass.test
 #   LG_SHELL_TIMEOUT  seconds before the shell is killed (default: 180)
 #   LG_X11=1          run an X11 session on Xvfb instead (GNOME 48 and older)
+#   LG_NESTED=1       run as a window on the desktop's X display (--nested, GNOME 48 and
+#                     older), drawn by the real GPU with buffer age, unlike --headless;
+#                     the driver's virtual pointer does not reach it there. Its size:
+#                     MUTTER_DEBUG_DUMMY_MODE_SPECS (e.g. 1440x900)
 set -euo pipefail
 
 here=$(cd "$(dirname "$0")" && pwd)
@@ -67,6 +71,7 @@ export LG_FAVORITES="${LG_FAVORITES:-}"
 export LG_DRV_SCENARIO="${LG_DRV_SCENARIO:-dock}"
 export XDG_CURRENT_DESKTOP=GNOME
 export XDG_SESSION_DESKTOP=gnome
+host_display=${DISPLAY:-}
 unset WAYLAND_DISPLAY DISPLAY
 
 shell_args="--headless --wayland"
@@ -77,6 +82,12 @@ if [ -f /run/.containerenv ]; then
   shell_args="$shell_args --no-x11"
 fi
 xvfb=""
+if [ "${LG_NESTED:-}" = 1 ]; then
+  [ -n "$host_display" ] || { echo "LG_NESTED needs the desktop's DISPLAY" >&2; exit 1; }
+  export DISPLAY=$host_display
+  shell_args="--nested --wayland --no-x11"
+  monitor_args=""
+fi
 # LG_X11=1: an X11 session on Xvfb instead (GNOME 48 and older have one).
 if [ "${LG_X11:-}" = 1 ]; then
   Xvfb :77 -screen 0 "${mode}x24" -nolisten tcp >/dev/null 2>&1 &
