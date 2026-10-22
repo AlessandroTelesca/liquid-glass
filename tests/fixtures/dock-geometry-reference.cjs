@@ -124,11 +124,9 @@ module.exports = ({ Main, setClipIfChanged }) => {
         if (monitor && marginValue > 0) {
             let isMoving = false;
             if (this._lastAbsX !== undefined && this._lastAbsY !== undefined) {
-                let diffX = Math.abs(absX - this._lastAbsX);
-                let diffY = Math.abs(absY - this._lastAbsY);
-                if (diffX > 1.0 || diffY > 1.0) {
-                    isMoving = true;
-                }
+                // Only a move across the screen edge counts (issue #74's dock growing sideways).
+                let horizontal = minCenterDist === distTopCenter || minCenterDist === distBottomCenter;
+                isMoving = horizontal ? Math.abs(absY - this._lastAbsY) > 1.0 : Math.abs(absX - this._lastAbsX) > 1.0;
             }
             this._lastAbsX = absX;
             this._lastAbsY = absY;

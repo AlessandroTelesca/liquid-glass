@@ -24,7 +24,7 @@
 //              ($LG_DRV_WALLPAPER); LG_DRV_FEATURES picks parts (comma
 //              separated: morph, topbar, widgets, clock, launcher; default all;
 //              also morphtrace, qssub, clockshot, media, guides, launcherpointer,
-//              launchercolor, iconstyle, iconglass, fullshot, popupfreeze, redrawclip, prefshover, bannerintro; fullshot to prefshover need LG_DTD_DIR; qsheight, the calendar matched
+//              launchercolor, iconstyle, iconglass, fullshot, popupfreeze, redrawclip, prefshover, bannerintro, stalefreeze, dockgrow; fullshot to prefshover, stalefreeze and dockgrow need LG_DTD_DIR; qsheight, the calendar matched
 //              to Quick Settings' height; qsflicker, the Quick Settings glass rect while adaptive colour samples;
 //              adaptiveoff, adaptive colour turned off and on while each surface is shown);
 //              also scale (the calendar, Quick Settings in both modes and the launcher
@@ -2796,6 +2796,108 @@ export default class LgDriver extends Extension {
     }
   }
 
+  // Issue #74 as reproduced in a nested GNOME 46: clear icons in the dock, the
+  // app grid and the launcher, a dock that hides itself (run-glass.sh with
+  // LG_DTD_SETTINGS="dock-fixed false;intellihide true"), and a window that
+  // keeps redrawing (ticker-app.js). After the dock has hidden and come back
+  // and the app grid and the launcher have been opened, the stage has to keep
+  // redrawing the window, and what is on screen has to match a screenshot.
+  async _staleFreeze(settings, m) {
+    const app = await this._spawn(['gjs', '-m', `${this.path}/ticker-app.js`], 'lgdrv-ticker');
+    if (!app) return;
+    const win = app.win;
+    const place = async y => {
+      win.move_frame(true, m.x + Math.round(m.width / 2) - 210, y);
+      await sleep(1500);
+    };
+    await place(m.y + 80);
+    const looks = (GLib.getenv('LG_DRV_FREEZE_SURFACES') ?? 'dock,app-grid,launcher').split(',');
+    settings.set_string('icon-style-mode', 'clear');
+    for (const surface of looks) settings.set_boolean(`icon-style-${surface}`, true);
+    await sleep(8000);
+    const camera = this._camera;
+    let round = 0;
+    const check = async what => {
+      const fr = win.get_frame_rect();
+      const area = [fr.x, fr.y, fr.width, fr.height];
+      const rect = new Mtk.Rectangle({x: fr.x + 20, y: fr.y + 80, width: fr.width - 40, height: fr.height - 100});
+      let hits = 0, frames = 0;
+      const id = global.stage.connect('paint-view', (_stage, _view, region) => {
+        frames++;
+        if (!region || region.contains_rectangle(rect) !== Mtk.RegionOverlap.OUT) hits++;
+      });
+      await sleep(1000);
+      global.stage.disconnect(id);
+      camera.rect = area;
+      camera.set_position(m.x + 20, m.y + m.height - fr.height - 20);
+      camera.set_size(area[2], area[3]);
+      camera.armed = true;
+      camera.queue_redraw();
+      await sleep(100);
+      round++;
+      await shot(`stalefreeze-${round}-${what}-screen`, [camera.x, camera.y, area[2], area[3]]);
+      camera.armed = false;
+      camera.tex = null;
+      camera.queue_redraw();
+      await sleep(100);
+      await shot(`stalefreeze-${round}-${what}-fresh`, area);
+      // The ticker redraws ten times a second.
+      log(`stalefreeze ${what}: frames in 1 s=${frames} redrawing the window=${hits} ${hits >= 5 ? 'OK' : 'NG'}`);
+    };
+    await check('start');
+    const dock = findActor(Main.layoutManager.uiGroup, 'dashtodockDashContainer');
+    for (let i = 0; i < 3; i++) {
+      const [, dy] = dock.get_transformed_position();
+      // Over the dock, which then hides, and away again.
+      await place(Math.round(dy) - 150);
+      await place(m.y + 80);
+    }
+    await check('after the dock hid');
+    Main.overview.showApps();
+    await sleep(3000);
+    Main.overview.hide();
+    await sleep(1500);
+    await check('after the app grid');
+    const {Launcher} = await this._lgModule('launcher/launcher.js');
+    settings.set_boolean('enable-launcher', true);
+    await sleep(500);
+    Launcher.instance?.open();
+    Launcher.instance?.setText('set');
+    await sleep(2500);
+    Launcher.instance?.close?.();
+    await sleep(1500);
+    await check('after the launcher');
+  }
+
+  // The dock's glass while icons come and go (a window opened and closed,
+  // which adds and removes an icon and its running indicator): it grows and
+  // shrinks sideways only, never towards the screen edge.
+  async _dockGrow() {
+    const rects = [];
+    const id = global.stage.connect('after-paint', () => {
+      const g = lg()?.geom('dock')[0];
+      if (g) rects.push(g);
+    });
+    await sleep(1500);
+    const settled = rects.at(-1);
+    const app = await this._spawn(['gjs', '-m', `${this.path}/ticker-app.js`], 'lgdrv-ticker');
+    await sleep(2000);
+    const opened = rects.at(-1);
+    app?.win.delete(global.get_current_time());
+    await sleep(2000);
+    global.stage.disconnect(id);
+    const closed = rects.at(-1);
+    const fmtKey = r => `${[r.x, r.y, r.w, r.h].map(Math.round)}`;
+    // Only the width changes as icons come and go.
+    const odd = rects.filter(r => Math.abs(r.y - settled.y) > 1 || Math.abs(r.h - settled.h) > 1);
+    // Each change of the rect, with the frame it happened in.
+    const changes = rects.map((r, i) => [i, r]).filter(([i, r]) => i === 0 || fmtKey(r) !== fmtKey(rects[i - 1]));
+    log(`dockgrow changes: ${changes.map(([i, r]) => `#${i}:${fmtKey(r)}`).join(' ')}`);
+    const fmt = r => `${[r.x, r.y, r.w, r.h].map(Math.round)}`;
+    log(`dockgrow: settled ${fmt(settled)} with the window ${fmt(opened)} after ${fmt(closed)} frames=${rects.length} ` +
+      `frames outside the settled rects=${odd.length} ${odd.length === 0 ? 'OK' : `NG (${odd.slice(0, 6).map(fmt).join(' ')})`}`);
+  }
+
   async _iconGlass(settings, m) {
     const EFFECT = 'liquid-glass-icon-style';
     const BACKDROP = 'liquid-glass-icon-backdrop';
@@ -3593,6 +3695,10 @@ export default class LgDriver extends Extension {
       await this._prefsHover(settings, m);
     if (parts.includes('bannerintro'))
       await this._bannerIntro();
+    if (parts.includes('stalefreeze'))
+      await this._staleFreeze(settings, m);
+    if (parts.includes('dockgrow'))
+      await this._dockGrow();
     // Everything switched on, the launcher open: disabling has to leave nothing.
     (await this._lgModule('launcher/launcher.js')).Launcher.instance?.open();
     await sleep(500);

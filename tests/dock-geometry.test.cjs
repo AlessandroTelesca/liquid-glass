@@ -69,3 +69,19 @@ test('dock geometry matches the original across edges, margins, movement and ref
     }
   }
 });
+
+test('a bottom dock growing sideways keeps its margin from the screen edge', () => {
+  const monitor = { x: 0, y: 0, width: 1920, height: 1080 };
+  const f = fixture(false, monitor);
+  f.manager._marginValue = 8;
+  f.target.children = [f.background];
+  const heights = [];
+  // A centered dock 8px off the bottom edge whose background reaches the edge, widening as an icon comes in.
+  for (let width = 400; width <= 480; width += 16) {
+    Object.assign(f.target, { x: 960 - width / 2, y: 964, w: width, h: 108 });
+    Object.assign(f.background, { x: 960 - width / 2, y: 964, w: width, h: 116 });
+    f.sync();
+    heights.push(f.manager._lastBgH);
+  }
+  assert.deepEqual(new Set(heights).size, 1, `glass heights ${heights}`);
+});
