@@ -2,6 +2,15 @@ import Cogl from 'gi://Cogl';
 import Gio from 'gi://Gio';
 import { splitShader } from './shaderSource.js';
 import { uniformDeclarations } from '../shellVersion.js';
+const SHADER_FILES = ['downsample.frag', 'upsample.frag', 'glass.frag'];
+// The shader sources by path, read once. A glass made while an animation runs
+// (a notification banner sliding in) then has them before its first frame,
+// where reading them again would leave it undrawn for a few frames.
+const shaderSources = new Map();
+
+export function clearShaderSources() {
+    shaderSources.clear();
+}
 
 export class ShaderPipelines {
     _logger;
@@ -17,9 +26,19 @@ export class ShaderPipelines {
     async load(extensionPath, cancellable = null) {
         if (!extensionPath)
             throw new Error('Missing extension path for shader loading');
-        this._downsampleSource = await this._readFileAsync(extensionPath + '/shaders/downsample.frag', cancellable);
-        this._upsampleSource = await this._readFileAsync(extensionPath + '/shaders/upsample.frag', cancellable);
-        this._glassSource = await this._readFileAsync(extensionPath + '/shaders/glass.frag', cancellable);
+        const sources = [];
+        for (const name of SHADER_FILES)
+            sources.push(await this._readFileAsync(`${extensionPath}/shaders/${name}`, cancellable));
+        [this._downsampleSource, this._upsampleSource, this._glassSource] = sources;
+    }
+
+    /** Takes the sources another glass has read already; false while none has. */
+    loadCached(extensionPath) {
+        const sources = SHADER_FILES.map(name => shaderSources.get(`${extensionPath}/shaders/${name}`));
+        if (!extensionPath || sources.some(source => source === undefined))
+            return false;
+        [this._downsampleSource, this._upsampleSource, this._glassSource] = sources;
+        return true;
     }
 
     clear() {
@@ -55,7 +74,9 @@ export class ShaderPipelines {
                         reject(new Error(`load_contents_finish returned false for ${path}`));
                     }
                     else {
-                        resolve(new TextDecoder('utf-8').decode(bytes));
+                        const source = new TextDecoder('utf-8').decode(bytes);
+                        shaderSources.set(path, source);
+                        resolve(source);
                     }
                 }
                 catch (e) {

@@ -8,7 +8,7 @@ import { addFrameTicker, removeFrameTicker } from './animation/frameTicker.js';
 import { StageContrastSampler, AdaptiveContrastConfig, sanitizeColorPreference } from './contrastSampler.js';
 import { ensureGlassAllocated } from './actors/allocation.js';
 import { getTransformedRect, resolveMonitorGeometry } from './actors/geometry.js';
-import { startSyncLoop, stopStageLoop } from './animation/frameLoops.js';
+import { addBeforeRedraw, removeBeforeRedraw, startSyncLoop, stopStageLoop } from './animation/frameLoops.js';
 import { setClipIfChanged } from './actors/writes.js';
 import { resolveCrossFade, adaptiveColorTweener, hexToColorArray, hexToRgb } from './animation/colors.js';
 import { BANNER_TRANSPARENT_CLASS } from './shellVersion.js';
@@ -39,7 +39,7 @@ export class NotificationManager {
 
     _tintTickId = 0;
     _isEffectActive;
-    _bannerIdleId = 0;
+    _bannerLaterId = 0;
     _pendingBanner = null;
     _bannerGeneration = 0;
     _originalBannerOffset = 0;
@@ -191,11 +191,11 @@ export class NotificationManager {
         this._signals.push(bannerBin.connect('child-added', (container, actor) => {
             if (actor.get_name() === 'liquid-glass-bg-actor')
                 return;
-            if (this._bannerIdleId)
-                GLib.Source.remove(this._bannerIdleId);
+            // Before the banner's first frame: an idle can wait until its slide-in has ended.
+            removeBeforeRedraw(this._bannerLaterId);
             this._pendingBanner = actor;
-            this._bannerIdleId = GLib.idle_add(GLib.PRIORITY_DEFAULT_IDLE, () => {
-                this._bannerIdleId = 0;
+            this._bannerLaterId = addBeforeRedraw(() => {
+                this._bannerLaterId = 0;
                 this._pendingBanner = null;
                 // A queued setup may outlive the notification or the effect toggle.
                 if (!this._isEffectActive || actor.get_parent() !== bannerBin)
@@ -212,9 +212,8 @@ export class NotificationManager {
             if (actor.get_name() === 'liquid-glass-bg-actor')
                 return;
             if (actor === this._pendingBanner) {
-                if (this._bannerIdleId)
-                    GLib.Source.remove(this._bannerIdleId);
-                this._bannerIdleId = 0;
+                removeBeforeRedraw(this._bannerLaterId);
+                this._bannerLaterId = 0;
                 this._pendingBanner = null;
             }
             if (actor === this.currentBanner)
@@ -290,16 +289,20 @@ export class NotificationManager {
             alive: () => !!this.glass && !!this.currentBanner,
             honourFreeze: true,
             errorTag: 'NotificationManager',
-            step: () => {
-                // Checked before this frame's sync dirties anything.
-                ensureGlassAllocated(this.glass);
-                this._syncGeometry();
-                this._syncHoverTint();
-            },
+            step: () => this._syncFrame(),
         });
+        // The loop's first step would wait for the next frame when this runs from a later.
+        this._syncFrame();
         this._isFirstAdaptiveRun = true;
         this._contrastSampler.reset();
         this._startAdaptiveColorSampling();
+    }
+
+    _syncFrame() {
+        // Checked before this frame's sync dirties anything.
+        ensureGlassAllocated(this.glass);
+        this._syncGeometry();
+        this._syncHoverTint();
     }
 
     _hoverTint() {
@@ -458,9 +461,8 @@ export class NotificationManager {
         if (!this._isEffectActive)
             return;
         this._isEffectActive = false;
-        if (this._bannerIdleId)
-            GLib.Source.remove(this._bannerIdleId);
-        this._bannerIdleId = 0;
+        removeBeforeRedraw(this._bannerLaterId);
+        this._bannerLaterId = 0;
         this._pendingBanner = null;
         // @ts-expect-error
         let bannerBin = this.tray._bannerBin;

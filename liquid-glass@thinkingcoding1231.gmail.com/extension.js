@@ -23,6 +23,7 @@ import {installGlassDiagnostics, removeGlassDiagnostics} from './dist/diagnostic
 import {DumpShortcut} from './dist/diagnostics/dumpShortcut.js';
 import {setUtilsLogger} from './dist/diagnostics/logging.js';
 import {trackViewPaints, untrackViewPaints} from './dist/rendering/stageCopy.js';
+import {clearShaderSources} from './dist/rendering/pipelines.js';
 
 const QUICK_SETTINGS_DELAY_MS = 1500;
 
@@ -154,6 +155,7 @@ export default class LiquidGlassExtension extends Extension {
     this._windowListService = null;
 
     untrackViewPaints();
+    clearShaderSources();
     removeGlassDiagnostics();
     setUtilsLogger(null);
     this._logger.cleanup();

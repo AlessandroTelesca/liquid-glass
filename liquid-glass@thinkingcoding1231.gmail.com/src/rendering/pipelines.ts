@@ -4,6 +4,17 @@ import type { Logger } from '../logger.js';
 import { splitShader } from './shaderSource.js';
 import { uniformDeclarations } from '../shellVersion.js';
 
+const SHADER_FILES = ['downsample.frag', 'upsample.frag', 'glass.frag'];
+
+// The shader sources by path, read once. A glass made while an animation runs
+// (a notification banner sliding in) then has them before its first frame,
+// where reading them again would leave it undrawn for a few frames.
+const shaderSources = new Map<string, string>();
+
+export function clearShaderSources(): void {
+  shaderSources.clear();
+}
+
 export class ShaderPipelines {
   // `shapeTexture`: the composite takes the glass's outline from a distance
   // field on layer 2 (glass text) instead of the rounded rect.
@@ -11,9 +22,17 @@ export class ShaderPipelines {
 
   async load(extensionPath: string | undefined, cancellable: Gio.Cancellable | null = null): Promise<void> {
     if (!extensionPath) throw new Error('Missing extension path for shader loading');
-    this._downsampleSource = await this._readFileAsync(extensionPath + '/shaders/downsample.frag', cancellable);
-    this._upsampleSource = await this._readFileAsync(extensionPath + '/shaders/upsample.frag', cancellable);
-    this._glassSource = await this._readFileAsync(extensionPath + '/shaders/glass.frag', cancellable);
+    const sources: string[] = [];
+    for (const name of SHADER_FILES) sources.push(await this._readFileAsync(`${extensionPath}/shaders/${name}`, cancellable));
+    [this._downsampleSource, this._upsampleSource, this._glassSource] = sources;
+  }
+
+  /** Takes the sources another glass has read already; false while none has. */
+  loadCached(extensionPath: string | undefined): boolean {
+    const sources = SHADER_FILES.map(name => shaderSources.get(`${extensionPath}/shaders/${name}`));
+    if (!extensionPath || sources.some(source => source === undefined)) return false;
+    [this._downsampleSource, this._upsampleSource, this._glassSource] = sources as string[];
+    return true;
   }
 
   clear(): void {
@@ -54,7 +73,9 @@ export class ShaderPipelines {
           if (!ok) {
             reject(new Error(`load_contents_finish returned false for ${path}`));
           } else {
-            resolve(new TextDecoder('utf-8').decode(bytes));
+            const source = new TextDecoder('utf-8').decode(bytes);
+            shaderSources.set(path, source);
+            resolve(source);
           }
         } catch (e) {
           reject(e);
