@@ -30,7 +30,8 @@
 //              on a small logical screen: run-glass.sh with LG_SPIKE_MONITOR=2256x1504 and
 //              LG_MONITORS_XML=tools/backdrop-spike/monitors-200.xml; LG_DRV_LIGHT=1 for the
 //              light shell theme) and widgetcolors (the weather card's text colours after rebuilds);
-//              $LG_DRV_SETTINGS_DUMP (a dconf dump) and $LG_DRV_ICON_THEME set up the session first
+//              $LG_DRV_SETTINGS_DUMP (a dconf dump), $LG_DRV_ICON_THEME and $LG_DRV_SHELL_THEME (a
+//              gnome-shell.css) set up the session first
 //   dhruva     the dock scenario on a Dhruva dock, then its icons magnified under the
 //              pointer (run-glass.sh with LG_EXTRA_EXTENSIONS=dhruva@narkagni and
 //              LG_DTD_SETTINGS="dock-position 'LEFT'", so Dash to Dock is out of the way)
@@ -2775,6 +2776,13 @@ export default class LgDriver extends Extension {
     }
     const iconTheme = GLib.getenv('LG_DRV_ICON_THEME');
     if (iconTheme) new Gio.Settings({schema_id: 'org.gnome.desktop.interface'}).set_string('icon-theme', iconTheme);
+    // A shell theme's gnome-shell.css, as the User Themes extension would load it.
+    const shellTheme = GLib.getenv('LG_DRV_SHELL_THEME');
+    if (shellTheme) {
+      Main.setThemeStylesheet(shellTheme);
+      Main.loadTheme();
+      await sleep(1000);
+    }
     const wallpaper = GLib.getenv('LG_DRV_WALLPAPER');
     if (wallpaper) {
       const bg = new Gio.Settings({schema_id: 'org.gnome.desktop.background'});
