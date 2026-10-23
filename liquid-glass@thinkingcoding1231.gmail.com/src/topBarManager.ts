@@ -480,6 +480,10 @@ export class TopBarManager {
 
   // Sync the glass beneath the panel, hiding it with the bar.
   private _sync(): void {
+    // Lays the stage out now if this bar waits for it, so the reads below see allocations. On a bar queued for
+    // relayout, size getters re-measure part of its tree mid-frame, and Multi Monitors Bar's mirrored buttons then
+    // miss their next resize.
+    const panelAllocation = this._panel.get_allocation_box();
     // Modal overlays may suppress leave-event; reconcile hover each frame.
     this._syncForwardedHover();
     const glass = this._glass!;
@@ -494,8 +498,8 @@ export class TopBarManager {
     glass.opacity = Math.round(panelBox.opacity * panel.opacity / 255);
 
     const [x, y] = panelBox.get_transformed_position();
-    const width = Math.round(panelBox.width);
-    const height = Math.round(panel.height);
+    const width = Math.round(panelBox.allocation.get_width());
+    const height = Math.round(panelAllocation.get_height());
     if (!Number.isFinite(x) || !Number.isFinite(y) || width < 1 || height < 1) return;
 
     const { top, bottom } = this._margin;
