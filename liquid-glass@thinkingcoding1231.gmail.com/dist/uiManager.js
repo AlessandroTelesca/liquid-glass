@@ -131,6 +131,9 @@ export class UIManager {
     _enableAnimation;
     _growFromButton = true;
     _morph = null;
+    // Multi Monitors Bar opens a shared menu from its own bar's button and hands the menu back to the main bar's
+    // button as it closes, so the glass closes into the button it opened from.
+    _openedFrom = null;
     _morphTickId = 0;
     _morphSpeed = 1.0;
     _interfaceSettings = null;
@@ -185,6 +188,8 @@ export class UIManager {
         this._settingsSignals = [];
         this._isEffectActive = false;
         this._animSignalId = this.menu.connect('open-state-changed', (menu, isOpen) => {
+            if (isOpen)
+                this._openedFrom = this.menu.sourceActor;
             if (!this._isEffectActive)
                 return;
             if (isOpen) {
@@ -1283,7 +1288,8 @@ export class UIManager {
     // when it is not on screen. Panel buttons draw it inside a transparent
     // border, and the clock on its label rather than on the whole button.
     _buttonRect() {
-        const source = this.menu?.sourceActor;
+        const opener = this._openedFrom;
+        const source = opener && isActorValid(opener) && opener.mapped ? opener : this.menu?.sourceActor;
         if (!source || !isActorValid(source) || !source.mapped)
             return null;
         const label = source._clockDisplay;
