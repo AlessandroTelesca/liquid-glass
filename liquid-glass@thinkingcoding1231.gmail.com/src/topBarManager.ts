@@ -24,19 +24,8 @@ type Insets = Record<typeof SIDES[number], number>;
 // PopupMenu keeps the alignment it hands its box pointer on open in a field the shell's typings leave out.
 type ArrowAlignedMenu = { _arrowAlignment: number };
 
-// The bars with glass, which the menus opened from them can grow out of.
+// The bars with glass, by which a popup finds the bar on its monitor.
 const liveBars = new Set<TopBarManager>();
-
-/**
- * The bar whose button `source` is, while what opens from it grows out of the bar by the boolean setting `key`
- * (top-bar-menus-grow, top-bar-notifications-grow), or null while it floats.
- */
-export function barGrowingFrom(source: Clutter.Actor | null, key: string): TopBarManager | null {
-  if (!source) return null;
-  for (const bar of liveBars)
-    if (bar.growsFrom(source, key)) return bar;
-  return null;
-}
 
 /** The bar with glass on monitor `index`, or null. */
 export function barOnMonitor(index: number): TopBarManager | null {
@@ -44,6 +33,9 @@ export function barOnMonitor(index: number): TopBarManager | null {
     if (bar.monitorIndex === index) return bar;
   return null;
 }
+
+// The settings by which menus, banners and popups grow out of a bar.
+const GROW_KEYS = ['top-bar-menus-grow', 'top-bar-notifications-grow', 'top-bar-osd-grow'];
 
 function sanitizeStyle(value: string): TopBarStyle {
   return value === 'pill' || value === 'islands' || value === 'center' ? value : 'off';
@@ -101,6 +93,8 @@ export class TopBarManager implements GrowthBar {
   // the bar's height.
   private _bodies: number[][] = [];
   private _glassSize: number[] = [0, 0, 0];
+  // Whether any of GROW_KEYS is on.
+  private _grows = false;
 
   constructor(private _path: string, private _settings: Gio.Settings, private _logger: Logger,
     // The panel's boxes are not part of the shell's typings.
@@ -132,15 +126,21 @@ export class TopBarManager implements GrowthBar {
       this._applyAttach();
       this._applyGrowths();
     });
-    for (const key of ['top-bar-menus-grow', 'top-bar-notifications-grow', 'top-bar-osd-grow'])
+    for (const key of GROW_KEYS)
       watch(key, () => {
         // The glass reaches down the monitor only while something grows out of it.
+        this._readGrows();
         this._lastKey = '';
         this._growths.clear();
         this._restack();
         this._applyGrowths();
       });
+    this._readGrows();
     this._apply();
+  }
+
+  private _readGrows(): void {
+    this._grows = GROW_KEYS.some(key => this._settings.get_boolean(key));
   }
 
   private _key(suffix: string): string {
@@ -231,20 +231,24 @@ export class TopBarManager implements GrowthBar {
 
   private _releaseChild(child: Clutter.Actor): void {
     const target = this._containerTargets.find(([container]) => container === child)?.[1];
+    const released = (actor: Clutter.Actor) => actor === child || actor === target;
+    // A button removed because it was destroyed has nothing left to restore.
     for (const [actor, style] of this._childrenStyles) {
-      if (actor === child || actor === target) actor.set_style(style);
+      if (released(actor) && isActorValid(actor)) actor.set_style(style);
     }
-    this._childrenStyles = this._childrenStyles.filter(([actor]) => actor !== child && actor !== target);
+    this._childrenStyles = this._childrenStyles.filter(([actor]) => !released(actor));
     if (!target) return;
     for (const [actor, id] of this._containerSignalIds) {
-      if (actor === child || actor === target) actor.disconnect(id);
+      if (released(actor) && isActorValid(actor)) actor.disconnect(id);
     }
-    this._containerSignalIds = this._containerSignalIds.filter(([actor]) => actor !== child && actor !== target);
+    this._containerSignalIds = this._containerSignalIds.filter(([actor]) => !released(actor));
     this._containerTargets = this._containerTargets.filter(([container]) => container !== child);
     this._forwardedPresses.delete(child as St.Widget);
-    child.reactive = false;
-    target.remove_style_pseudo_class('hover');
-    target.remove_style_pseudo_class('active');
+    if (isActorValid(child)) child.reactive = false;
+    if (isActorValid(target)) {
+      target.remove_style_pseudo_class('hover');
+      target.remove_style_pseudo_class('active');
+    }
   }
 
   private _disconnectBoxSignals(): void {
@@ -431,8 +435,9 @@ export class TopBarManager implements GrowthBar {
   // The bar grows by the margin and padding while each button keeps the theme's height. The
   // wrappers around the buttons fill the whole bar, so a press at the screen edge still lands.
   private _applyLayout(): void {
-    // set_style() below emits style-changed on the panel, which calls back in here.
-    if (!this._glass || this._applyingLayout) return;
+    // set_style() below emits style-changed on the panel, which calls back in here. At shell shutdown the panel's
+    // boxes are destroyed before the style of what is left of it changes.
+    if (!this._glass || this._applyingLayout || !this._sections().every(isActorValid)) return;
     this._applyingLayout = true;
     try {
       const panel = this._panel;
@@ -593,7 +598,7 @@ export class TopBarManager implements GrowthBar {
     this._bodies = rects.map(([rx, ry, rw, rh]) => [x + rx, y + ry, rw, rh]);
     // Menus and banners grown out of the bar reach down the monitor, so the glass does too.
     let glassHeight = height + SHADOW_ROOM;
-    if (['menus-grow', 'notifications-grow', 'osd-grow'].some(key => this._settings.get_boolean(this._key(key)))) {
+    if (this._grows) {
       const monitor = Main.layoutManager.findMonitorForActor(panelBox);
       if (monitor) glassHeight = Math.max(glassHeight, Math.round(monitor.y + monitor.height - y));
     }
@@ -663,7 +668,8 @@ export class TopBarManager implements GrowthBar {
   // Draws the bar, widened for the menus growing out of it, and the menus.
   private _applyGrowths(): void {
     const glass = this._glass;
-    if (!glass || this._bodies.length === 0) return;
+    // A growth still running back in at shell shutdown outlives the glass.
+    if (!glass || !isActorValid(glass) || this._bodies.length === 0) return;
     const { bodies, growths } = this._layoutGrowths([...this._growths.values()].slice(-MAX_GLASS_GROWTHS));
 
     const p = SHADER_PADDING;
