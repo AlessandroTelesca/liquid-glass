@@ -134,5 +134,14 @@ extensions.gnome.org (EGO) のレビューでは「AI 生成らしさ」が却�
   入力欄に貼れる形。コメント・整形・余分な変数は削り、複数文は `;` で繋ぐ。
   複数行版（読む用）と 1行版（貼る用）の両方を必ず提示する。ファイルとして保存する必要はなく、チャット内で示すこと。
 
+## 実行中のセッションへの再読み込み（`gext-reload`）
+- ユーザーは変更を試すたびにログアウトしない。インストールした後は `gext-reload liquid-glass@thinkingcoding1231.gmail.com` で、インストール済みの版を実行中のシェルに読み込む。
+- `gext-reload` はユーザーのスクリプト（`~/.local/bin/gext-reload`、ソースは `~/GIT/gext-reload`）。インストール済みの拡張機能を `$XDG_RUNTIME_DIR/gext-reload/<時刻>/` に複製し、`GObject.registerClass` のクラス名を変えたうえで、補助拡張機能 `gext-reload@alessandrot` が D-Bus 経由で実行中の拡張機能と入れ替える。
+- 読み込まれるのはインストール済みの版で、このチェックアウトではない。先にビルドしてインストールすること。
+- 確認方法: `gnome-extensions info liquid-glass@thinkingcoding1231.gmail.com` が State: ACTIVE を示し、`journalctl --user -b --since -1min -g "JS ERROR|liquid-glass"` にエラーがないこと。
+- 実行中のセッションでコードが動くので、`disable()` で元に戻さないもの（差し替えた関数、シグナル）は残る。Clutter のレイアウトエラーはシェルを落とし、ログアウトになる。復旧方法: `journalctl -b -g "Clutter-ERROR|ClutterBoxLayout|JS ERROR"` で原因を確かめ、`gnome-extensions disable <uuid>` と `gsettings set org.gnome.shell disable-user-extensions false`。
+- `~/GIT/simple-gnome-shell` は同じ画面要素に描画するので、Liquid Glass が有効な間は自分で止まる。
+- 詳しいメモ: `~/Dokumente/Obsidian/LinuxDocs/Customizations/15-Load-New-GNOME-Extension-Without-Relogin.md`
+
 ## その他
 - ユーザーが示した観察を、その時点でうまく説明することができなくても、それをユーザーの視覚的な誤解として扱わない。
