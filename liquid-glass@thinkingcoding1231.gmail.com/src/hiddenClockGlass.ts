@@ -15,9 +15,33 @@ import type { Logger } from './logger.js';
 const CLOCK_NAME = 'hidetopbar-mm-clock';
 const BODY_NAME = 'hidetopbar-mm-clock-body';
 const BACKED_CLASS = 'liquid-glass-backed';
+const LABEL_CLASS = 'hidetopbar-mm-clock';
 
 // Room around the glass rect for the shader's edge effects.
 const SHADER_PADDING = 20;
+
+// What decides whether the glass grows out of the screen edge or floats off it: the top bar's own settings while the
+// top bar has glass, the dock's while only the dock has. Floating, the gap to the edge is the top bar's top margin
+// either way: a clock at the top of the screen has no business sitting as far off as a dock does.
+const EDGE_KEYS = {
+  topBar: { attach: 'top-bar-attach-to-edge', flare: 'top-bar-edge-radius', corner: 'top-bar-corner-radius' },
+  dock: { attach: 'dock-attach-to-edge', flare: 'dock-edge-radius', corner: 'dock-corner-radius' },
+};
+const EDGE_WATCHED = [
+  'top-bar-style', 'top-bar-in-dock', 'enable-dock-glass', 'top-bar-margin-top',
+  ...Object.values(EDGE_KEYS).flatMap(keys => Object.values(keys)),
+];
+
+function edgeSettings(settings: Gio.Settings) {
+  const topBarHasGlass = settings.get_string('top-bar-style') !== 'off' && !settings.get_boolean('top-bar-in-dock');
+  const keys = !topBarHasGlass && settings.get_boolean('enable-dock-glass') ? EDGE_KEYS.dock : EDGE_KEYS.topBar;
+  return {
+    attached: settings.get_boolean(keys.attach),
+    flare: settings.get_double(keys.flare),
+    margin: settings.get_int('top-bar-margin-top'),
+    corner: settings.get_double(keys.corner),
+  };
+}
 
 // The tab's glass has the top bar's look.
 const MATERIAL: [string, (glass: BackdropGlass, settings: Gio.Settings) => void][] = [
@@ -38,10 +62,11 @@ function findByName(root: Clutter.Actor, name: string): Clutter.Actor | null {
   return null;
 }
 
-/** Glass behind one clock's tab, grown out of the screen edge the tab sits on and fading with the clock. */
+/** Glass behind one clock's tab, grown out of the screen edge the tab sits on or floating off it, fading with the clock. */
 class ClockGlass {
   private _glass: BackdropGlass;
   private _tab: St.Widget;
+  private _label: St.Label | undefined;
   private _frameSyncId = 0;
   private _frameSignalId = 0;
 
@@ -49,6 +74,7 @@ class ClockGlass {
     private _body: Clutter.Actor) {
     this._tab = _body.get_parent() as St.Widget;
     this._tab.add_style_class_name(BACKED_CLASS);
+    this._label = this._tab.get_children().find(child => (child as St.Widget).has_style_class_name(LABEL_CLASS)) as St.Label | undefined;
 
     const glass = new BackdropGlass({ extensionPath: path, settings: _settings, logger, owner: 'hidden-clock' } as any);
     this._glass = glass;
@@ -70,6 +96,10 @@ class ClockGlass {
     });
   }
 
+  refresh(): void {
+    this._glass.queue_redraw();
+  }
+
   applyMaterial(): void {
     for (const [, apply] of MATERIAL) apply(this._glass, this._settings);
     this._glass.queue_redraw();
@@ -82,6 +112,7 @@ class ClockGlass {
     // it is added (below its panel), which would leave the glass on top of its text: follow it.
     if (glass.get_next_sibling() !== clock) Main.layoutManager.uiGroup.set_child_below_sibling(glass, clock);
     const shown = clock.visible && clock.mapped && clock.opacity > 0 && this._body.mapped;
+    const edge = edgeSettings(this._settings);
     const [x, y] = this._body.get_transformed_position();
     const [w, h] = this._body.get_transformed_size();
     const monitor = Main.layoutManager.findMonitorForActor(clock);
@@ -93,11 +124,30 @@ class ClockGlass {
     glass.opacity = clock.get_paint_opacity();
 
     // A panel at the bottom of its monitor hides behind the bottom edge, and its clock grows out of that.
-    const atBottom = y + h / 2 > monitor.y + monitor.height / 2;
-    glass.setAttachedEdge(atBottom ? 'bottom' : 'top', this._settings.get_double('top-bar-edge-radius'));
-    glass.setCornerRadius(h / 2);
+    const moved = clock.translation_y;
+    const atBottom = y - moved + h / 2 > monitor.y + monitor.height / 2;
+    // The tab has more padding on one side, as it hangs off the screen edge: a floating pill hugs the text evenly.
+    let pillY = y;
+    let pillH = h;
+    const text = this._label?.clutter_text;
+    if (!edge.attached && text) {
+      const [, textY] = text.get_transformed_position();
+      const [, textH] = text.get_transformed_size();
+      const pad = Math.min(textY - y, y + h - textY - textH);
+      if (pad >= 0 && textH > 0) {
+        pillY = textY - pad;
+        pillH = textH + pad * 2;
+      }
+    }
+    // The clock moves with its glass, off the edge by the margin, so the text stays centered on it.
+    const wanted = atBottom ? monitor.y + monitor.height - edge.margin - pillH : monitor.y + edge.margin;
+    const target = edge.attached ? 0 : Math.round(moved + wanted - pillY);
+    if (moved !== target) clock.translation_y = target;
+    pillY += target - moved;
+    glass.setAttachedEdge(edge.attached ? (atBottom ? 'bottom' : 'top') : 'none', edge.flare);
+    glass.setCornerRadius(edge.attached ? pillH / 2 : Math.min(edge.corner, pillH / 2));
     const p = SHADER_PADDING;
-    const rect = { x: x - p - monitor.x, y: y - p - monitor.y, w: w + p * 2, h: h + p * 2 };
+    const rect = { x: x - p - monitor.x, y: pillY - p - monitor.y, w: w + p * 2, h: pillH + p * 2 };
     placeScreenGlass(glass, monitor.x, monitor.y, monitor.width, monitor.height, rect);
     glass.setResolution(monitor.width, monitor.height);
     glass.setGlassGeometry(rect.x, rect.y, rect.w, rect.h);
@@ -108,6 +158,7 @@ class ClockGlass {
   destroy(): void {
     stopStageLoop(this._frameSignalSlot, this._frameSlot);
     if (isActorValid(this._tab)) this._tab.remove_style_class_name(BACKED_CLASS);
+    if (isActorValid(this._clock)) this._clock.translation_y = 0;
     this._glass.cleanup();
     if (isActorValid(this._glass)) this._glass.destroy();
   }
@@ -137,6 +188,11 @@ export class HiddenClockGlass {
     for (const [key] of MATERIAL)
       this._settingsIds.push(this._settings.connect(`changed::${key}`, () => {
         for (const clock of this._clocks.values()) clock.applyMaterial();
+      }));
+    // The edge look is read with the geometry on the next frame, which a redraw brings.
+    for (const key of EDGE_WATCHED)
+      this._settingsIds.push(this._settings.connect(`changed::${key}`, () => {
+        for (const clock of this._clocks.values()) clock.refresh();
       }));
     this._apply();
   }

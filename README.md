@@ -160,7 +160,7 @@ Each of these is off by default, and is set in the top bar or dock surface of th
 - **Window previews on the dock** (on the **Effects** page) — hovering an app with windows on a Dash to Dock dock shows Dash to Dock's window previews in place of the app's name. They open without a grab or keyboard focus, so the pointer can move on along the dock and the focused window keeps the keyboard.
 - **Notifications grow out of the bar** — banners grow out of the bar under the clock. While the bar is hidden (Hide Top Bar), their own glass grows out of the top of the screen.
 - **Volume and brightness popups grow out of the bar** — the popup moves under the system indicators and grows out of the bar. While the bar is hidden, it sits at the top of the screen and its glass grows out of the edge.
-- **Glass behind the hidden-panel clock** — with [Hide Top Bar: Multi Monitors](https://github.com/AlessandroTelesca/hidetopbar-multimonitor), the clock shown while a panel is hidden gets the top bar's glass, attached to the top of the screen, in place of its dark tab.
+- **Glass behind the hidden-panel clock** — with [Hide Top Bar: Multi Monitors](https://github.com/AlessandroTelesca/hidetopbar-multimonitor), the clock shown while a panel is hidden gets the top bar's glass in place of its dark tab. It follows the top bar's *Grow out of the screen edge* setting (attached to the screen edge, or floating off it with the bar's top margin and corner radius), or the dock's while only the dock has glass.
 
 ### Top Bar in the Dock
 

@@ -889,7 +889,7 @@ function addLayout(group, controls, surface, appearance) {
       joinRadius.visible = shown() && TOP_BAR_GROW_KEYS.some(key => controls.settings.get_boolean(key));
     });
     controls.toggle(group, 'Glass behind the hidden-panel clock', 'enable-hidden-clock-glass',
-      'The clock Hide Top Bar: Multi Monitors shows while a panel is hidden sits on the top bar\'s glass, grown out of the screen edge');
+      'The clock Hide Top Bar: Multi Monitors shows while a panel is hidden sits on glass that grows out of the screen edge or floats off it as the top bar does, or as the dock does when only the dock has glass');
   }
   if (surface === 'quick-settings') {
     controls.watch(['quick-settings-apply-to'], () => {

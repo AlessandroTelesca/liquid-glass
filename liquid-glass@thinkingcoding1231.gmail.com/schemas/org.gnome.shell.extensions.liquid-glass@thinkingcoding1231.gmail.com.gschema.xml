@@ -982,7 +982,7 @@
     <key name="enable-hidden-clock-glass" type="b">
       <default>false</default>
       <summary>Glass behind Hide Top Bar: Multi Monitors' clock</summary>
-      <description>Draws glass, with the top bar's look, behind the clock Hide Top Bar: Multi Monitors shows on a monitor while that monitor's panel is hidden, in place of its own dark tab. The glass grows out of the screen edge like an attached top bar, with the edge flare radius.</description>
+      <description>Draws glass, with the top bar's look, behind the clock Hide Top Bar: Multi Monitors shows on a monitor while that monitor's panel is hidden, in place of its own dark tab. The glass follows the top bar's Grow out of the screen edge setting while the top bar has glass, and the dock's while only the dock has: grown out of the edge with that edge flare radius, or floating off it with the top bar's top margin and that corner radius.</description>
     </key>
     <key name="top-bar-menus-grow" type="b">
       <default>false</default>
