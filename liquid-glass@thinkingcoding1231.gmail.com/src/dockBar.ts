@@ -1,5 +1,6 @@
 import Clutter from 'gi://Clutter';
 import GLib from 'gi://GLib';
+import GObject from 'gi://GObject';
 import type Gio from 'gi://Gio';
 import Meta from 'gi://Meta';
 import St from 'gi://St';
@@ -127,6 +128,22 @@ export function dockBarCss(border: number, small: number, rgb: string): string {
     `${clock}:active .clock, ${clock}:checked .clock {\n  ${shade(ACTIVE_ALPHA)}\n}\n` +
     `${button}.screen-recording-indicator, ${button}.screen-sharing-indicator {\n${inset(small, INDICATOR_ROOM)}}\n`;
 }
+
+// A Clutter.Clone scales its source by its own size over the source's allocation. While the host dock is hidden the
+// buttons go unallocated, and Clutter.Clone then allocates them at their preferred size, a fraction of the dock's
+// thickness, and the clone stretches them that much in height. Allocated at the clone's size, they paint unscaled.
+const ButtonClone = GObject.registerClass(
+  class ButtonClone extends Clutter.Clone {
+    vfunc_allocate(box: Clutter.ActorBox): void {
+      const source = this.source;
+      if (source?.get_parent() && !source.has_allocation()) {
+        const [, x, y] = source.get_fixed_position();
+        source.allocate(new Clutter.ActorBox({ x1: x, y1: y, x2: x + box.get_width(), y2: y + box.get_height() }));
+      }
+      super.vfunc_allocate(box);
+    }
+  }
+);
 
 function findDash(actor: Clutter.Actor): St.Widget | null {
   if (actor instanceof St.Widget && actor.get_name() === 'dashtodockDashContainer') return actor;
@@ -523,7 +540,7 @@ export class DockBarManager {
         for (const container of host[side].get_children()) {
           const button = (container as St.Bin).child;
           if (!button) continue;
-          const clone = new Clutter.Clone({ source: button, y_align: Clutter.ActorAlign.FILL });
+          const clone = new ButtonClone({ source: button, y_align: Clutter.ActorAlign.FILL });
           // A hidden button leaves no gap in the other docks either.
           const update = () => { clone.visible = container.visible && button.visible; };
           const watched: [Clutter.Actor, number][] = [container, button].map(

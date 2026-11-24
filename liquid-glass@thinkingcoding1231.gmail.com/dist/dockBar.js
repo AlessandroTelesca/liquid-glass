@@ -1,5 +1,6 @@
 import Clutter from 'gi://Clutter';
 import GLib from 'gi://GLib';
+import GObject from 'gi://GObject';
 import Meta from 'gi://Meta';
 import St from 'gi://St';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
@@ -92,6 +93,20 @@ export function dockBarCss(border, small, rgb) {
         `${clock}:active .clock, ${clock}:checked .clock {\n  ${shade(ACTIVE_ALPHA)}\n}\n` +
         `${button}.screen-recording-indicator, ${button}.screen-sharing-indicator {\n${inset(small, INDICATOR_ROOM)}}\n`;
 }
+
+// A Clutter.Clone scales its source by its own size over the source's allocation. While the host dock is hidden the
+// buttons go unallocated, and Clutter.Clone then allocates them at their preferred size, a fraction of the dock's
+// thickness, and the clone stretches them that much in height. Allocated at the clone's size, they paint unscaled.
+const ButtonClone = GObject.registerClass(class ButtonClone extends Clutter.Clone {
+    vfunc_allocate(box) {
+        const source = this.source;
+        if (source?.get_parent() && !source.has_allocation()) {
+            const [, x, y] = source.get_fixed_position();
+            source.allocate(new Clutter.ActorBox({ x1: x, y1: y, x2: x + box.get_width(), y2: y + box.get_height() }));
+        }
+        super.vfunc_allocate(box);
+    }
+});
 
 function findDash(actor) {
     if (actor instanceof St.Widget && actor.get_name() === 'dashtodockDashContainer')
@@ -537,7 +552,7 @@ export class DockBarManager {
                     const button = container.child;
                     if (!button)
                         continue;
-                    const clone = new Clutter.Clone({ source: button, y_align: Clutter.ActorAlign.FILL });
+                    const clone = new ButtonClone({ source: button, y_align: Clutter.ActorAlign.FILL });
                     // A hidden button leaves no gap in the other docks either.
                     const update = () => { clone.visible = container.visible && button.visible; };
                     const watched = [container, button].map(actor => [actor, actor.connect('notify::visible', update)]);
